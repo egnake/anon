@@ -65,40 +65,71 @@ input() {
 
 banner() {
     clear
-    local rand=$((RANDOM % 3))
+    local rand_art=$((RANDOM % 5))
+    local rand_color=$((RANDOM % 6))
     
-    case $rand in
+    local c_red="${BOLD}${RED}"
+    local c_grn="${BOLD}${GREEN}"
+    local c_yel="${BOLD}${YELLOW}"
+    local c_blu="${BOLD}${BLUE}"
+    local c_mag="${BOLD}${MAGENTA}"
+    local c_cya="${BOLD}${CYAN}"
+    
+    local selected_color=""
+    
+    case $rand_color in
+        0) selected_color=$c_red ;;
+        1) selected_color=$c_grn ;;
+        2) selected_color=$c_yel ;;
+        3) selected_color=$c_blu ;;
+        4) selected_color=$c_mag ;;
+        5) selected_color=$c_cya ;;
+    esac
+
+    echo -e "${selected_color}"
+    
+    case $rand_art in
         0)
-            echo -e "${BOLD}${RED}"
             echo -e "   █████╗ ███╗   ██╗ ██████╗ ███╗   ██╗"
             echo -e "  ██╔══██╗████╗  ██║██╔═══██╗████╗  ██║"
             echo -e "  ███████║██╔██╗ ██║██║   ██║██╔██╗ ██║"
             echo -e "  ██╔══██║██║╚██╗██║██║   ██║██║╚██╗██║"
             echo -e "  ██║  ██║██║ ╚████║╚██████╔╝██║ ╚████║"
-            echo -e "  ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═══╝${RESET}"
+            echo -e "  ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═══╝"
             ;;
         1)
-            echo -e "${BOLD}${RED}"
-            echo -e "    ___      _   _  ___  _   _"
-            echo -e "   / _ \    | \ | |/ _ \| \ | |"
-            echo -e "  / /_\ \   |  \| | | | |  \| |"
-            echo -e "  |  _  |   | . \ | | | | . \ |"
-            echo -e "  | | | | _ | |\  | |_| | |\  |"
-            echo -e "  \_| |_/(_)\_| \_/\___/\_| \_/${RESET}"
+            echo -e "    ___    _   ______  _   __"
+            echo -e "   /   |  / | / / __ \/ | / /"
+            echo -e "  / /| | /  |/ / / / /  |/ / "
+            echo -e " / ___ |/ /|  / /_/ / /|  /  "
+            echo -e "/_/  |_/_/ |_/\____/_/ |_/   "
             ;;
         2)
-            echo -e "${BOLD}${RED}"
-            echo -e "     ___   _   _  ____  _   _"
-            echo -e "    / \   | \ | |/ __ \| \ | |"
-            echo -e "   / _ \  |  \| | |  | |  \| |"
-            echo -e "  / ___ \ | |\  | |__| | |\  |"
-            echo -e " /_/   \_\|_| \_|\____/|_| \_|${RESET}"
+            echo -e "  ___                    "
+            echo -e " / _ \ _ __   ___  _ __  "
+            echo -e "/ /_\/| '_ \ / _ \| '_ \ "
+            echo -e "/ /_\| | | | (_) | | | |"
+            echo -e "\____/|_| |_|\___/|_| |_|"
+            ;;
+        3)
+            echo -e "   __  _  _  __  _  _ "
+            echo -e "  / _)( \( )/  \( \( )"
+            echo -e " ( (_ \(  ((  O ))  ( "
+            echo -e "  \__)(_)\_)\__/(_)\_)"
+            ;;
+        4)
+            echo -e "      _    _   _  ___  _   _ "
+            echo -e "     / \  | \ | |/ _ \| \ | |"
+            echo -e "    / _ \ |  \| | | | |  \| |"
+            echo -e "   / ___ \| |\  | |_| | |\  |"
+            echo -e "  /_/   \_\_| \_|\___/|_| \_|"
             ;;
     esac
 
-    echo -e "
-${DIM}  =======================================${RESET}
-      ${BOLD}${CYAN}Extreme Privacy & Anonymity Tool${RESET}
-${DIM}  =======================================${RESET}
+    echo -e "${RESET}"
+    echo -e "${DIM}  =======================================${RESET}"
+    echo -e "      ${BOLD}${CYAN}Extreme Privacy & Anonymity Tool${RESET}"
+    echo -e "${DIM}  =======================================${RESET}
 "
 }
+
