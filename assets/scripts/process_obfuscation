@@ -1,0 +1,28 @@
+#!/bin/bash
+
+start_process_obfuscation(){
+    source /usr/share/anon/assets/sources/config
+    if [[ "$process_obfuscation_status" == "Disable" ]]; then
+        # Create wrappers for common pentesting tools
+        cat > /usr/local/bin/nmap << 'EOF'
+#!/bin/bash
+exec -a "[kworker/u4:2]" /usr/bin/nmap "$@"
+EOF
+        cat > /usr/local/bin/sqlmap << 'EOF'
+#!/bin/bash
+exec -a "[kworker/u4:2]" /usr/bin/sqlmap "$@"
+EOF
+        chmod +x /usr/local/bin/nmap /usr/local/bin/sqlmap
+        
+        sed -i 's/process_obfuscation_status="Disable"/process_obfuscation_status="Enable"/g' $SRCDIR/sources/config
+        info "Process obfuscation successfully enabled (Spoofing hacking tools)"
+    else
+        warn "Process obfuscation is already running"
+    fi
+}
+stop_process_obfuscation(){
+    source /usr/share/anon/assets/sources/config
+    rm -f /usr/local/bin/nmap /usr/local/bin/sqlmap
+    sed -i 's/process_obfuscation_status="Enable"/process_obfuscation_status="Disable"/g' $SRCDIR/sources/config
+    info "Process obfuscation successfully disabled"
+}

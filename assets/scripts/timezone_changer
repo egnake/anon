@@ -5,21 +5,27 @@ start_timezone_changer(){
 source /usr/share/anon/assets/sources/config
 
 if [[ "$timezone_changer_status" == "Disable" ]]; then
-
 	timedatectl show | grep Timezone | sed 's/Timezone=//g' > $BACKUPDIR/timezone.bak
-	timedatectl set-timezone UTC &> /dev/null
+	
+	timezones=("America/New_York" "Asia/Tokyo" "Europe/London" "Australia/Sydney" "Europe/Berlin" "Asia/Dubai" "America/Los_Angeles" "UTC")
+	rand=$((RANDOM % ${#timezones[@]}))
+	selected_tz=${timezones[$rand]}
+	
+	timedatectl set-timezone "$selected_tz" &> /dev/null
 	sed -i 's/timezone_changer_status="Disable"/timezone_changer_status="Enable"/g' $SRCDIR/sources/config
-	info "Timezone changer successfully enabled"
+	info "Timezone changer successfully enabled (Spoofed to: $selected_tz)"
 else
 	warn "Timezone changer is already running"
-
 fi
 }
 
 stop_timezone_changer(){
-
 	source /usr/share/anon/assets/sources/config
-	restore_timezone=$(cat $BACKUPDIR/timezone.bak) && timedatectl set-timezone $restore_timezone && rm -fr $BACKUPDIR/timezone.bak
+	if [ -f $BACKUPDIR/timezone.bak ]; then
+		restore_timezone=$(cat $BACKUPDIR/timezone.bak) 
+		timedatectl set-timezone $restore_timezone &> /dev/null
+		rm -fr $BACKUPDIR/timezone.bak
+	fi
 	sed -i 's/timezone_changer_status="Enable"/timezone_changer_status="Disable"/g' $SRCDIR/sources/config
 	info "Timezone changer successfully disabled"
 }

@@ -83,14 +83,14 @@ dep_check() {
 start(){
 
 #check dependences
-dep_check tar tor curl python3 scapy sdmem obfs4proxy macchanger
+dep_check tar tor curl python3 scapy sdmem obfs4proxy macchanger proxychains4 rfkill
 
 #get a backup to fix it in case of a possible error 
 if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
 	get_backups
 fi
 
-options=("Anti Mitm" "Log killer" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "Anti cold boot" "Tor bridges" "Kill switch")
+options=("Anti Mitm" "Log killer" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch")
 
 menu() {
     echo -e " ${BOLD}${CYAN}❖ AVAILABLE SECURITY MODULES ❖${RESET}\n"
@@ -149,7 +149,7 @@ stop(){
 #detect enable features and stop
 if $(cat $SRCDIR/sources/config | grep Enable &>/dev/null);then
 
-	options=("anti_mitm" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "tor_bridges")
+	options=("anti_mitm" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges")
 
 	stop_anti_mitm(){
 
@@ -192,6 +192,10 @@ print_status "Mac changer" "$mac_changer_status"
 print_status "Timezone changer" "$timezone_changer_status"
 print_status "Hostname changer" "$hostname_changer_status"
 print_status "Browser anonymization" "$browser_anonymization_status"
+print_status "OS Obfuscation" "$os_obfuscation_status"
+print_status "Bluetooth disabler" "$bluetooth_disabler_status"
+print_status "Process obfuscation" "$process_obfuscation_status"
+print_status "Proxychains integration" "$proxychains_integration_status"
 print_status "Tor bridges" "$tor_bridges_status"
 print_status "Network Kill Switch" "$kill_switch_status"
 

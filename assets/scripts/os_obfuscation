@@ -1,0 +1,20 @@
+#!/bin/bash
+
+start_os_obfuscation(){
+    source /usr/share/anon/assets/sources/config
+    if [[ "$os_obfuscation_status" == "Disable" ]]; then
+        sysctl -w net.ipv4.ip_default_ttl=128 &> /dev/null
+        sysctl -w net.ipv4.tcp_window_scaling=0 &> /dev/null
+        sed -i 's/os_obfuscation_status="Disable"/os_obfuscation_status="Enable"/g' $SRCDIR/sources/config
+        info "OS Obfuscation successfully enabled (Spoofed as Windows 10)"
+    else
+        warn "OS Obfuscation is already running"
+    fi
+}
+stop_os_obfuscation(){
+    source /usr/share/anon/assets/sources/config
+    sysctl -w net.ipv4.ip_default_ttl=64 &> /dev/null
+    sysctl -w net.ipv4.tcp_window_scaling=1 &> /dev/null
+    sed -i 's/os_obfuscation_status="Enable"/os_obfuscation_status="Disable"/g' $SRCDIR/sources/config
+    info "OS Obfuscation successfully disabled"
+}

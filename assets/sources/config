@@ -31,6 +31,10 @@ hostname_changer_status="Disable"
 browser_anonymization_status="Disable"
 kill_switch_status="Disable"
 tor_bridges_status="Disable"
+os_obfuscation_status="Disable"
+bluetooth_disabler_status="Disable"
+process_obfuscation_status="Disable"
+proxychains_integration_status="Disable"
 anti_mitm_pid="0"
 
 # UI Functions

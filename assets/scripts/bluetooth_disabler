@@ -1,0 +1,18 @@
+#!/bin/bash
+
+start_bluetooth_disabler(){
+    source /usr/share/anon/assets/sources/config
+    if [[ "$bluetooth_disabler_status" == "Disable" ]]; then
+        rfkill block bluetooth &> /dev/null
+        sed -i 's/bluetooth_disabler_status="Disable"/bluetooth_disabler_status="Enable"/g' $SRCDIR/sources/config
+        info "Bluetooth disabler successfully enabled (Blocked)"
+    else
+        warn "Bluetooth disabler is already running"
+    fi
+}
+stop_bluetooth_disabler(){
+    source /usr/share/anon/assets/sources/config
+    rfkill unblock bluetooth &> /dev/null
+    sed -i 's/bluetooth_disabler_status="Enable"/bluetooth_disabler_status="Disable"/g' $SRCDIR/sources/config
+    info "Bluetooth disabler successfully disabled (Unblocked)"
+}

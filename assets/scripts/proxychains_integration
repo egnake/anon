@@ -1,0 +1,27 @@
+#!/bin/bash
+
+start_proxychains_integration(){
+    source /usr/share/anon/assets/sources/config
+    if [[ "$proxychains_integration_status" == "Disable" ]]; then
+        if [ -f /etc/proxychains4.conf ]; then
+            cp /etc/proxychains4.conf $BACKUPDIR/proxychains4.conf.bak
+            sed -i 's/^socks4 .*/socks5  127.0.0.1 9050/' /etc/proxychains4.conf
+            sed -i 's/^#quiet_mode/quiet_mode/' /etc/proxychains4.conf
+            sed -i 's/proxychains_integration_status="Disable"/proxychains_integration_status="Enable"/g' $SRCDIR/sources/config
+            info "Proxychains-ng successfully integrated with Tor Socks5"
+        else
+            warn "proxychains4.conf not found. Is proxychains4 installed?"
+        fi
+    else
+        warn "Proxychains integration is already running"
+    fi
+}
+stop_proxychains_integration(){
+    source /usr/share/anon/assets/sources/config
+    if [ -f $BACKUPDIR/proxychains4.conf.bak ]; then
+        cat $BACKUPDIR/proxychains4.conf.bak > /etc/proxychains4.conf
+        rm -fr $BACKUPDIR/proxychains4.conf.bak
+    fi
+    sed -i 's/proxychains_integration_status="Enable"/proxychains_integration_status="Disable"/g' $SRCDIR/sources/config
+    info "Proxychains-ng integration successfully disabled"
+}

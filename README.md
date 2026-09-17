@@ -23,6 +23,7 @@
 ## 📖 Table of Contents
 - [Overview](#-overview)
 - [Key Features & Modules](#-key-features--modules)
+- [Advanced OPSEC Hardening](#-advanced-opsec-hardening)
 - [Prerequisites](#-prerequisites)
 - [Installation](#-installation)
   - [Kali Linux / Debian / Ubuntu](#kali-linux--debian--ubuntu)
@@ -40,7 +41,7 @@
 
 In today's digital landscape, relying solely on a VPN is often insufficient for true operational security. **Anon** is a powerful Bash-based framework that forcibly routes your entire system's network traffic through the **Tor network** using strict `iptables` rules. 
 
-Beyond network routing, Anon actively hardens your machine's footprint by randomizing hardware identifiers (MAC addresses), preventing DNS leaks, wiping volatile memory (Anti Cold Boot), and thwarting Man-in-the-Middle (MITM) attacks.
+Beyond network routing, Anon actively hardens your machine's footprint by randomizing hardware identifiers (MAC addresses), blocking hardware tracking (Bluetooth), wiping volatile memory (Anti Cold Boot), spoofing OS fingerprints, and thwarting Man-in-the-Middle (MITM) attacks.
 
 ---
 
@@ -58,30 +59,43 @@ Anon is modular. You can toggle any combination of the following security layers
    Prevents DNS leaks by modifying `/etc/resolv.conf` and forcing DNS resolution through Tor's isolated DNS port (Port 5300).
 5. **📱 MAC Changer** 
    Randomizes the physical MAC addresses of all active Network Interface Cards (NICs) to prevent device tracking on local networks (e.g., public Wi-Fi).
-6. **⏱ Timezone Changer** 
-   Spoofs your system's timezone to UTC (or a random timezone). This mitigates timing-based fingerprinting attacks.
-7. **🏷 Hostname Changer** 
+6. **🏷️ Hostname Changer** 
    Temporarily changes your machine's hostname to a randomized string, masking your device's identity on local networks.
-8. **🕵️ Browser Anonymization** 
-   Injects secure, anti-fingerprinting configurations into supported browsers to prevent canvas fingerprinting and WebRTC leaks.
-9. **❄ Anti Cold Boot** 
+7. **🕵️ Browser Anonymization** 
+   Injects secure, anti-fingerprinting configurations into supported browsers to prevent Canvas fingerprinting and WebRTC IP leaks.
+8. **❄️ Anti Cold Boot** 
    Wipes remaining RAM contents (`sdmem`) upon system shutdown to protect encryption keys and sensitive data from Cold Boot physical attacks.
-10. **🛑 Kill Switch** 
+9. **🛑 Kill Switch** 
     In an emergency, instantly drops all `iptables` traffic rules, completely cutting off your machine from the internet.
+
+---
+
+## 🛡️ Advanced OPSEC Hardening
+
+These modules elevate Anon from a simple proxy router to a state-of-the-art OPSEC utility designed to counter deep-packet inspection and advanced tracking:
+
+10. **🌉 Tor Bridges (Obfs4)**
+    Bypasses Tor censorship (e.g., in China or corporate networks) by obfuscating your Tor traffic as random, meaningless data using obfs4 pluggable transports.
+11. **💻 OS Obfuscation (TCP/IP Fingerprinting)**
+    Modifies kernel `sysctl` parameters (such as TTL and TCP Window sizes) so that network scanners (like Nmap) identify your Linux machine as a generic Windows 10 client.
+12. **📴 Bluetooth Disabler (Beacon Tracking Protection)**
+    Actively blocks all Bluetooth receivers and transmitters using `rfkill`, preventing passive beacon tracking and Bluejacking attacks.
+13. **👻 Process Obfuscation**
+    Spoofs the process names of common hacking tools (e.g., `nmap`, `sqlmap`, `tor`) by wrapping them in `exec -a "[kworker/u4:2]"`. They will appear as benign system background tasks in the process tree, hiding them from local malware or monitoring.
+14. **⛓️ Proxychains-ng Integration**
+    Automatically configures `proxychains4.conf` to hook into Tor's Socks5 port (9050). This forces stubborn tools that ignore system proxies to route securely through the Tor network.
+15. **⏳ Fake Timezone Synchronization**
+    Defeats time-based fingerprinting by randomly selecting a global timezone (e.g., `Asia/Tokyo`, `America/New_York`) instead of just defaulting to UTC.
 
 ---
 
 ## 📦 Prerequisites
 
-Anon relies on several low-level network utilities. If you use the provided `make install` or `setup.bat`, these will be installed automatically:
+Anon features an **Interactive Dependency Checker**. If any core packages are missing upon launch, Anon will automatically prompt to install them for you using `apt-get`. Key dependencies include:
 
-- `tor` - The core routing network.
-- `iptables` - For forcing transparent proxies.
-- `macchanger` - For MAC address randomization.
-- `network-manager` - For network interface controls.
-- `secure-delete` - For the Log Killer and Anti Cold Boot modules.
-- `python3` & `python3-scapy` - For the Anti-MITM engine.
-- `curl`, `make`, `tar`
+- `tor`, `obfs4proxy`, `proxychains4`
+- `iptables`, `macchanger`, `network-manager`, `rfkill`
+- `secure-delete`, `python3-scapy`, `curl`
 
 ---
 
@@ -105,22 +119,11 @@ Anon fully supports Windows environments by leveraging the Windows Subsystem for
 1. Ensure **WSL 2** is installed.
 2. Run the `setup.bat` file as a standard user.
    - It will automatically set up your global Windows `PATH`.
-   - It will boot into WSL, install `tor`, `iptables`, and compile the tool.
+   - It will boot into WSL, install dependencies, and compile the tool.
 3. Open a new Command Prompt or PowerShell and type:
 ```cmd
 anon
 ```
-
-### Docker (Containerized)
-To run Anon safely inside an isolated container while routing your host's network:
-```bash
-# Build the image
-docker build -t anon-tool .
-
-# Run with required network privileges
-docker run -it --rm --privileged --net=host anon-tool
-```
-*(⚠️ **Note:** `--privileged` and `--net=host` are strictly required. Without them, Anon cannot manipulate the host's `iptables` or MAC addresses).*
 
 ---
 
@@ -129,7 +132,7 @@ docker run -it --rm --privileged --net=host anon-tool
 Anon features an interactive, user-friendly Command Line Interface.
 
 ### Interactive Menu
-Just type `anon` to open the interface. Type the number of the module you want to toggle (e.g., `1` for Anti-MITM). Green `[ ✔ ON ]` indicates the module is active. Once configured, press `0` to apply settings and route your traffic.
+Just type `anon` to open the interface. Type the number of the module you want to toggle. Green `[ ✔ ON ]` indicates the module is active. Once configured, press `0` to apply settings and route your traffic.
 ```bash
 sudo anon
 ```
@@ -142,6 +145,9 @@ sudo anon --start
 
 # Stop all anonymization and restore default network settings
 sudo anon --stop
+
+# Show system status and active modules
+sudo anon --status
 
 # Show help menu
 anon --help
