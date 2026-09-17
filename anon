@@ -27,9 +27,53 @@ src_check fix kill_switch log_killer ip_changer dns_changer mac_changer anti_col
 
 #check dependences function
 dep_check() {
-        check_status="1"
-        for i in $(seq 1 ${#}) ; do
-                [ $(command -v ${@:i:1}) ] || { warn "${@:i:1}: could not be found." ; check_status="0" ; }
+    local missing_pkgs=()
+    local apt_pkgs=""
+
+    for cmd in "$@"; do
+        if ! command -v "$cmd" &> /dev/null; then
+            warn "$cmd: could not be found."
+            
+            # Map commands to actual Debian/Kali package names
+            if [ "$cmd" == "scapy" ]; then
+                apt_pkgs="$apt_pkgs python3-scapy"
+            elif [ "$cmd" == "sdmem" ]; then
+                apt_pkgs="$apt_pkgs secure-delete"
+            else
+                apt_pkgs="$apt_pkgs $cmd"
+            fi
+            missing_pkgs+=("$cmd")
+        fi
+    done
+
+    if [ ${#missing_pkgs[@]} -gt 0 ]; then
+        echo -ne "
+ ${CYAN}ℹ INFO:${RESET} Some required dependencies are missing: ${BOLD}${missing_pkgs[*]}${RESET}
+"
+        echo -ne " ${YELLOW}➤ Do you want Anon to automatically install them for you? (Y/n): ${RESET}"
+        read -r choice
+        case "$choice" in 
+          y|Y|"" ) 
+            echo -e "
+ ${CYAN}ℹ INFO:${RESET} Installing missing packages..."
+            apt-get update
+            apt-get install -y $apt_pkgs
+            
+            # Re-check after installation
+            for cmd in "$@"; do
+                if ! command -v "$cmd" &> /dev/null; then
+                    err "Failed to install $cmd. Please install it manually."
+                fi
+            done
+            msg "All dependencies installed successfully!
+"
+            ;;
+          * ) 
+            err "Dependencies are required to run Anon. Exiting."
+            ;;
+        esac
+    fi
+}
         done
         if [ "${check_status}" = "0" ] ; then
                 err "Please run this command: '${GREEN}sudo apt update && sudo apt install tar tor curl python3 python3-scapy network-manager${RESET}'"
@@ -39,7 +83,7 @@ dep_check() {
 start(){
 
 #check dependences
-dep_check tar tor curl python3 scapy sdmem
+dep_check tar tor curl python3 scapy sdmem obfs4proxy macchanger
 
 #get a backup to fix it in case of a possible error 
 if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
