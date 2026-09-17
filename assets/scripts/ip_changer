@@ -49,6 +49,15 @@ SocksPort 9050
 DNSPort 5353
 EOF
 
+	# Append bridges if enabled
+	if [[ "$tor_bridges_status" == "Enable" ]]; then
+		echo "UseBridges 1" >> /etc/tor/torrc
+		echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> /etc/tor/torrc
+		if [ -f $SRCDIR/sources/bridges.txt ]; then
+			cat $SRCDIR/sources/bridges.txt >> /etc/tor/torrc
+		fi
+	fi
+
 	cat >"/etc/resolv.conf" <<EOF
 # This file was edited by anon. Do not change manually!
 nameserver 127.0.0.1
