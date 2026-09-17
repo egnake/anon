@@ -74,11 +74,6 @@ dep_check() {
         esac
     fi
 }
-        done
-        if [ "${check_status}" = "0" ] ; then
-                err "Please run this command: '${GREEN}sudo apt update && sudo apt install tar tor curl python3 python3-scapy network-manager${RESET}'"
-        fi
-}
 
 start(){
 
