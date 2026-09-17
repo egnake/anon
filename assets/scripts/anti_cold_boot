@@ -1,0 +1,32 @@
+#!/bin/bash
+
+start_anti_cold_boot(){
+	source /usr/share/anon/assets/sources/config
+	info "Initiating anti cold-boot sequence..."
+	
+	swapoff -a 
+	# Wipe swap partitions if sdmem is available
+	if command -v sswap &> /dev/null; then
+		swaps=$(cat /proc/swaps | tail -n +2 | awk '{print $1}')
+		for swap in $swaps; do
+			sswap "$swap" &>/dev/null
+		done
+	fi
+	swapon -a 
+	
+	echo 1024 >/proc/sys/vm/min_free_kbytes
+	echo 3 >/proc/sys/vm/drop_caches
+	echo 1 >/proc/sys/vm/oom_kill_allocating_task
+	echo 1 >/proc/sys/vm/overcommit_memory
+	echo 0 >/proc/sys/vm/oom_dump_tasks
+	
+	# Secure memory wipe (RAM)
+	if command -v sdmem &> /dev/null; then
+		info "Wiping free RAM securely (this may take a moment)..."
+		sdmem -f -ll &>/dev/null
+	else
+		warn "sdmem not found! Skipping RAM wipe. Consider installing secure-delete."
+	fi
+	
+	info "Anti cold boot successfully enabled"
+}

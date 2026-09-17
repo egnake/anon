@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Anon
+Comment=Anon privacy tool
+Exec=sudo x-terminal-emulator -e anon --start
+Icon=/usr/share/anon/assets/icons/anon.jpg
+Terminal=true
+Type=Application
+Categories=System;
+StartupNotify=true
+Type=Application
+X-Kali-Package=anon

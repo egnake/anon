@@ -1,0 +1,31 @@
+#!/bin/bash
+
+start_kill_switch(){
+	source /usr/share/anon/assets/sources/config
+
+	if [[ "$kill_switch_status" == "Disable" ]]; then
+		iptables-save > $BACKUPDIR/iptables_killswitch.bak
+		iptables -F
+		iptables -X
+		iptables -P INPUT DROP
+		iptables -P FORWARD DROP
+		iptables -P OUTPUT DROP
+		
+		# Allow loopback
+		iptables -A INPUT -i lo -j ACCEPT
+		iptables -A OUTPUT -o lo -j ACCEPT
+		
+		sed -i 's/kill_switch_status="Disable"/kill_switch_status="Enable"/g' $SRCDIR/sources/config
+		info "Network Kill Switch successfully enabled. All external traffic is blocked."
+	else
+		warn "Network Kill Switch is already running."
+	fi
+}
+
+stop_kill_switch(){
+	source /usr/share/anon/assets/sources/config
+	iptables-restore < $BACKUPDIR/iptables_killswitch.bak
+	rm -f $BACKUPDIR/iptables_killswitch.bak
+	sed -i 's/kill_switch_status="Enable"/kill_switch_status="Disable"/g' $SRCDIR/sources/config
+	info "Network Kill Switch successfully disabled."
+}

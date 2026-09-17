@@ -1,0 +1,216 @@
+#!/bin/bash
+# Anon - Privacy & Anonymity Tool
+
+#check source files
+source /usr/share/anon/assets/sources/config 2> /dev/null || { clear;echo -e "\e[31m [-] FATAL ERROR: MAIN CONFIG COULD NOT BE SOURCED!\e[0m";exit 1;}
+
+banner
+# run with a root privilege
+[ $UID != 0 ]  && err "Anon must be run as root. ${GREEN}'sudo $(basename ${0})'${RESET}" 
+
+src_check() {
+
+        check_status="1"
+        for i in $(seq 1 ${#}) ; do
+                if [ -f $SRCDIR/scripts/${@:i:1} ];then
+			source $SRCDIR/scripts/${@:i:1} 
+		else
+			warn "The source file could not be found. Please re-install the tool. (Module: ${@:i:1})"
+			check_status="0"
+                fi
+        done
+        if [ "${check_status}" = "0" ] ; then
+                err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
+        fi
+}
+src_check fix kill_switch log_killer ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization
+
+#check dependences function
+dep_check() {
+        check_status="1"
+        for i in $(seq 1 ${#}) ; do
+                [ $(command -v ${@:i:1}) ] || { warn "${@:i:1}: could not be found." ; check_status="0" ; }
+        done
+        if [ "${check_status}" = "0" ] ; then
+                err "Please run this command: '${GREEN}sudo apt update && sudo apt install tar tor curl python3 python3-scapy network-manager${RESET}'"
+        fi
+}
+
+start(){
+
+#check dependences
+dep_check tar tor curl python3 scapy sdmem
+
+#get a backup to fix it in case of a possible error 
+if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
+	get_backups
+fi
+
+options=("Anti Mitm" "Log killer" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "Anti cold boot" "Kill switch")
+
+menu() {
+    echo -e " ${BOLD}${CYAN}❖ AVAILABLE SECURITY MODULES ❖${RESET}\n"
+    for opt in ${!options[@]}; do
+        if [[ "${choices[opt]}" == "✓" ]]; then
+            printf "  ${GREEN} [%s] %-25s ${BOLD}[ ✔ ON ]${RESET}\n" "$((opt+1))" "${options[opt]}"
+        else
+            printf "  ${DIM} [%s] %-25s [ ✗ OFF]${RESET}\n" "$((opt+1))" "${options[opt]}"
+        fi
+    done
+    echo -e "\n${DIM} ══════════════════════════════════════════════${RESET}"
+    echo -e "  ${BOLD}${YELLOW}[0]${RESET} ${CYAN}🚀 APPLY SETTINGS & START${RESET}"
+    echo -e "  ${BOLD}${RED}[q]${RESET} ${DIM}❌ EXIT MENU${RESET}"
+    echo -e "${DIM} ══════════════════════════════════════════════${RESET}"
+    [[ "$stat" ]] && info "$stat"
+    return 0
+}
+ 
+while banner && menu && input && read -r num; do
+    if [[ -z "$num" ]]; then continue; fi
+    if [[ "$num" == "0" ]]; then break; fi
+    if [[ "$num" == "q" || "$num" == "Q" ]]; then
+        echo -e "\n\e[32mExiting Anon Setup...\e[0m"
+        exit 0
+    fi
+    if [[ "$num" != *[![:digit:]]* ]] && (( num > 0 && num <= ${#options[@]} )); then
+        ((num--)); stat="${options[num]} was ${choices[num]:+un}checked"
+        [[ "${choices[num]}" ]] && choices[num]="" || choices[num]="✓"
+    else
+        stat="Invalid option: $num"
+    fi
+done
+banner
+#detect selected features and run
+for opt in ${!options[@]}; do
+
+	start_anti_mitm(){
+	python3 /usr/share/anon/assets/scripts/anti_mitm &
+	antimitmpid="$!"
+	sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' $SRCDIR/sources/config
+	info "Anti mitm successfully enabled"
+	}
+
+	for st in $(seq 0 $(( ${#options[@]} - 1 ))) ; do
+	  if [[ "${choices[opt]}" ]] && [[ "${options[opt]}" == ${options[st]} ]]; then
+		 $(echo start_${options[st]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
+	  fi
+	done
+
+done
+
+}
+
+stop(){
+
+#detect enable features and stop
+if $(cat $SRCDIR/sources/config | grep Enable &>/dev/null);then
+
+	options=("anti_mitm" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization")
+
+	stop_anti_mitm(){
+
+	       kill $anti_mitm_pid 
+	       sed -i 's/anti_mitm_pid="'$anti_mitm_pid'"/anti_mitm_pid="0"/g;s/anti_mitm_status="Enable"/anti_mitm_status="Disable"/g' $SRCDIR/sources/config
+	       info "Anti mitm successfully disabled"
+	}
+
+	for st in $(seq 0 $(( ${#options[@]} - 1 ))) ; do
+	  status="${options[st]}_status"
+	  if [[ ${!status} == "Enable" ]] ; then
+		stop_${options[st]}
+	  fi
+	done
+
+else
+	err "No features are active. (Run to activate '${GREEN}sudo anon --start${RESET}')"
+fi
+}
+
+status(){
+
+echo -e " ${BOLD}${MAGENTA}ANON SYSTEM STATUS${RESET}"
+echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
+
+print_status() {
+    local mod_name="$1"
+    local mod_status="$2"
+    if [ "$mod_status" == "Enable" ]; then
+        echo -e " ${CYAN}●${RESET} ${mod_name,-25} : ${GREEN}${BOLD}ACTIVE${RESET}"
+    else
+        echo -e " ${DIM}○ ${mod_name,-25} : INACTIVE${RESET}"
+    fi
+}
+
+print_status "Anti Mitm" "$anti_mitm_status"
+print_status "Ip changer" "$ip_changer_status"
+print_status "Dns changer" "$dns_changer_status"
+print_status "Mac changer" "$mac_changer_status"
+print_status "Timezone changer" "$timezone_changer_status"
+print_status "Hostname changer" "$hostname_changer_status"
+print_status "Browser anonymization" "$browser_anonymization_status"
+print_status "Network Kill Switch" "$kill_switch_status"
+
+echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}\n"
+
+}
+
+fix(){
+
+#repair system with backups received for a possible bug 
+if [ -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
+	restore_system
+	msg "System successfully repaired"
+else
+	err "Anon backup file not found"
+fi
+}
+
+help() {
+
+msg "Usage : sudo anon ${GREEN}[option]${RESET}
+
+ ${GREEN}--start  :${RESET}   It will make backups and start the program.
+ ${GREEN}--stop   :${RESET}   Closes the program using a backup.
+ ${GREEN}--status :${RESET}   Provides information about IP address and working status.
+ ${GREEN}--fix    :${RESET}   Used to repair the system in case of a possible bug.
+ ${GREEN}--help   :${RESET}   This shows the menu."
+}
+
+main() {
+
+if [[ "$#" -eq 0 ]]; then
+    warn "Anon: Argument required"
+    info "Run ${GREEN}'anon --help'${RESET} for more information."
+    exit 1
+fi
+
+    case "$1" in
+    --[sS][tT][aA][rR][tT]|-[sS][tT])
+        start   
+        ;;
+    --[sS][tT][oO][pP]|-[sS][pP])
+        stop    
+        ;;
+    --[sS][tT][aA][tT][uU][sS]|-[sS][sS])
+        status  
+        ;;
+    --[fF][iI][xX]|-[fF])
+        fix  
+        ;;
+    --[hH][eE][lL][pP]|-[hH])
+        help
+        exit 1
+        ;;
+    *)
+          warn "Anon: Invalid option ${RED}'$1'${RESET}"
+          info "Run ${GREEN}'whomai --help'${RESET} parameter for more information."
+          exit 1
+        ;;
+    esac
+}
+
+
+# call main
+main "${@}"
+
+# EOF

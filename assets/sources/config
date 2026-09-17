@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# colors
+RESET="\e[0m"
+BOLD="\e[1m"
+DIM="\e[2m"
+RED="\e[31m"
+GREEN="\e[32m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+MAGENTA="\e[35m"
+CYAN="\e[36m"
+WHITE="\e[37m"
+BG_BLUE="\e[44m"
+
+# backup dir
+BACKUPDIR="/usr/share/anon/backups"
+SRCDIR="/usr/share/anon/assets"
+
+# tor config file
+TORRC="/etc/tor/torrc"
+tor_uid="$(id -u debian-tor)"
+
+#Defaults
+anti_mitm_status="Disable"
+ip_changer_status="Disable"
+dns_changer_status="Disable"
+mac_changer_status="Disable"
+timezone_changer_status="Disable"
+hostname_changer_status="Disable"
+browser_anonymization_status="Disable"
+kill_switch_status="Disable"
+anti_mitm_pid="0"
+
+# UI Functions
+err() {
+    echo -e "\n ${BG_BLUE}${WHITE}${BOLD} ANON ${RESET} ${RED}✖ ERROR:${RESET} ${@}\n"
+    exit 1
+}
+
+warn() {
+    echo -e " ${YELLOW}⚠ WARNING:${RESET} ${@}"
+}
+
+msg() {
+    echo -e " ${GREEN}✔ SUCCESS:${RESET} ${@}"
+}
+
+info() {
+    echo -e " ${CYAN}ℹ INFO:${RESET} ${@}"
+}
+
+input() {
+  echo -ne "
+   ${YELLOW}➤ Select a module number to toggle its status.${RESET}
+   ${DIM}Press [0] to Apply & Start, or [q] to Quit.${RESET}
+   
+   ${BOLD}${RED}anon${RESET} > "
+}
+
+banner() {
+    clear
+    echo -e "
+${BOLD}${RED}   █████╗ ███╗   ██╗ ██████╗ ███╗   ██╗
+  ██╔══██╗████╗  ██║██╔═══██╗████╗  ██║
+  ███████║██╔██╗ ██║██║   ██║██╔██╗ ██║
+  ██╔══██║██║╚██╗██║██║   ██║██║╚██╗██║
+  ██║  ██║██║ ╚████║╚██████╔╝██║ ╚████║
+  ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═══╝${RESET}
+${DIM}  =======================================${RESET}
+      ${BOLD}${CYAN}Extreme Privacy & Anonymity Tool${RESET}
+${DIM}  =======================================${RESET}
+"
+}
