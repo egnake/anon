@@ -98,6 +98,7 @@ menu() {
     done
     echo -e "\n${DIM} ══════════════════════════════════════════════${RESET}"
     echo -e "  ${BOLD}${YELLOW}[0]${RESET} ${CYAN}🚀 APPLY SETTINGS & START${RESET}"
+    echo -e "  ${BOLD}${MAGENTA}[p]${RESET} ${DIM}📂 LOAD SECURITY PROFILE${RESET}"
     echo -e "  ${BOLD}${RED}[q]${RESET} ${DIM}❌ EXIT MENU${RESET}"
     echo -e "${DIM} ══════════════════════════════════════════════${RESET}"
     [[ "$stat" ]] && info "$stat"
@@ -107,6 +108,25 @@ menu() {
 while banner && menu && input && read -r num; do
     if [[ -z "$num" ]]; then continue; fi
     if [[ "$num" == "0" ]]; then break; fi
+    if [[ "$num" == "p" || "$num" == "P" ]]; then
+        clear
+        echo -e " ${BOLD}${CYAN}❖ SELECT A SECURITY PROFILE ❖${RESET}\n"
+        echo -e "  ${BOLD}${RED}[1]${RESET} ${GREEN}Paranoia Mode${RESET} (Max Security: Tor, Bridges, Mac, Log Killer, MITM, Browser)"
+        echo -e "  ${BOLD}${YELLOW}[2]${RESET} ${CYAN}Quick Surf${RESET}  (Fast Anonymity: Tor, DNS Changer)"
+        echo -e "  ${BOLD}${BLUE}[3]${RESET} ${MAGENTA}Pentest Mode${RESET} (Offensive: Tor, Proxychains, OS/Process Obfuscation)"
+        echo -e "  ${BOLD}${DIM}[b]${RESET} Go Back"
+        echo -ne "\n   ${YELLOW}➤ Select a profile: ${RESET}"
+        read -r prof
+        
+        for i in "${!choices[@]}"; do choices[i]=""; done
+        case "$prof" in
+            1) choices[0]="✓"; choices[1]="✓"; choices[2]="✓"; choices[3]="✓"; choices[4]="✓"; choices[7]="✓"; choices[13]="✓"; choices[14]="✓"; stat="Loaded: Paranoia Mode" ;;
+            2) choices[2]="✓"; choices[3]="✓"; stat="Loaded: Quick Surf Mode" ;;
+            3) choices[2]="✓"; choices[3]="✓"; choices[8]="✓"; choices[10]="✓"; choices[11]="✓"; stat="Loaded: Pentest Mode" ;;
+            *) stat="Profile selection cancelled." ;;
+        esac
+        continue
+    fi
     if [[ "$num" == "q" || "$num" == "Q" ]]; then
         echo -e "\n\e[32mExiting Anon Setup...\e[0m"
         exit 0
