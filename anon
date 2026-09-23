@@ -209,15 +209,42 @@ else
 fi
 }
 
+update() {
+    info "Starting Anon Self-Update..."
+    if ! command -v unzip &> /dev/null; then
+        warn "unzip is not installed. Installing..."
+        apt-get update && apt-get install -y unzip
+    fi
+    
+    local tmp_dir=$(mktemp -d)
+    info "Downloading latest release from GitHub..."
+    curl -sL https://github.com/egnake/anon/archive/refs/heads/main.zip -o $tmp_dir/anon.zip
+    
+    if [ $? -eq 0 ]; then
+        info "Extracting..."
+        unzip -q $tmp_dir/anon.zip -d $tmp_dir
+        cd $tmp_dir/anon-main
+        info "Running make reinstall..."
+        make reinstall
+        msg "Anon has been successfully updated to the latest version!"
+        info "Please restart Anon by typing 'sudo anon'"
+    else
+        err "Failed to download the update."
+    fi
+    rm -rf $tmp_dir
+    exit 0
+}
+
 help() {
 
 msg "Usage : sudo anon ${GREEN}[option]${RESET}
 
- ${GREEN}--start  :${RESET}   It will make backups and start the program.
- ${GREEN}--stop   :${RESET}   Closes the program using a backup.
- ${GREEN}--status :${RESET}   Provides information about IP address and working status.
- ${GREEN}--fix    :${RESET}   Used to repair the system in case of a possible bug.
- ${GREEN}--help   :${RESET}   This shows the menu."
+ ${GREEN}--start   :${RESET}   It will make backups and start the program.
+ ${GREEN}--stop    :${RESET}   Closes the program using a backup.
+ ${GREEN}--status  :${RESET}   Provides information about IP address and working status.
+ ${GREEN}--fix     :${RESET}   Used to repair the system in case of a possible bug.
+ ${GREEN}--update  :${RESET}   Automatically downloads and installs the latest version.
+ ${GREEN}--help    :${RESET}   This shows the menu."
 }
 
 main() {
@@ -240,6 +267,9 @@ fi
         ;;
     --[fF][iI][xX]|-[fF])
         fix  
+        ;;
+    --[uU][pP][dD][aA][tT][eE]|-[uU])
+        update
         ;;
     --[hH][eE][lL][pP]|-[hH])
         help
