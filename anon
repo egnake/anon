@@ -198,6 +198,60 @@ echo -e " ${DIM}─────────────────────�
 
 }
 
+dashboard() {
+    while true; do
+        clear
+        echo -e " ${BOLD}${MAGENTA}ANON LIVE DASHBOARD${RESET}"
+        echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
+        
+        # IP Information
+        local current_ip=$(curl -s --max-time 3 https://api.ipify.org || echo "Unknown/Offline")
+        if curl -s --max-time 3 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
+            echo -e " ${CYAN}● Network Status${RESET} : ${GREEN}${BOLD}SECURE (Tor Routing Active)${RESET}"
+        else
+            echo -e " ${CYAN}○ Network Status${RESET} : ${RED}${BOLD}UNSECURE (Direct Connection)${RESET}"
+        fi
+        echo -e " ${CYAN}● Current IP${RESET}     : ${YELLOW}${current_ip}${RESET}"
+        
+        # Network Traffic
+        local interface=$(ip route | grep default | awk '{print $5}' | head -n 1)
+        if [ -n "$interface" ] && [ -f "/sys/class/net/$interface/statistics/rx_bytes" ]; then
+            local rx_bytes=$(cat /sys/class/net/$interface/statistics/rx_bytes)
+            local tx_bytes=$(cat /sys/class/net/$interface/statistics/tx_bytes)
+            local rx_mb=$(awk "BEGIN {printf \"%.2f\", $rx_bytes/1048576}")
+            local tx_mb=$(awk "BEGIN {printf \"%.2f\", $tx_bytes/1048576}")
+            echo -e " ${CYAN}● Traffic (TX/RX)${RESET}: ${GREEN}${tx_mb} MB${RESET} / ${GREEN}${rx_mb} MB${RESET} on ${interface}"
+        fi
+        
+        echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
+        echo -e " ${BOLD}ACTIVE MODULES:${RESET}"
+        
+        source /usr/share/anon/assets/sources/config
+        print_live_status() {
+            if [ "$2" == "Enable" ]; then
+                echo -ne " ${GREEN}[ON]${RESET} $1   "
+            fi
+        }
+        
+        print_live_status "Anti-MITM" "$anti_mitm_status"
+        print_live_status "IP-Changer" "$ip_changer_status"
+        print_live_status "DNS-Changer" "$dns_changer_status"
+        print_live_status "MAC-Changer" "$mac_changer_status"
+        print_live_status "Timezone" "$timezone_changer_status"
+        print_live_status "Hostname" "$hostname_changer_status"
+        print_live_status "Browser-Anon" "$browser_anonymization_status"
+        print_live_status "OS-Obfuscation" "$os_obfuscation_status"
+        print_live_status "Bluetooth-Off" "$bluetooth_disabler_status"
+        print_live_status "Proc-Obfuscation" "$process_obfuscation_status"
+        print_live_status "Proxychains" "$proxychains_integration_status"
+        print_live_status "Tor-Bridges" "$tor_bridges_status"
+        print_live_status "Kill-Switch" "$kill_switch_status"
+        
+        echo -e "\n\n ${DIM}(Press Ctrl+C to exit dashboard)${RESET}"
+        sleep 2
+    done
+}
+
 fix(){
 
 #repair system with backups received for a possible bug 
@@ -239,12 +293,13 @@ help() {
 
 msg "Usage : sudo anon ${GREEN}[option]${RESET}
 
- ${GREEN}--start   :${RESET}   It will make backups and start the program.
- ${GREEN}--stop    :${RESET}   Closes the program using a backup.
- ${GREEN}--status  :${RESET}   Provides information about IP address and working status.
- ${GREEN}--fix     :${RESET}   Used to repair the system in case of a possible bug.
- ${GREEN}--update  :${RESET}   Automatically downloads and installs the latest version.
- ${GREEN}--help    :${RESET}   This shows the menu."
+ ${GREEN}--start     :${RESET}   It will make backups and start the program.
+ ${GREEN}--stop      :${RESET}   Closes the program using a backup.
+ ${GREEN}--status    :${RESET}   Provides information about IP address and working status.
+ ${GREEN}--dashboard :${RESET}   Opens a live real-time monitoring dashboard.
+ ${GREEN}--fix       :${RESET}   Used to repair the system in case of a possible bug.
+ ${GREEN}--update    :${RESET}   Automatically downloads and installs the latest version.
+ ${GREEN}--help      :${RESET}   This shows the menu."
 }
 
 main() {
@@ -264,6 +319,9 @@ fi
         ;;
     --[sS][tT][aA][tT][uU][sS]|-[sS][sS])
         status  
+        ;;
+    --[dD][aA][sS][hH][bB][oO][aA][rR][dD]|-[dD])
+        dashboard
         ;;
     --[fF][iI][xX]|-[fF])
         fix  
