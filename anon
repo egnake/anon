@@ -272,6 +272,45 @@ dashboard() {
     done
 }
 
+browser() {
+    info "Launching Disposable Browser Session..."
+    local ff_cmd=""
+    if command -v firefox-esr &> /dev/null; then
+        ff_cmd="firefox-esr"
+    elif command -v firefox &> /dev/null; then
+        ff_cmd="firefox"
+    else
+        err "Firefox is not installed. Please install it first."
+    fi
+
+    local temp_profile=$(mktemp -d /tmp/anon_browser_XXXXXX)
+    info "Created temporary profile at $temp_profile"
+    
+    if [ -f /usr/share/anon/assets/sources/anon.js ]; then
+        cp /usr/share/anon/assets/sources/anon.js $temp_profile/user.js
+        msg "Anti-fingerprinting rules injected."
+    fi
+
+    info "Starting browser in Private Mode. Close the browser to delete session data."
+    local run_user="${SUDO_USER:-root}"
+    if [ "$run_user" == "root" ]; then
+        warn "Running browser as root is not recommended and may fail. Please run via 'sudo anon --browser'."
+        $ff_cmd --profile "$temp_profile" --private-window "https://check.torproject.org/" &> /dev/null
+    else
+        chown -R $run_user:$run_user $temp_profile
+        sudo -u $run_user $ff_cmd --profile "$temp_profile" --private-window "https://check.torproject.org/" &> /dev/null
+    fi
+    
+    info "Browser closed. Wiping disposable profile data..."
+    if command -v srm &> /dev/null; then
+        srm -rf $temp_profile
+    else
+        rm -rf $temp_profile
+    fi
+    msg "Disposable session destroyed successfully!"
+    exit 0
+}
+
 fix(){
 
 #repair system with backups received for a possible bug 
@@ -317,6 +356,7 @@ msg "Usage : sudo anon ${GREEN}[option]${RESET}
  ${GREEN}--stop      :${RESET}   Closes the program using a backup.
  ${GREEN}--status    :${RESET}   Provides information about IP address and working status.
  ${GREEN}--dashboard :${RESET}   Opens a live real-time monitoring dashboard.
+ ${GREEN}--browser   :${RESET}   Launches a disposable secure browser session.
  ${GREEN}--fix       :${RESET}   Used to repair the system in case of a possible bug.
  ${GREEN}--update    :${RESET}   Automatically downloads and installs the latest version.
  ${GREEN}--help      :${RESET}   This shows the menu."
@@ -342,6 +382,9 @@ fi
         ;;
     --[dD][aA][sS][hH][bB][oO][aA][rR][dD]|-[dD])
         dashboard
+        ;;
+    --[bB][rR][oO][wW][sS][eE][rR]|-[bB])
+        browser
         ;;
     --[fF][iI][xX]|-[fF])
         fix  
