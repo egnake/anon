@@ -247,7 +247,7 @@ fi
         ;;
     *)
           warn "Anon: Invalid option ${RED}'$1'${RESET}"
-          info "Run ${GREEN}'whomai --help'${RESET} parameter for more information."
+          info "Run ${GREEN}'anon --help'${RESET} parameter for more information."
           exit 1
         ;;
     esac

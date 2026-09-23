@@ -7,6 +7,9 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo "[*] Kurulum baslatiliyor..."
+apt-get update
+apt-get install -y make tar tor curl python3 python3-scapy network-manager obfs4proxy proxychains4 rfkill secure-delete iptables macchanger
+
 make install
 
 if [ $? -eq 0 ]; then
