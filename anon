@@ -246,7 +246,7 @@ dashboard() {
         echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
         echo -e " ${BOLD}ACTIVE MODULES:${RESET}"
         
-        source /usr/share/anon/assets/sources/config
+        source $SRCDIR/sources/config
         print_live_status() {
             if [ "$2" == "Enable" ]; then
                 echo -ne " ${GREEN}[ON]${RESET} $1   "
