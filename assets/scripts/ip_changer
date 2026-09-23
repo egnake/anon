@@ -74,6 +74,30 @@ EOF
 	sed -i 's/ip_changer_status="Disable"/ip_changer_status="Enable"/g' $SRCDIR/sources/config
 	info "Ip changer successfully enabled"
 
+	# Automated Leak Test
+	info "Running automated leak test..."
+	sleep 3
+	local retries=3
+	local success=0
+	for i in $(seq 1 $retries); do
+		info "Leak test attempt $i/$retries..."
+		if curl -s --max-time 15 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
+			msg "No IP leaks detected! You are successfully routed through Tor."
+			success=1
+			break
+		else
+			warn "Leak test failed or timed out. Retrying in 5 seconds..."
+			sleep 5
+		fi
+	done
+	
+	if [ "$success" -eq 0 ]; then
+		err "CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety..."
+		source $SRCDIR/scripts/kill_switch
+		start_kill_switch
+		err "Network locked down to prevent leaks. Please check your Tor connection and restart."
+	fi
+
 	else
 	   warn "Ip changer is already running"
 	fi
