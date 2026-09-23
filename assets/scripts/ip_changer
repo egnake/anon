@@ -92,10 +92,46 @@ EOF
 	done
 	
 	if [ "$success" -eq 0 ]; then
-		err "CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety..."
-		source $SRCDIR/scripts/kill_switch
-		start_kill_switch
-		err "Network locked down to prevent leaks. Please check your Tor connection and restart."
+		if [[ "$tor_bridges_status" == "Disable" ]] && [ -s $SRCDIR/sources/bridges.txt ]; then
+			warn "Tor connection failed. Attempting Auto-Fallback to Tor Bridges..."
+			source $SRCDIR/scripts/tor_bridges
+			sed -i 's/tor_bridges_status="Disable"/tor_bridges_status="Enable"/g' $SRCDIR/sources/config
+			info "Bridges enabled. Restarting Tor..."
+			
+			# Append bridges to torrc
+			echo "UseBridges 1" >> /etc/tor/torrc
+			echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> /etc/tor/torrc
+			cat $SRCDIR/sources/bridges.txt >> /etc/tor/torrc
+			
+			systemctl restart tor.service &>/dev/null
+			info "Tor restarted with Obfs4 Bridges. Retrying leak test..."
+			
+			sleep 5
+			local fallback_success=0
+			for j in $(seq 1 $retries); do
+				info "Fallback test attempt $j/$retries..."
+				if curl -s --max-time 15 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
+					msg "Auto-Fallback successful! Connected via Tor Bridges."
+					fallback_success=1
+					break
+				else
+					warn "Fallback test failed. Retrying in 5 seconds..."
+					sleep 5
+				fi
+			done
+
+			if [ "$fallback_success" -eq 0 ]; then
+				err "CRITICAL: Auto-Fallback failed. Tor is completely blocked! Triggering Kill Switch..."
+				source $SRCDIR/scripts/kill_switch
+				start_kill_switch
+				err "Network locked down. Check your network or update your bridges."
+			fi
+		else
+			err "CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety..."
+			source $SRCDIR/scripts/kill_switch
+			start_kill_switch
+			err "Network locked down to prevent leaks. Please check your Tor connection and restart."
+		fi
 	fi
 
 	else
