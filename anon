@@ -120,7 +120,7 @@ while banner && menu && input && read -r num; do
         
         for i in "${!choices[@]}"; do choices[i]=""; done
         case "$prof" in
-            1) choices[0]="✓"; choices[1]="✓"; choices[2]="✓"; choices[3]="✓"; choices[4]="✓"; choices[7]="✓"; choices[13]="✓"; choices[14]="✓"; stat="Loaded: Paranoia Mode" ;;
+            1) choices[0]="✓"; choices[1]="✓"; choices[2]="✓"; choices[3]="✓"; choices[4]="✓"; choices[7]="✓"; choices[13]="✓"; stat="Loaded: Paranoia Mode" ;;
             2) choices[2]="✓"; choices[3]="✓"; stat="Loaded: Quick Surf Mode" ;;
             3) choices[2]="✓"; choices[3]="✓"; choices[8]="✓"; choices[10]="✓"; choices[11]="✓"; stat="Loaded: Pentest Mode" ;;
             *) stat="Profile selection cancelled." ;;
