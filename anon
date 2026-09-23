@@ -23,7 +23,7 @@ src_check() {
                 err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
         fi
 }
-src_check fix kill_switch log_killer ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization
+src_check fix kill_switch log_killer ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges
 
 #check dependences function
 dep_check() {
