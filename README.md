@@ -18,6 +18,11 @@
   <img src="assets/preview.png" alt="Anon CLI Menu" width="700"/>
 </div>
 
+<div align="center">
+  <img src="assets/dashboard.png" alt="Anon Live Dashboard" width="700"/>
+  <br><i>Real-time monitoring of Tor routing status and network traffic.</i>
+</div>
+
 ---
 
 ## 📖 Table of Contents
@@ -149,6 +154,12 @@ sudo anon --stop
 
 # Show system status and active modules
 sudo anon --status
+
+# Open the Live Real-time Dashboard
+sudo anon --dashboard
+
+# Launch a completely RAM-based disposable browser (Zero-Trace)
+sudo anon --browser
 
 # Show help menu
 anon --help
