@@ -13,8 +13,6 @@ Currently, only the latest version on the `main` branch is actively supported wi
 
 **DO NOT** open a public issue for a security vulnerability. 
 
-Because Anon is a critical operational security (OPSEC) and anonymity tool, publicly disclosing a vulnerability could put users at risk before a patch is available.
-
 If you discover a security vulnerability within Anon (e.g., DNS leaks, iptables bypass, routing failures), please report it privately:
 
 1. **Email:** Send your report directly to `egcaem000@gmail.com`.
