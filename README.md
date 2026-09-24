@@ -24,6 +24,11 @@
 </div>
 
 <div align="center">
+  <img src="assets/proof2.jpg" alt="Disposable Browser Proof" width="700"/>
+  <br><i>Zero-Trace RAM-Based Isolated Browser connected through Tor.</i>
+</div>
+
+<div align="center">
   <img src="assets/proof.jpg" alt="Tor Exit Node IP Proof" width="700"/>
   <br><i>Guaranteed OPSEC: System-wide transparent proxy routing through Tor network.</i>
 </div>
