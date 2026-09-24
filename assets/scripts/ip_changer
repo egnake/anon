@@ -54,7 +54,14 @@ EOF
 		echo "UseBridges 1" >> /etc/tor/torrc
 		echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> /etc/tor/torrc
 		if [ -f $SRCDIR/sources/bridges.txt ]; then
-			cat $SRCDIR/sources/bridges.txt >> /etc/tor/torrc
+			while IFS= read -r bridge_line; do
+				# Prepend 'Bridge ' if it's missing
+				if [[ "$bridge_line" != Bridge* ]]; then
+					echo "Bridge $bridge_line" >> /etc/tor/torrc
+				else
+					echo "$bridge_line" >> /etc/tor/torrc
+				fi
+			done < $SRCDIR/sources/bridges.txt
 		fi
 	fi
 
