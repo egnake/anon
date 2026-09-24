@@ -188,6 +188,17 @@ anon --help
 
 Bir kurumun Tor trafiğinizi geriye doğru çözebilmesi (Trafik Zamanlama Analizi) için, eş zamanlı olarak hem bağlandığınız Giriş Düğümüne (Köprünüze) hem de Çıkış Düğümüne küresel ölçekte hakim olması gerekir. Sistemimizdeki `anon --browser` modülü ise arkanızda tarayıcı parmak izi bırakmadığı (her açılışta RAM'den silindiği) için, kimlik tespiti ataklarını tamamen işe yaramaz hale getirir.
 
+**S: Peki Giriş Düğümü (Entry Guard) benim gerçek IP adresimi biliyor! Yetkililer Giriş Düğümünü ele geçirip beni bulamaz mı?**
+
+**C:** Hayır, bulamazlar. Çünkü Tor mimarisinde **bilgi parçalanmıştır** ve hiçbir düğüm yapbozun tamamına sahip değildir.
+Eğer yetkililer Giriş Düğümünü ele geçirirse, kayıtlarda sadece şunu görürler: *"X IP'si bana bağlandı ve ben ondan gelen şifreli veriyi Y Orta Düğümüne ilettim."* Senin **KİM** olduğunu bulurlar ama **NE YAPTIĞINI** (hangi siteye girdiğini, ne indirdiğini) asla bilemezler çünkü paket şifrelidir.
+Eğer Çıkış Düğümünü ele geçirirlerse, kayıtlarda şunu görürler: *"Y Orta Düğümünden gelen biri şu hedef siteye bağlandı."* Bu sefer de **NE YAPILDIĞINI** bulurlar ama **KİMİN YAPTIĞINI** asla bilemezler.
+- **Giriş Düğümü:** KİM olduğunu bilir, NE yaptığını bilmez.
+- **Çıkış Düğümü:** NE yapıldığını bilir, KİM olduğunu bilmez.
+- **Orta Düğüm:** İkisini de bilmez! Sadece iki düğüm arasında kör bir kuryedir.
+
+Bu kusursuz kriptografik ayrım sayesinde, giriş düğümündeki gerçek IP'niz ile çıkış düğümündeki aktiviteleriniz birbirine matematiksel olarak asla bağlanamaz.
+
 ---
 
 ## ⚠️ Yasal Uyarı

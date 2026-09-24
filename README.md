@@ -197,6 +197,17 @@ Tor uses a 3-layer "Onion" routing architecture:
 
 For an adversary to perform a "Timing Correlation Attack" (tracing the traffic backward), they would need to control or monitor *both* your specific Entry Node and your specific Exit Node simultaneously on a global scale. Furthermore, because our `anon --browser` module runs entirely in RAM and is securely wiped (`shred`) upon exit, it leaves zero browser fingerprints or cookies, rendering identity-correlation attacks useless.
 
+**Q: But the Entry Guard knows my real IP! Couldn't authorities seize the Entry Guard and trace me?**
+
+**A:** No, because in the Tor network, **knowledge is strictly compartmentalized**. No single node possesses the complete picture.
+If authorities seize the Entry Guard, the logs will only show: *"IP X connected to me, and I forwarded encrypted data to Middle Relay Y."* They discover **WHO** you are, but they have absolutely no idea **WHAT** you were doing (the destination, the data, the activity), because the payload is heavily encrypted.
+If authorities seize the Exit Node, the logs will show: *"Someone from Middle Relay Y connected to this target website."* They discover **WHAT** was done, but they have absolutely no idea **WHO** did it.
+- **Entry Node:** Knows WHO, but not WHAT.
+- **Exit Node:** Knows WHAT, but not WHO.
+- **Middle Node:** Knows NEITHER (only acts as a bridge between the two).
+
+Because of this cryptographic separation, your real IP at the Entry Node can never be mathematically linked to the actions at the Exit Node.
+
 ---
 
 ## ⚠️ Disclaimer
