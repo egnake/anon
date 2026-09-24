@@ -23,6 +23,11 @@
   <br><i>Real-time monitoring of Tor routing status and network traffic.</i>
 </div>
 
+<div align="center">
+  <img src="assets/proof.jpg" alt="Tor Exit Node IP Proof" width="700"/>
+  <br><i>Guaranteed OPSEC: System-wide transparent proxy routing through Tor network.</i>
+</div>
+
 ---
 
 ## 📖 Table of Contents
