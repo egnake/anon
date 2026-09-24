@@ -51,15 +51,15 @@ if [[ "$mac_changer_status" == "Disable" ]]; then
 	info "Mac changer successfully enabled"
 	}
 
-	if [ "$(dmidecode -s system-manufacturer)" == "innotek GmbH" ] || [ "$(dmidecode -s system-manufacturer)" == "VMware, Inc." ] &>/dev/null; then
+	if [ "$(dmidecode -s system-manufacturer)" == "innotek GmbH" ] || [ "$(dmidecode -s system-manufacturer)" == "VMware, Inc." ] &>/dev/null || grep -qi "microsoft" /proc/version; then
 	    if nmcli dev | grep wifi &>/dev/null; then   
 		 for IFACE in $IFACES; do
 		        if [ $IFACE != "lo" ] && [ $IFACE != "eth0" ]; then
-		             changer_funcs
+		             changer_func
 		        fi
 		 done
 	    else
-	   		warn "The virtual machine was detected, but no network interface was found to be suitable for changing mac addresses"
+	   		warn "Virtual machine (or WSL) detected. No suitable network interface found for changing MAC address without breaking the host connection."
 	   	fi
 	else 
 	     for IFACE in $IFACES; do
