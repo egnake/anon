@@ -12,17 +12,22 @@ start_tor_bridges(){
         echo -e "\n ${CYAN}ℹ INFO:${RESET} Please paste your Tor Bridge lines (obfs4) below."
         echo -e " ${DIM}Press [ENTER] on an empty line when you are done pasting.${RESET}\n"
         
-        > $SRCDIR/sources/bridges.txt
+        local temp_bridges=$(mktemp)
         while IFS= read -r line; do
             [[ -z "$line" ]] && break
-            echo "$line" >> $SRCDIR/sources/bridges.txt
+            echo "$line" >> $temp_bridges
         done
+        
+        if [ -s $temp_bridges ]; then
+            cat $temp_bridges > $SRCDIR/sources/bridges.txt
+        fi
+        rm -f $temp_bridges
 
         if [ -s $SRCDIR/sources/bridges.txt ]; then
             sed -i 's/tor_bridges_status="Disable"/tor_bridges_status="Enable"/g' $SRCDIR/sources/config
             info "Tor bridges successfully configured and enabled"
         else
-            warn "No bridges were entered. Tor bridges module was NOT enabled."
+            warn "No bridges were entered or saved. Tor bridges module was NOT enabled."
         fi
     else
         warn "Tor bridges is already enabled"
