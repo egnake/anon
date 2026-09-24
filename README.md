@@ -10,6 +10,7 @@
     <img src="https://img.shields.io/github/license/egnake/anon?style=flat-square&color=orange" alt="License">
     <img src="https://img.shields.io/github/stars/egnake/anon?style=flat-square&color=yellow" alt="Stars">
   </p>
+  <p><i><a href="README-TR.md">Türkçe dokümantasyon burada mevcuttur</a></i></p>
 </div>
 
 ---
@@ -46,6 +47,7 @@
   - [Docker (Containerized)](#docker-containerized)
 - [Usage](#-usage)
 - [Under the Hood](#-under-the-hood)
+- [Frequently Asked Questions (FAQ)](#-frequently-asked-questions-faq)
 - [Troubleshooting](#-troubleshooting)
 - [Disclaimer](#-disclaimer)
 - [License](#-license)
@@ -179,6 +181,21 @@ anon --help
 
 ## 🔧 Under the Hood
 When you trigger the **IP Changer**, Anon does not just set a local proxy. It actively flushes your current `iptables` and establishes a **Transparent Tor Proxy**. It sets up `DNAT` rules to redirect DNS requests to Tor's DNS port, and uses `REDIRECT` rules for all TCP traffic to Tor's `TransPort`. Any traffic that bypasses Tor is strictly `DROPPED`, ensuring zero leakage even if an application ignores proxy settings.
+
+---
+
+## ❓ Frequently Asked Questions (FAQ)
+
+**Q: Since all traffic is routed through Tor, couldn't someone reverse-engineer my Tor Exit Node IP to track me down?**
+
+**A:** If you were using a standard VPN, yes—they could find you in seconds. However, with the Tor network (especially when combined with obfs4 bridges), **this is mathematically and practically nearly impossible**—even for state-level intelligence agencies. 
+
+Tor uses a 3-layer "Onion" routing architecture:
+1. **Entry Guard (e.g., our obfs4 Bridge):** Knows who you are (your real IP) but has **no idea** where your traffic is going or what data you are sending, as the payload is heavily encrypted. By using an obfs4 bridge, even your ISP cannot distinguish your Tor connection from random encrypted internet garbage.
+2. **Middle Relay:** This node only knows that encrypted data came from the Entry Guard and is going to the Exit Node. It knows neither your real IP nor your destination website. It is completely blind.
+3. **Exit Node (e.g., the Luxembourg/Sweden IP):** This node decrypts the traffic and connects to the final destination (e.g., facebook.com). It knows which website you are visiting, but it only sees the data coming from the Middle Relay. **It has absolutely no way to know your real IP address or identity!**
+
+For an adversary to perform a "Timing Correlation Attack" (tracing the traffic backward), they would need to control or monitor *both* your specific Entry Node and your specific Exit Node simultaneously on a global scale. Furthermore, because our `anon --browser` module runs entirely in RAM and is securely wiped (`shred`) upon exit, it leaves zero browser fingerprints or cookies, rendering identity-correlation attacks useless.
 
 ---
 
