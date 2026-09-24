@@ -238,8 +238,8 @@ dashboard() {
         echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
         
         # IP Information
-        local current_ip=$(curl -s --max-time 3 https://api.ipify.org || echo "Unknown/Offline")
-        if curl -s --max-time 3 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
+        local current_ip=$(curl -s --max-time 10 https://api.ipify.org || echo "Unknown/Offline")
+        if curl -s --max-time 10 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
             echo -e " ${CYAN}● Network Status${RESET} : ${GREEN}${BOLD}SECURE (Tor Routing Active)${RESET}"
         else
             echo -e " ${CYAN}○ Network Status${RESET} : ${RED}${BOLD}UNSECURE (Direct Connection)${RESET}"
@@ -322,6 +322,11 @@ browser() {
     fi
     msg "Disposable session destroyed successfully!"
     exit 0
+}
+
+browser(){
+    source /usr/share/anon/assets/scripts/disposable_browser
+    start_disposable_browser
 }
 
 fix(){

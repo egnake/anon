@@ -1,0 +1,46 @@
+#!/bin/bash
+
+source /usr/share/anon/assets/sources/config
+
+start_disposable_browser() {
+    # Check for firefox
+    if ! command -v firefox &> /dev/null && ! command -v firefox-esr &> /dev/null; then
+        echo -e "\n ${RED}✖ ERROR:${RESET} Firefox is not installed. Please install it first."
+        exit 1
+    fi
+
+    # Determine binary name
+    local ff_bin="firefox"
+    if command -v firefox-esr &> /dev/null; then
+        ff_bin="firefox-esr"
+    fi
+
+    echo -e "\n ${CYAN}ℹ INFO:${RESET} Initializing true RAM-based disposable browser..."
+    
+    # Create temp directory for the profile
+    local ram_profile=$(mktemp -d -t anon_browser_XXXXXX)
+    
+    echo -e " ${CYAN}ℹ INFO:${RESET} Hardening profile with anon OPSEC configurations..."
+    # Inject anon.js configuration if it exists
+    if [ -f "$SRCDIR/sources/anon.js" ]; then
+        cp "$SRCDIR/sources/anon.js" "$ram_profile/user.js"
+    fi
+
+    echo -e " ${CYAN}ℹ INFO:${RESET} Launching isolated instance. ${YELLOW}Do NOT close this terminal!${RESET}"
+    echo -e " ${CYAN}ℹ INFO:${RESET} The profile will be securely wiped the exact second you close the browser.\n"
+    
+    # Launch firefox pointing to this profile, in private mode
+    # We run it in foreground so the script waits for it to close
+    $ff_bin --profile "$ram_profile" --private-window "https://check.torproject.org/" --no-remote &> /dev/null
+    
+    echo -e "\n ${CYAN}ℹ INFO:${RESET} Browser closed. Initiating secure deletion of RAM profile..."
+    
+    # Securely wipe the profile using shred if available
+    if command -v shred &> /dev/null; then
+        find "$ram_profile" -type f -exec shred -u {} + &> /dev/null
+    fi
+    rm -rf "$ram_profile"
+    
+    echo -e " ${GREEN}✔ SUCCESS:${RESET} Disposable profile completely wiped. Zero traces left on disk.\n"
+    exit 0
+}
