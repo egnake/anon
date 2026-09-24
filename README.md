@@ -76,6 +76,7 @@ These modules elevate Anon from a simple proxy router to a state-of-the-art OPSE
 
 10. **🌉 Tor Bridges (Obfs4)**
     Bypasses Tor censorship (e.g., in China or corporate networks) by obfuscating your Tor traffic as random, meaningless data using obfs4 pluggable transports.
+    > **Note:** If you live in a censored region, you MUST use bridges. To get them, visit [bridges.torproject.org/options](https://bridges.torproject.org/options), select **obfs4**, get the bridges (ensure they are IPv4, not IPv6), and paste them into the Anon terminal when prompted. Anon will automatically remember your bridges for future sessions.
 11. **💻 OS Obfuscation (TCP/IP Fingerprinting)**
     Modifies kernel `sysctl` parameters (such as TTL and TCP Window sizes) so that network scanners (like Nmap) identify your Linux machine as a generic Windows 10 client.
 12. **📴 Bluetooth Disabler (Beacon Tracking Protection)**
