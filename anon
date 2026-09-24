@@ -140,6 +140,19 @@ while banner && menu && input && read -r num; do
 done
 banner
 #detect selected features and run
+# Run tor_bridges first if selected so that ip_changer can use it
+if [[ "${choices[13]}" ]]; then
+	$(echo start_${options[13]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
+	choices[13]=""
+fi
+
+# Run mac_changer BEFORE anti_mitm. 
+# mac_changer brings the network interface down/up which crashes scapy (anti_mitm) if run after it.
+if [[ "${choices[4]}" ]]; then
+	$(echo start_${options[4]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
+	choices[4]=""
+fi
+
 for opt in ${!options[@]}; do
 
 	start_anti_mitm(){
