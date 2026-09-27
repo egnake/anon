@@ -11,6 +11,7 @@ if [[ "$dns_changer_status" == "Disable" ]]; then
 	cat $TORRC > $BACKUPDIR/torrc.bak
 	cat /etc/resolv.conf > $BACKUPDIR/resolv.conf.bak
 	iptables-save > $BACKUPDIR/iptables.rules.bak
+	ip6tables-save > "$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
 
 	iptables -F
 	iptables -X
@@ -40,6 +41,15 @@ if [[ "$dns_changer_status" == "Disable" ]]; then
 	iptables -P INPUT DROP
 	iptables -P FORWARD DROP
 	iptables -P OUTPUT DROP
+	
+	# Strict IPv6 Drop rules for Defense-in-Depth
+	if command -v ip6tables &> /dev/null; then
+		ip6tables -F
+		ip6tables -X
+		ip6tables -P INPUT DROP
+		ip6tables -P FORWARD DROP
+		ip6tables -P OUTPUT DROP
+	fi
 
 	cat >"/etc/tor/torrc" <<EOF
 VirtualAddrNetworkIPv4 10.192.0.0/10
@@ -163,6 +173,9 @@ stop_ip_changer(){
 	iptables -P OUTPUT ACCEPT
 	systemctl stop tor.service
 	iptables-restore <$BACKUPDIR/iptables.rules.bak
+	if command -v ip6tables &> /dev/null && [ -f "$BACKUPDIR/ip6tables.rules.bak" ]; then
+		ip6tables-restore <"$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
+	fi
 	sysctl -w net.ipv6.conf.all.disable_ipv6=0 &> /dev/null
 	sysctl -w net.ipv6.conf.default.disable_ipv6=0 &> /dev/null
 	
