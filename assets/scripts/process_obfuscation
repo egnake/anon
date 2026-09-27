@@ -1,7 +1,7 @@
 #!/bin/bash
 
 start_process_obfuscation(){
-    source /usr/share/anon/assets/sources/config
+    source ${BASE_DIR}/assets/sources/config
     if [[ "$process_obfuscation_status" == "Disable" ]]; then
         # Create wrappers for common pentesting tools
         cat > /usr/local/bin/nmap << 'EOF'
@@ -21,7 +21,7 @@ EOF
     fi
 }
 stop_process_obfuscation(){
-    source /usr/share/anon/assets/sources/config
+    source ${BASE_DIR}/assets/sources/config
     rm -f /usr/local/bin/nmap /usr/local/bin/sqlmap
     sed -i 's/process_obfuscation_status="Enable"/process_obfuscation_status="Disable"/g' $SRCDIR/sources/config
     info "Process obfuscation successfully disabled"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source /usr/share/anon/assets/sources/config
+source ${BASE_DIR}/assets/sources/config
 
 start_disposable_browser() {
     # Check for firefox

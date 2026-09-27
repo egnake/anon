@@ -1,7 +1,7 @@
 #!/bin/bash
 
 start_kill_switch(){
-	source /usr/share/anon/assets/sources/config
+	source ${BASE_DIR}/assets/sources/config
 
 	if [[ "$kill_switch_status" == "Disable" ]]; then
 		iptables-save > $BACKUPDIR/iptables_killswitch.bak
@@ -23,7 +23,7 @@ start_kill_switch(){
 }
 
 stop_kill_switch(){
-	source /usr/share/anon/assets/sources/config
+	source ${BASE_DIR}/assets/sources/config
 	iptables-restore < $BACKUPDIR/iptables_killswitch.bak
 	rm -f $BACKUPDIR/iptables_killswitch.bak
 	sed -i 's/kill_switch_status="Enable"/kill_switch_status="Disable"/g' $SRCDIR/sources/config

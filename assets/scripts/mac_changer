@@ -2,7 +2,7 @@
 
 start_mac_changer(){
 
-source /usr/share/anon/assets/sources/config
+source ${BASE_DIR}/assets/sources/config
 
 if [[ "$mac_changer_status" == "Disable" ]]; then
 
@@ -76,7 +76,7 @@ fi
 
 stop_mac_changer(){
 
-	source /usr/share/anon/assets/sources/config
+	source ${BASE_DIR}/assets/sources/config
 	for device in $(ls $BACKUPDIR/mac_addresses) ; do
 	    ip link set $device down
 	    ip link set $device address $(cat $BACKUPDIR/mac_addresses/$device)

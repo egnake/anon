@@ -1,7 +1,7 @@
 #!/bin/bash
 
 start_proxychains_integration(){
-    source /usr/share/anon/assets/sources/config
+    source ${BASE_DIR}/assets/sources/config
     if [[ "$proxychains_integration_status" == "Disable" ]]; then
         if [ -f /etc/proxychains4.conf ]; then
             cp /etc/proxychains4.conf $BACKUPDIR/proxychains4.conf.bak
@@ -17,7 +17,7 @@ start_proxychains_integration(){
     fi
 }
 stop_proxychains_integration(){
-    source /usr/share/anon/assets/sources/config
+    source ${BASE_DIR}/assets/sources/config
     if [ -f $BACKUPDIR/proxychains4.conf.bak ]; then
         cat $BACKUPDIR/proxychains4.conf.bak > /etc/proxychains4.conf
         rm -fr $BACKUPDIR/proxychains4.conf.bak

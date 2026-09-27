@@ -2,7 +2,16 @@
 # Anon - Privacy & Anonymity Tool
 
 #check source files
-source /usr/share/anon/assets/sources/config 2> /dev/null || { clear;echo -e "\e[31m [-] FATAL ERROR: MAIN CONFIG COULD NOT BE SOURCED!\e[0m";exit 1;}
+if [[ -z "${BASE_DIR}" ]]; then
+    if [[ -d "$(dirname "$(realpath "$0")")/assets" ]]; then
+        export BASE_DIR="$(dirname "$(realpath "$0")")"
+    elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+        export BASE_DIR="/usr/share/anon"
+    else
+        clear; echo -e "\e[31m [-] FATAL ERROR: Installation directory not found!\e[0m"; exit 1;
+    fi
+fi
+source "${BASE_DIR}/assets/sources/config" 2> /dev/null || { clear;echo -e "\e[31m [-] FATAL ERROR: MAIN CONFIG COULD NOT BE SOURCED!\e[0m";exit 1;}
 
 banner
 # run with a root privilege
@@ -156,7 +165,7 @@ fi
 for opt in ${!options[@]}; do
 
 	start_anti_mitm(){
-	python3 /usr/share/anon/assets/scripts/anti_mitm &
+	python3 "${BASE_DIR}/assets/scripts/anti_mitm" &
 	antimitmpid="$!"
 	sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' $SRCDIR/sources/config
 	info "Anti mitm successfully enabled"
@@ -286,7 +295,7 @@ dashboard() {
 }
 
 browser(){
-    source /usr/share/anon/assets/scripts/disposable_browser
+    source "${BASE_DIR}/assets/scripts/disposable_browser"
     start_disposable_browser
 }
 

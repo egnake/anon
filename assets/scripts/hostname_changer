@@ -4,7 +4,7 @@ start_hostname_changer(){
 
 if [[ "$hostname_changer_status" == "Disable" ]]; then
 
-   source /usr/share/anon/assets/sources/config
+   source ${BASE_DIR}/assets/sources/config
    #backup hostname and change
    cat /etc/hostname > $BACKUPDIR/hostname.bak
 
@@ -39,7 +39,7 @@ fi
 
 stop_hostname_changer(){
 
-	source /usr/share/anon/assets/sources/config
+	source ${BASE_DIR}/assets/sources/config
 	cat $BACKUPDIR/hostname.bak > /etc/hostname && rm -fr $BACKUPDIR/hostname.bak
 	sed -i 's/hostname_changer_status="Enable"/hostname_changer_status="Disable"/g' $SRCDIR/sources/config
 	info "Hostname changer successfully disabled"

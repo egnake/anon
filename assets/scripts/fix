@@ -24,7 +24,7 @@ restore_system(){
 	rm -fr $BACKUPDIR/*.bak $BACKUPDIR/mac_addresses && cd $BACKUPDIR && tar -xzf $BACKUPDIR/anon_fix_backups.tar.gz
 	cat $BACKUPDIR/resolv.conf.bak > /etc/resolv.conf 
 	cat $BACKUPDIR/hostname.bak > /etc/hostname 
-	. /usr/share/anon/assets/sources/configrrc
+	. ${BASE_DIR}/assets/sources/configrrc
 	cat $BACKUPDIR/torrc.bak > $TORRC
 	iptables-restore <$BACKUPDIR/iptables.rules.bak
 	for device in $(ls $BACKUPDIR/mac_addresses) ; do

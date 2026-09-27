@@ -2,7 +2,7 @@
 
 start_timezone_changer(){
 
-source /usr/share/anon/assets/sources/config
+source ${BASE_DIR}/assets/sources/config
 
 if [[ "$timezone_changer_status" == "Disable" ]]; then
 	timedatectl show | grep Timezone | sed 's/Timezone=//g' > $BACKUPDIR/timezone.bak
@@ -20,7 +20,7 @@ fi
 }
 
 stop_timezone_changer(){
-	source /usr/share/anon/assets/sources/config
+	source ${BASE_DIR}/assets/sources/config
 	if [ -f $BACKUPDIR/timezone.bak ]; then
 		restore_timezone=$(cat $BACKUPDIR/timezone.bak) 
 		timedatectl set-timezone $restore_timezone &> /dev/null

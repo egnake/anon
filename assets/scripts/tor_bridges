@@ -1,7 +1,7 @@
 #!/bin/bash
 
 start_tor_bridges(){
-    source /usr/share/anon/assets/sources/config
+    source ${BASE_DIR}/assets/sources/config
 
     if [[ "$tor_bridges_status" == "Disable" ]]; then
         # Check if obfs4proxy is installed
@@ -35,7 +35,7 @@ start_tor_bridges(){
 }
 
 stop_tor_bridges(){
-    source /usr/share/anon/assets/sources/config
+    source ${BASE_DIR}/assets/sources/config
     sed -i 's/tor_bridges_status="Enable"/tor_bridges_status="Disable"/g' $SRCDIR/sources/config
     info "Tor bridges successfully disabled (Bridges saved for next use)"
 }

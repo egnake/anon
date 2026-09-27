@@ -2,7 +2,7 @@
 
 start_ip_changer(){
 
-source /usr/share/anon/assets/sources/config
+source ${BASE_DIR}/assets/sources/config
 
 if [[ "$dns_changer_status" == "Disable" ]]; then
 
@@ -152,7 +152,7 @@ fi
 
 stop_ip_changer(){
 
-	source /usr/share/anon/assets/sources/config
+	source ${BASE_DIR}/assets/sources/config
 	
 	iptables -F
 	iptables -X

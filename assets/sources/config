@@ -14,8 +14,15 @@ WHITE="\e[37m"
 BG_BLUE="\e[44m"
 
 # backup dir
-BACKUPDIR="/usr/share/anon/backups"
-SRCDIR="/usr/share/anon/assets"
+if [[ -z "${BASE_DIR}" ]]; then
+    if [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+        export BASE_DIR="/usr/share/anon"
+    else
+        export BASE_DIR="$(dirname "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")")"
+    fi
+fi
+BACKUPDIR="${BASE_DIR}/backups"
+SRCDIR="${BASE_DIR}/assets"
 
 # tor config file
 TORRC="/etc/tor/torrc"

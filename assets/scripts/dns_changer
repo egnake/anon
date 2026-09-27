@@ -2,7 +2,7 @@
 
 start_dns_changer(){
 
-source /usr/share/anon/assets/sources/config
+source ${BASE_DIR}/assets/sources/config
 
 if [[ "$ip_changer_status" == "Disable" ]]; then
 
@@ -31,7 +31,7 @@ fi
 
 stop_dns_changer(){
 
-	source /usr/share/anon/assets/sources/config
+	source ${BASE_DIR}/assets/sources/config
 	cat $BACKUPDIR/resolv.conf.bak > /etc/resolv.conf && rm -fr $BACKUPDIR/resolv.conf.bak
 	sed -i 's/dns_changer_status="Enable"/dns_changer_status="Disable"/g' $SRCDIR/sources/config
 	info "Dns changer successfully disabled"
