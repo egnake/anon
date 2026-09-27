@@ -3,8 +3,21 @@
 start_os_obfuscation(){
     source ${BASE_DIR}/assets/sources/config
     if [[ "$os_obfuscation_status" == "Disable" ]]; then
+        # 1. TTL: Windows uses 128 (Linux default is 64)
         sysctl -w net.ipv4.ip_default_ttl=128 &> /dev/null
+        
+        # 2. TCP Timestamps: Windows 10 typically disables them, whereas Linux enables them by default.
+        # This is a major fingerprinting vector for p0f/nmap.
+        sysctl -w net.ipv4.tcp_timestamps=0 &> /dev/null
+        
+        # 3. Ephemeral Port Range: Windows 10 uses 49152-65535. Linux uses 32768-60999.
+        sysctl -w net.ipv4.ip_local_port_range="49152 65535" &> /dev/null
+        
+        # 4. TCP Window Scaling: Disrupt scaling factors to mimic Windows behavior.
         sysctl -w net.ipv4.tcp_window_scaling=0 &> /dev/null
+        
+        # 5. ICMP Echo Ignore Broadcasts: Prevent smurf attacks/stealth ping sweeps
+        sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1 &> /dev/null
         sed -i 's/os_obfuscation_status="Disable"/os_obfuscation_status="Enable"/g' $SRCDIR/sources/config
         info "OS Obfuscation successfully enabled (Spoofed as Windows 10)"
     else
@@ -14,7 +27,10 @@ start_os_obfuscation(){
 stop_os_obfuscation(){
     source ${BASE_DIR}/assets/sources/config
     sysctl -w net.ipv4.ip_default_ttl=64 &> /dev/null
+    sysctl -w net.ipv4.tcp_timestamps=1 &> /dev/null
+    sysctl -w net.ipv4.ip_local_port_range="32768 60999" &> /dev/null
     sysctl -w net.ipv4.tcp_window_scaling=1 &> /dev/null
+    sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1 &> /dev/null
     sed -i 's/os_obfuscation_status="Enable"/os_obfuscation_status="Disable"/g' $SRCDIR/sources/config
     info "OS Obfuscation successfully disabled"
 }
