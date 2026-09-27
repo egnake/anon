@@ -383,9 +383,8 @@ msg "Usage : sudo anon ${GREEN}[option]${RESET}
 main() {
 
 if [[ "$#" -eq 0 ]]; then
-    warn "Anon: Argument required"
-    info "Run ${GREEN}'anon --help'${RESET} for more information."
-    exit 1
+    start
+    exit 0
 fi
 
     case "$1" in
