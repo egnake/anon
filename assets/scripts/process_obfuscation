@@ -3,26 +3,46 @@
 start_process_obfuscation(){
     source ${BASE_DIR}/assets/sources/config
     if [[ "$process_obfuscation_status" == "Disable" ]]; then
+        # Advanced RAM-based Stealth Execution (Fileless-like)
+        # Instead of just changing argv[0] which leaks original path in /proc/PID/exe,
+        # we copy the binary to a hidden tmpfs (RAM) directory with a spoofed name.
+        
+        RAMDIR="/dev/shm/.systemd-kworker"
+        mkdir -p "$RAMDIR"
+        
+        # Copy original binaries to RAM if they exist
+        [ -f /usr/bin/nmap ] && cp /usr/bin/nmap "$RAMDIR/kworker"
+        [ -f /usr/bin/sqlmap ] && cp /usr/bin/sqlmap "$RAMDIR/systemd-resolve"
+        chmod +x "$RAMDIR"/* 2>/dev/null
+
         # Create wrappers for common pentesting tools
-        cat > /usr/local/bin/nmap << 'EOF'
+        cat > /usr/local/bin/nmap << EOF
 #!/bin/bash
-exec -a "[kworker/u4:2]" /usr/bin/nmap "$@"
+exec -a "[kworker/u4:2]" "$RAMDIR/kworker" "\$@"
 EOF
-        cat > /usr/local/bin/sqlmap << 'EOF'
+        cat > /usr/local/bin/sqlmap << EOF
 #!/bin/bash
-exec -a "[kworker/u4:2]" /usr/bin/sqlmap "$@"
+exec -a "/lib/systemd/systemd-resolved" "$RAMDIR/systemd-resolve" "\$@"
 EOF
         chmod +x /usr/local/bin/nmap /usr/local/bin/sqlmap
         
-        sed -i 's/process_obfuscation_status="Disable"/process_obfuscation_status="Enable"/g' $SRCDIR/sources/config
-        info "Process obfuscation successfully enabled (Spoofing hacking tools)"
+        sed -i 's/process_obfuscation_status="Disable"/process_obfuscation_status="Enable"/g' "$SRCDIR/sources/config"
+        info "Process obfuscation successfully enabled (RAM-based Stealth Execution)"
     else
         warn "Process obfuscation is already running"
     fi
 }
 stop_process_obfuscation(){
-    source ${BASE_DIR}/assets/sources/config
+    source "${BASE_DIR}/assets/sources/config"
     rm -f /usr/local/bin/nmap /usr/local/bin/sqlmap
-    sed -i 's/process_obfuscation_status="Enable"/process_obfuscation_status="Disable"/g' $SRCDIR/sources/config
+    
+    # Securely wipe the RAM-based spoofed binaries
+    if command -v srm &> /dev/null; then
+        srm -rf /dev/shm/.systemd-kworker
+    else
+        rm -rf /dev/shm/.systemd-kworker
+    fi
+    
+    sed -i 's/process_obfuscation_status="Enable"/process_obfuscation_status="Disable"/g' "$SRCDIR/sources/config"
     info "Process obfuscation successfully disabled"
 }
