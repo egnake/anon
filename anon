@@ -186,7 +186,7 @@ stop(){
 #detect enable features and stop
 if grep -q "Enable" "$SRCDIR/sources/config" 2>/dev/null; then
 
-	options=("anti_mitm" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges")
+	options=("anti_mitm" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot")
 
 	stop_anti_mitm(){
 
