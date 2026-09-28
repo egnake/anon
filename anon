@@ -96,61 +96,115 @@ fi
 
 options=("Anti Mitm" "Log killer" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration")
 
-menu() {
-    echo -e " ${BOLD}${CYAN}❖ AVAILABLE SECURITY MODULES ❖${RESET}\n"
-    for opt in "${!options[@]}"; do
-        if [[ "${choices[opt]}" == "✓" ]]; then
-            printf "  ${GREEN} [%s] %-25s ${BOLD}[ ✔ ON ]${RESET}\n" "$((opt+1))" "${options[opt]}"
-        else
-            printf "  ${DIM} [%s] %-25s [ ✗ OFF]${RESET}\n" "$((opt+1))" "${options[opt]}"
-        fi
-    done
-    echo -e "\n${DIM} ══════════════════════════════════════════════${RESET}"
-    echo -e "  ${BOLD}${YELLOW}[0]${RESET} ${CYAN}🚀 APPLY SETTINGS & START${RESET}"
-    echo -e "  ${BOLD}${MAGENTA}[p]${RESET} ${DIM}📂 LOAD SECURITY PROFILE${RESET}"
-    echo -e "  ${BOLD}${RED}[q]${RESET} ${DIM}❌ EXIT MENU${RESET}"
-    echo -e "${DIM} ══════════════════════════════════════════════${RESET}"
-    [[ "$stat" ]] && info "$stat"
-    return 0
+main_menu() {
+    clear
+    banner
+    echo -e "  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
+    echo -e "  ${BOLD}${CYAN}[?] MAIN MENU:${RESET}"
+    echo -e "   ${DIM}[ 1 ]${RESET}  ⎔  Load Predefined Security Profile"
+    echo -e "   ${DIM}[ 2 ]${RESET}  ⚙  Custom Module Configuration"
+    echo -e "   ${DIM}[ 3 ]${RESET}  ⛁  Live Status & Dashboard (Exits Menu)"
+    echo -e "   ${DIM}[ 4 ]${RESET}  🛠  System Maintenance (Update)"
+    echo -e ""
+    echo -e "   ${DIM}[ 0 ]${RESET}  ▶  ${BOLD}${GREEN}APPLY CONFIGURATION & START${RESET}"
+    echo -e "   ${DIM}[ q ]${RESET}  ✗  Exit"
+    echo -e "\n  ${DIM}────────────────────────────────────────────────────────${RESET}"
+    [[ -n "$stat" ]] && echo -e "  ${YELLOW}ℹ $stat${RESET}"
+    echo -ne "  ${CYAN}❯ Select operation: ${RESET}"
 }
- 
-while banner && menu && input && read -r num; do
-    if [[ -z "$num" ]]; then continue; fi
-    if [[ "$num" == "0" ]]; then break; fi
-    if [[ "$num" == "p" || "$num" == "P" ]]; then
-        clear
-        echo -e " ${BOLD}${CYAN}❖ SELECT A SECURITY PROFILE ❖${RESET}\n"
-        echo -e "  ${BOLD}${RED}[1]${RESET} ${GREEN}Paranoia Mode${RESET} (Max Security: Tor, Bridges, Mac, Log Killer, MITM, Browser, Kill Switch)"
-        echo -e "  ${BOLD}${YELLOW}[2]${RESET} ${CYAN}Quick Surf${RESET}  (Fast Anonymity: Tor, DNS, Browser)"
-        echo -e "  ${BOLD}${BLUE}[3]${RESET} ${MAGENTA}Pentest Mode${RESET} (Offensive: Proxychains, OS/Process Obfuscation, Mac, MITM)"
-        echo -e "  ${BOLD}${CYAN}[4]${RESET} ${BOLD}Darknet Explorer${RESET} (Tor + I2P, Bridges, DNS)"
-        echo -e "  ${BOLD}${MAGENTA}[5]${RESET} ${YELLOW}Physical Lockdown${RESET} (Anti-Cold Boot, Bluetooth off, MITM, Kill Switch)"
-        echo -e "  ${BOLD}${WHITE}[6]${RESET} ${RED}The Ghost (Ultimate)${RESET} (ALL 16 MODULES ACTIVATED)"
-        echo -e "  ${BOLD}${DIM}[b]${RESET} Go Back"
-        echo -ne "\n   ${YELLOW}➤ Select a profile: ${RESET}"
-        read -r prof
-        
-        for i in "${!choices[@]}"; do choices[i]=""; done
-        case "$prof" in
-            1) for i in 0 1 2 3 4 5 6 7 12 13 14; do choices[$i]="✓"; done; stat="Loaded: Paranoia Mode" ;;
-            2) for i in 2 3 7; do choices[$i]="✓"; done; stat="Loaded: Quick Surf Mode" ;;
-            3) for i in 0 2 4 6 8 10 11; do choices[$i]="✓"; done; stat="Loaded: Pentest Mode" ;;
-            4) for i in 2 3 13 15; do choices[$i]="✓"; done; stat="Loaded: Darknet Explorer" ;;
-            5) for i in 0 9 12 14; do choices[$i]="✓"; done; stat="Loaded: Physical Lockdown" ;;
-            6) for i in {0..15}; do choices[$i]="✓"; done; stat="Loaded: The Ghost (Ultimate)" ;;
-            *) stat="Profile selection cancelled." ;;
+
+profiles_menu() {
+    clear
+    banner
+    echo -e "  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
+    echo -e "  ${BOLD}${CYAN}[?] Select a Security Profile to Load:${RESET}\n"
+    echo -e "   ${DIM}[ 1 ]${RESET}  ▣  ${RED}Paranoia Mode${RESET}       ${DIM}(Max Security)${RESET}"
+    echo -e "   ${DIM}[ 2 ]${RESET}  ▣  ${CYAN}Quick Surf${RESET}          ${DIM}(Fast Anonymity)${RESET}"
+    echo -e "   ${DIM}[ 3 ]${RESET}  ▣  ${MAGENTA}Pentest Mode${RESET}        ${DIM}(Offensive)${RESET}"
+    echo -e "   ${DIM}[ 4 ]${RESET}  ▣  ${BLUE}Darknet Explorer${RESET}    ${DIM}(Tor + I2P)${RESET}"
+    echo -e "   ${DIM}[ 5 ]${RESET}  ▣  ${YELLOW}Physical Lockdown${RESET}   ${DIM}(Anti-Forensics)${RESET}"
+    echo -e "   ${DIM}[ 6 ]${RESET}  ▣  ${WHITE}The Ghost${RESET}           ${DIM}(Ultimate / 16 Modules)${RESET}"
+    echo -e ""
+    echo -e "   ${DIM}[ b ]${RESET}  ⮜  Back to Main Menu"
+    echo -e "\n  ${DIM}────────────────────────────────────────────────────────${RESET}"
+    echo -ne "  ${CYAN}❯ Select profile: ${RESET}"
+}
+
+modules_menu() {
+    clear
+    banner
+    echo -e "  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
+    
+    get_mark() { [[ "${choices[$1]}" == "✓" ]] && echo -ne "${GREEN}✓${RESET}" || echo -ne "${RED}✗${RESET}"; }
+    
+    echo -e "  ${BOLD}${BLUE}[ NETWORK & ROUTING ]${RESET}"
+    printf "   ${DIM}[ 3 ]${RESET} [%s] %-22s  ${DIM}[ 4 ]${RESET} [%s] %-22s\n" "$(get_mark 2)" "IP Changer (Tor)" "$(get_mark 3)" "DNS Leak Protect"
+    printf "   ${DIM}[ 5 ]${RESET} [%s] %-22s  ${DIM}[ 16]${RESET} [%s] %-22s\n" "$(get_mark 4)" "MAC Spoofing" "$(get_mark 15)" "I2P Integration"
+    printf "   ${DIM}[ 14]${RESET} [%s] %-22s  ${DIM}[ 12]${RESET} [%s] %-22s\n" "$(get_mark 13)" "Tor Bridges" "$(get_mark 11)" "Proxychains"
+    
+    echo -e "\n  ${BOLD}${MAGENTA}[ SYSTEM OBFUSCATION ]${RESET}"
+    printf "   ${DIM}[ 9 ]${RESET} [%s] %-22s  ${DIM}[ 6 ]${RESET} [%s] %-22s\n" "$(get_mark 8)" "OS Fingerprint" "$(get_mark 5)" "Timezone Spoof"
+    printf "   ${DIM}[ 11]${RESET} [%s] %-22s  ${DIM}[ 8 ]${RESET} [%s] %-22s\n" "$(get_mark 10)" "Process Hider" "$(get_mark 7)" "Browser Anon"
+    printf "   ${DIM}[ 7 ]${RESET} [%s] %-22s\n" "$(get_mark 6)" "Hostname Spoof"
+    
+    echo -e "\n  ${BOLD}${RED}[ ACTIVE DEFENSE ]${RESET}"
+    printf "   ${DIM}[ 1 ]${RESET} [%s] %-22s  ${DIM}[ 2 ]${RESET} [%s] %-22s\n" "$(get_mark 0)" "Anti-MITM" "$(get_mark 1)" "Log Killer"
+    printf "   ${DIM}[ 13]${RESET} [%s] %-22s  ${DIM}[ 15]${RESET} [%s] %-22s\n" "$(get_mark 12)" "Anti-Cold Boot" "$(get_mark 14)" "Kill Switch"
+    printf "   ${DIM}[ 10]${RESET} [%s] %-22s\n" "$(get_mark 9)" "Bluetooth Disable"
+
+    echo -e "\n   ${DIM}[ b ]${RESET}  ⮜  Back to Main Menu"
+    echo -e "  ${DIM}────────────────────────────────────────────────────────${RESET}"
+    [[ -n "$stat" ]] && echo -e "  ${YELLOW}ℹ $stat${RESET}"
+    echo -ne "  ${CYAN}❯ Toggle module number: ${RESET}"
+}
+
+current_menu="main"
+stat=""
+
+while true; do
+    if [[ "$current_menu" == "main" ]]; then
+        main_menu
+        read -r num
+        stat=""
+        case "$num" in
+            1) current_menu="profiles" ;;
+            2) current_menu="modules" ;;
+            3) status; exit 0 ;;
+            4) update; exit 0 ;;
+            0) break ;;
+            q|Q) echo -e "\n\e[32mExiting Anon Setup...\e[0m"; exit 0 ;;
+            *) stat="Invalid option" ;;
         esac
-        continue
-    fi
-    if [[ "$num" == "q" || "$num" == "Q" ]]; then
-        echo -e "\n\e[32mExiting Anon Setup...\e[0m"
-        exit 0
-    fi
-    if [[ "$num" != *[![:digit:]]* ]] && (( num > 0 && num <= ${#options[@]} )); then
-        ((num--)); stat="${options[num]} was ${choices[num]:+un}checked"
-        [[ "${choices[num]}" ]] && choices[num]="" || choices[num]="✓"
-    else
-        stat="Invalid option: $num"
+    elif [[ "$current_menu" == "profiles" ]]; then
+        profiles_menu
+        read -r prof
+        stat=""
+        case "$prof" in
+            1) for i in 0 1 2 3 4 5 6 7 12 13 14; do choices[$i]="✓"; done; stat="Loaded: Paranoia Mode"; current_menu="main" ;;
+            2) for i in 2 3 7; do choices[$i]="✓"; done; stat="Loaded: Quick Surf Mode"; current_menu="main" ;;
+            3) for i in 0 2 4 6 8 10 11; do choices[$i]="✓"; done; stat="Loaded: Pentest Mode"; current_menu="main" ;;
+            4) for i in 2 3 13 15; do choices[$i]="✓"; done; stat="Loaded: Darknet Explorer"; current_menu="main" ;;
+            5) for i in 0 9 12 14; do choices[$i]="✓"; done; stat="Loaded: Physical Lockdown"; current_menu="main" ;;
+            6) for i in {0..15}; do choices[$i]="✓"; done; stat="Loaded: The Ghost (Ultimate)"; current_menu="main" ;;
+            b|B) current_menu="main" ;;
+            *) stat="Invalid profile" ;;
+        esac
+    elif [[ "$current_menu" == "modules" ]]; then
+        modules_menu
+        read -r mod_num
+        stat=""
+        case "$mod_num" in
+            b|B) current_menu="main" ;;
+            *) 
+                if [[ "$mod_num" != *[![:digit:]]* ]] && (( mod_num > 0 && mod_num <= 16 )); then
+                    ((mod_num--))
+                    [[ "${choices[mod_num]}" ]] && choices[mod_num]="" || choices[mod_num]="✓"
+                    stat="${options[mod_num]} toggled."
+                else
+                    stat="Invalid module number."
+                fi
+                ;;
+        esac
     fi
 done
 banner
