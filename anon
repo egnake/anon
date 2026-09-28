@@ -241,6 +241,14 @@ interactive_menu() {
         draw_sep
         emptybox
         [[ -n "$stat" ]] && boxline "${YELLOW}  ◆ $stat${RESET}"
+        # Show active module count if config is loaded
+        if [[ -f "$SRCDIR/sources/config" ]]; then
+            local active_count
+            active_count=$(grep -c 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null || echo 0)
+            if [[ $active_count -gt 0 ]]; then
+                boxline "${GREEN}  ● ${active_count} module(s) active${RESET}"
+            fi
+        fi
         boxline "${DIM}  ↑↓ Navigate  ⏎ Select  q Quit${RESET}"
         emptybox
         draw_end
@@ -413,27 +421,90 @@ execute_modules() {
 # ── Post-execution operations menu ──
 operations_loop() {
     while true; do
-        local ops_opts=("Live Dashboard" "System Status" "Stop All Modules" "Back to Configuration" "Exit Anon")
-        interactive_menu "OPERATIONS MENU:" "${ops_opts[@]}"
+        local ops_opts=("Live Dashboard" "System Status" "New Tor Identity" "IP Leak Test" "Secure Browser" "Stop All Modules" "Back to Configuration" "Exit Anon")
+        interactive_menu "OPERATIONS:" "${ops_opts[@]}"
         case $SELECTED_INDEX in
             0) dashboard ;;
             1) 
                 clear
                 banner
                 source $SRCDIR/sources/config
+                draw_line
+                emptybox
+                boxline "${BOLD}${MAGENTA}  SYSTEM STATUS${RESET}"
+                emptybox
+                draw_sep
                 status
+                draw_end
+                echo ""
                 echo -e "  ${DIM}Press any key to return...${RESET}"
                 read -rsn1
                 ;;
             2)
                 clear
                 banner
+                info "Requesting new Tor circuit..."
+                if command -v tor &>/dev/null; then
+                    killall -HUP tor 2>/dev/null
+                    sleep 2
+                    local new_ip
+                    new_ip=$(curl -s --max-time 8 --socks5-hostname 127.0.0.1:9050 https://api.ipify.org 2>/dev/null || echo "Unknown")
+                    msg "New Tor circuit established!"
+                    info "New Exit IP: ${YELLOW}${new_ip}${RESET}"
+                else
+                    warn "Tor is not running."
+                fi
+                echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                read -rsn1
+                ;;
+            3)
+                clear
+                banner
+                info "Running IP Leak Test..."
+                local leak_result
+                leak_result=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
+                if echo "$leak_result" | grep -q '"IsTor":true'; then
+                    local exit_ip
+                    exit_ip=$(echo "$leak_result" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
+                    msg "No leaks detected! Routing through Tor."
+                    info "Exit Node IP: ${YELLOW}${exit_ip}${RESET}"
+                else
+                    warn "Possible leak or Tor not active!"
+                fi
+                info "Checking DNS via Mullvad..."
+                local dns_check
+                dns_check=$(curl -s --max-time 8 --socks5-hostname 127.0.0.1:9050 https://am.i.mullvad.net/json 2>/dev/null)
+                if [[ -n "$dns_check" ]]; then
+                    local m_ip m_country
+                    m_ip=$(echo "$dns_check" | grep -o '"ip":"[^"]*"' | cut -d'"' -f4)
+                    m_country=$(echo "$dns_check" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
+                    info "Mullvad: IP=${YELLOW}${m_ip}${RESET} Country=${CYAN}${m_country}${RESET}"
+                fi
+                echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                read -rsn1
+                ;;
+            4)
+                clear
+                banner
+                if [[ -f "${BASE_DIR}/assets/scripts/disposable_browser" ]]; then
+                    source "${BASE_DIR}/assets/scripts/disposable_browser"
+                    start_disposable_browser
+                else
+                    warn "Disposable browser module not found."
+                fi
+                echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                read -rsn1
+                ;;
+            5)
+                clear
+                banner
+                source $SRCDIR/sources/config
                 stop
                 echo -e "\n  ${DIM}Press any key to return...${RESET}"
                 read -rsn1
                 ;;
-            3) return 1 ;;
-            4) clear; exit 0 ;;
+            6) return 1 ;;
+            7) clear; exit 0 ;;
         esac
     done
 }

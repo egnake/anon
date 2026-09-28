@@ -76,33 +76,81 @@ banner() {
     clear
     local width
     width=$(tput cols 2>/dev/null || echo 80)
-    
-    local art1="▄▀▀▄ █▄  █ ▄▀▀▀▄ █▄  █"
-    local art2="█▀▀█ █ ▀▄█ █   █ █ ▀▄█"
-    local art3="▀  ▀ ▀   ▀  ▀▀▀  ▀   ▀"
-    local sub="Extreme Privacy & Anonymity Tool"
-    
-    local art_len=${#art1}
-    local sub_len=${#sub}
     local bar_len=56
-    
-    local art_pad=$(( (width - art_len) / 2 ))
-    local sub_pad=$(( (width - sub_len) / 2 ))
     local bar_pad=$(( (width - bar_len) / 2 ))
-    
-    (( art_pad < 0 )) && art_pad=0
-    (( sub_pad < 0 )) && sub_pad=0
     (( bar_pad < 0 )) && bar_pad=0
     
+    local style=$(( RANDOM % 6 ))
+    
+    local -a art
+    case $style in
+        0)
+            art=(
+                "  █████╗ ███╗   ██╗ ██████╗ ███╗   ██╗"
+                " ██╔══██╗████╗  ██║██╔═══██╗████╗  ██║"
+                " ███████║██╔██╗ ██║██║   ██║██╔██╗ ██║"
+                " ██╔══██║██║╚██╗██║██║   ██║██║╚██╗██║"
+                " ██║  ██║██║ ╚████║╚██████╔╝██║ ╚████║"
+                " ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═══╝"
+            ) ;;
+        1)
+            art=(
+                " ▄▀▀▄ █▄  █ ▄▀▀▀▄ █▄  █"
+                " █▀▀█ █ ▀▄█ █   █ █ ▀▄█"
+                " ▀  ▀ ▀   ▀  ▀▀▀  ▀   ▀"
+            ) ;;
+        2)
+            art=(
+                "  ╔═╗ ╔╗╔ ╔═╗ ╔╗╔"
+                "  ╠═╣ ║║║ ║ ║ ║║║"
+                "  ╩ ╩ ╝╚╝ ╚═╝ ╝╚╝"
+            ) ;;
+        3)
+            art=(
+                " ┌─┐ ┌┐┌ ┌─┐ ┌┐┌"
+                " ├─┤ │││ │ │ │││"
+                " ┴ ┴ ┘└┘ └─┘ ┘└┘"
+            ) ;;
+        4)
+            art=(
+                " ░█▀▀█ ░█▄─░█ ░█▀▀▀█ ░█▄─░█"
+                " ░█▄▄█ ░█░█░█ ░█──░█ ░█░█░█"
+                " ░█─░█ ░█──▀█ ░█▄▄▄█ ░█──▀█"
+            ) ;;
+        5)
+            art=(
+                "  ▄▄▄      ▄▄    ▄  ▄▄▄▄▄  ▄▄    ▄"
+                " █   █    █  █   █ █     █ █  █   █"
+                " █▄▄▄█    █   █  █ █     █ █   █  █"
+                " █   █    █    █ █ █     █ █    █ █"
+                " █   █ ██ █     ██  █▄▄▄█  █     ██"
+            ) ;;
+    esac
+
     echo ""
     echo -e "${BOLD}${CYAN}"
-    printf "%${art_pad}s%s\n" "" "$art1"
-    printf "%${art_pad}s%s\n" "" "$art2"
-    printf "%${art_pad}s%s${RESET}\n" "" "$art3"
+    for line in "${art[@]}"; do
+        local stripped_line
+        stripped_line=$(echo "$line" | sed 's/\x1b\[[0-9;]*m//g')
+        local line_len=${#stripped_line}
+        local line_pad=$(( (width - line_len) / 2 ))
+        (( line_pad < 0 )) && line_pad=0
+        printf "%${line_pad}s%s\n" "" "$line"
+    done
+    echo -e "${RESET}"
+    
     printf "${DIM}%${bar_pad}s" ""
     printf '═%.0s' $(seq 1 $bar_len)
     printf "${RESET}\n"
-    printf "%${sub_pad}s${BOLD}${CYAN}%s${RESET}\n" "" "$sub"
+    
+    local sub="Extreme Privacy & Anonymity Tool"
+    local ver="v3.0"
+    local sub_stripped="${sub}  ${ver}"
+    local sub_pad=$(( (width - ${#sub_stripped}) / 2 ))
+    (( sub_pad < 0 )) && sub_pad=0
+    printf "%${sub_pad}s" ""
+    echo -e "${BOLD}${CYAN}${sub}  ${DIM}${ver}${RESET}"
+    
     printf "${DIM}%${bar_pad}s" ""
     printf '═%.0s' $(seq 1 $bar_len)
     printf "${RESET}\n\n"
