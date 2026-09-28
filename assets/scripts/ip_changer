@@ -40,6 +40,9 @@ if [[ "$dns_changer_status" == "Disable" ]]; then
 	iptables -A OUTPUT -m state --state INVALID -j DROP
 	iptables -A OUTPUT -m state --state ESTABLISHED -j ACCEPT
 	iptables -A OUTPUT -m owner --uid-owner $tor_uid -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -m state --state NEW -j ACCEPT
+	for lan in 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+		iptables -A OUTPUT -d $lan -j ACCEPT
+	done
 	iptables -A OUTPUT -d 127.0.0.1/32 -o lo -j ACCEPT
 	iptables -A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport 9040 --tcp-flags FIN,SYN,RST,ACK SYN -j ACCEPT
 	iptables -A OUTPUT -j DROP

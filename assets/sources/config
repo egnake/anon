@@ -74,46 +74,12 @@ input() {
 
 banner() {
     clear
-    local rand_color=$((RANDOM % 6))
-    
-    local c_red="${BOLD}${RED}"
-    local c_grn="${BOLD}${GREEN}"
-    local c_yel="${BOLD}${YELLOW}"
-    local c_blu="${BOLD}${BLUE}"
-    local c_mag="${BOLD}${MAGENTA}"
-    local c_cya="${BOLD}${CYAN}"
-    
-    local selected_color=""
-    
-    case $rand_color in
-        0) selected_color=$c_red ;;
-        1) selected_color=$c_grn ;;
-        2) selected_color=$c_yel ;;
-        3) selected_color=$c_blu ;;
-        4) selected_color=$c_mag ;;
-        5) selected_color=$c_cya ;;
-    esac
-
-    echo -e "${selected_color}"
-    
-    local banners_dir="${SRCDIR}/banners"
-    if [ -d "$banners_dir" ]; then
-        local banners=("$banners_dir"/*)
-        local rand_banner=$((RANDOM % ${#banners[@]}))
-        cat "${banners[$rand_banner]}" 2>/dev/null
-    else
-        echo -e "   █████╗ ███╗   ██╗ ██████╗ ███╗   ██╗"
-        echo -e "  ██╔══██╗████╗  ██║██╔═══██╗████╗  ██║"
-        echo -e "  ███████║██╔██╗ ██║██║   ██║██╔██╗ ██║"
-        echo -e "  ██╔══██║██║╚██╗██║██║   ██║██║╚██╗██║"
-        echo -e "  ██║  ██║██║ ╚████║╚██████╔╝██║ ╚████║"
-        echo -e "  ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═══╝"
-    fi
-
-    echo -e "${RESET}"
-    echo -e "${DIM}  =======================================${RESET}"
-    echo -e "      ${BOLD}${CYAN}Extreme Privacy & Anonymity Tool${RESET}"
-    echo -e "${DIM}  =======================================${RESET}
-"
+    echo -e "${BOLD}${CYAN}"
+    echo -e "         ▄▀▀▄ █▄  █ ▄▀▀▀▄ █▄  █"
+    echo -e "         █▀▀█ █ ▀▄█ █   █ █ ▀▄█"
+    echo -e "         ▀  ▀ ▀   ▀  ▀▀▀  ▀   ▀${RESET}"
+    echo -e "${DIM}  ========================================================${RESET}"
+    echo -e "           ${BOLD}${CYAN}Extreme Privacy & Anonymity Tool${RESET}"
+    echo -e "${DIM}  ========================================================${RESET}\n"
 }
 
