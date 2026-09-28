@@ -9,7 +9,12 @@ if [[ "$dns_changer_status" == "Disable" ]]; then
    # backup and configuring transparent proxy for tor
    if [[ "$ip_changer_status" == "Disable" ]]; then
 	cat $TORRC > $BACKUPDIR/torrc.bak
-	cat /etc/resolv.conf > $BACKUPDIR/resolv.conf.bak
+	if [ -L /etc/resolv.conf ]; then
+		cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.symlink.bak"
+		rm -f /etc/resolv.conf
+	else
+		cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak"
+	fi
 	iptables-save > $BACKUPDIR/iptables.rules.bak
 	ip6tables-save > "$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
 
@@ -49,6 +54,8 @@ if [[ "$dns_changer_status" == "Disable" ]]; then
 		ip6tables -P INPUT DROP
 		ip6tables -P FORWARD DROP
 		ip6tables -P OUTPUT DROP
+		ip6tables -A INPUT -i lo -j ACCEPT
+		ip6tables -A OUTPUT -o lo -j ACCEPT
 	fi
 
 	cat >"/etc/tor/torrc" <<EOF
@@ -179,7 +186,14 @@ stop_ip_changer(){
 	sysctl -w net.ipv6.conf.all.disable_ipv6=0 &> /dev/null
 	sysctl -w net.ipv6.conf.default.disable_ipv6=0 &> /dev/null
 	
-	cat $BACKUPDIR/torrc.bak > $TORRC && cat $BACKUPDIR/resolv.conf.bak > /etc/resolv.conf && rm -fr $BACKUPDIR/resolv.conf.bak $BACKUPDIR/torrc.bak $BACKUPDIR/iptables.rules.bak	
+	cat $BACKUPDIR/torrc.bak > $TORRC
+	if [ -f "$BACKUPDIR/resolv.conf.symlink.bak" ]; then
+		rm -f /etc/resolv.conf
+		mv "$BACKUPDIR/resolv.conf.symlink.bak" /etc/resolv.conf
+	elif [ -f "$BACKUPDIR/resolv.conf.bak" ]; then
+		cat "$BACKUPDIR/resolv.conf.bak" > /etc/resolv.conf
+	fi
+	rm -fr "$BACKUPDIR/resolv.conf.bak" "$BACKUPDIR/resolv.conf.symlink.bak" "$BACKUPDIR/torrc.bak" "$BACKUPDIR/iptables.rules.bak"	
 	sed -i 's/ip_changer_status="Enable"/ip_changer_status="Disable"/g' $SRCDIR/sources/config
 	info "Ip changer successfully disabled"
 
