@@ -3,6 +3,9 @@
 start_bluetooth_disabler(){
     source ${BASE_DIR}/assets/sources/config
     if [[ "$bluetooth_disabler_status" == "Disable" ]]; then
+        if ! rfkill list bluetooth | grep -qi "Soft blocked: yes"; then
+            touch "$BACKUPDIR/bluetooth_was_on"
+        fi
         rfkill block bluetooth &> /dev/null
         sed -i 's/bluetooth_disabler_status="Disable"/bluetooth_disabler_status="Enable"/g' $SRCDIR/sources/config
         info "Bluetooth disabler successfully enabled (Blocked)"
@@ -12,7 +15,10 @@ start_bluetooth_disabler(){
 }
 stop_bluetooth_disabler(){
     source ${BASE_DIR}/assets/sources/config
-    rfkill unblock bluetooth &> /dev/null
+    if [ -f "$BACKUPDIR/bluetooth_was_on" ]; then
+        rfkill unblock bluetooth &> /dev/null
+        rm -f "$BACKUPDIR/bluetooth_was_on"
+    fi
     sed -i 's/bluetooth_disabler_status="Enable"/bluetooth_disabler_status="Disable"/g' $SRCDIR/sources/config
     info "Bluetooth disabler successfully disabled (Unblocked)"
 }
