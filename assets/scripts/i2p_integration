@@ -1,0 +1,31 @@
+#!/bin/bash
+
+start_i2p_integration(){
+    source "${BASE_DIR}/assets/sources/config"
+    if [[ "$i2p_integration_status" == "Disable" ]]; then
+        info "Starting I2P Router daemon (i2pd)..."
+        
+        systemctl start i2pd &> /dev/null
+        # Wait a moment for service to bind
+        sleep 2
+        
+        if systemctl is-active --quiet i2pd; then
+            sed -i 's/i2p_integration_status="Disable"/i2p_integration_status="Enable"/g' "$SRCDIR/sources/config"
+            info "I2P Router successfully started."
+            info "I2P SOCKS5 proxy available at 127.0.0.1:4446"
+            info "I2P HTTP proxy available at 127.0.0.1:4444"
+            info "I2P Web Console available at http://127.0.0.1:7070"
+        else
+            warn "Failed to start i2pd service. Is it installed?"
+        fi
+    else
+        warn "I2P integration is already running"
+    fi
+}
+
+stop_i2p_integration(){
+    source "${BASE_DIR}/assets/sources/config"
+    systemctl stop i2pd &> /dev/null
+    sed -i 's/i2p_integration_status="Enable"/i2p_integration_status="Disable"/g' "$SRCDIR/sources/config"
+    info "I2P Router successfully disabled"
+}

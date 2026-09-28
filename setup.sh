@@ -8,7 +8,7 @@ fi
 
 echo "[*] Kurulum baslatiliyor..."
 apt-get update
-apt-get install -y make tar tor curl python3 python3-scapy network-manager obfs4proxy proxychains4 rfkill secure-delete iptables macchanger
+apt-get install -y make tar tor curl python3 python3-scapy network-manager obfs4proxy proxychains4 rfkill secure-delete iptables macchanger i2pd
 
 make install
 

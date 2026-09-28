@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     iptables \
     sudo \
     macchanger \
+    i2pd \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

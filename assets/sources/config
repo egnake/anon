@@ -42,6 +42,8 @@ os_obfuscation_status="Disable"
 bluetooth_disabler_status="Disable"
 process_obfuscation_status="Disable"
 proxychains_integration_status="Disable"
+anti_cold_boot_status="Disable"
+i2p_integration_status="Disable"
 anti_mitm_pid="0"
 
 # UI Functions
