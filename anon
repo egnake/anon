@@ -107,20 +107,21 @@ interactive_menu() {
     while true; do
         clear
         banner
-        echo -e "  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
-        echo -e "  ${BOLD}${CYAN}[?] $title${RESET}\n"
+        echo -e "                  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
+        echo -e "                  ${BOLD}${CYAN}[?] $title${RESET}\n"
 
         for i in "${!opts[@]}"; do
             if [[ $i -eq $selected ]]; then
-                echo -e "   ${BOLD}${GREEN}  > ${opts[$i]}${RESET}"
+                echo -e "                   ${BOLD}${GREEN}  > ${opts[$i]}${RESET}"
             else
-                echo -e "   ${DIM}    ${opts[$i]}${RESET}"
+                echo -e "                   ${DIM}    ${opts[$i]}${RESET}"
             fi
         done
 
-        echo -e "\n  ${DIM}────────────────────────────────────────────────────────${RESET}"
-        [[ -n "$stat" ]] && echo -e "  ${YELLOW}ℹ $stat${RESET}\n"
-        echo -e "  ${DIM}Use UP/DOWN arrows to navigate. Press ENTER to select.${RESET}"
+        echo -e "
+          ${DIM}────────────────────────────────────────────────────────${RESET}"
+        [[ -n "$stat" ]] && echo -e "                  ${YELLOW}ℹ $stat${RESET}\n"
+        echo -e "                  ${DIM}Use UP/DOWN arrows to navigate. Press ENTER to select.${RESET}"
 
         read -rsn1 key
         if [[ "$key" == $'\x1b' ]]; then
@@ -153,28 +154,31 @@ interactive_toggles() {
     while true; do
         clear
         banner
-        echo -e "  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
-        echo -e "  ${BOLD}${CYAN}[?] CUSTOM MODULE CONFIGURATION:${RESET}\n"
+        echo -e "                                  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
+        echo -e "                                  ${BOLD}${CYAN}[?] CUSTOM MODULE CONFIGURATION:${RESET}\n"
 
         for i in "${!options[@]}"; do
             local mark=" "
             [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}x${RESET}"
             
             if [[ $i -eq $selected ]]; then
-                echo -e "   ${BOLD}${CYAN}  > [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
+                echo -e "                                   ${BOLD}${CYAN}  > [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
             else
-                echo -e "   ${DIM}    [${mark}${DIM}] ${options[$i]}${RESET}"
+                echo -e "                                   ${DIM}    [${mark}${DIM}] ${options[$i]}${RESET}"
             fi
         done
 
         if [[ $selected -eq 16 ]]; then
-            echo -e "\n   ${BOLD}${YELLOW}  > [ BACK TO MAIN MENU ]${RESET}"
+            echo -e "
+           ${BOLD}${YELLOW}  > [ BACK TO MAIN MENU ]${RESET}"
         else
-            echo -e "\n   ${DIM}    [ BACK TO MAIN MENU ]${RESET}"
+            echo -e "
+           ${DIM}    [ BACK TO MAIN MENU ]${RESET}"
         fi
 
-        echo -e "\n  ${DIM}────────────────────────────────────────────────────────${RESET}"
-        echo -e "  ${DIM}Use UP/DOWN arrows to navigate. Press ENTER to toggle. Select BACK to return.${RESET}"
+        echo -e "
+          ${DIM}────────────────────────────────────────────────────────${RESET}"
+        echo -e "                                  ${DIM}Use UP/DOWN arrows to navigate. Press ENTER to toggle. Select BACK to return.${RESET}"
 
         read -rsn1 key
         if [[ "$key" == $'\x1b' ]]; then
@@ -227,7 +231,7 @@ while true; do
             esac
             ;;
         1) interactive_toggles ;;
-        2) status; exit 0 ;;
+        2) dashboard ;;
         3) update; exit 0 ;;
         4) break ;;
         5) echo -e "\n\e[32mExiting Anon Setup...\e[0m"; exit 0 ;;
@@ -377,8 +381,11 @@ dashboard() {
         print_live_status "Tor-Bridges" "$tor_bridges_status"
         print_live_status "Kill-Switch" "$kill_switch_status"
         
-        echo -e "\n\n ${DIM}(Press Ctrl+C to exit dashboard)${RESET}"
-        sleep 2
+        echo -e "\n\n ${DIM}(Press 'q' to return to menu)${RESET}"
+        read -t 2 -n 1 key
+        if [[ "$key" == "q" || "$key" == "Q" ]]; then
+            break
+        fi
     done
 }
 
