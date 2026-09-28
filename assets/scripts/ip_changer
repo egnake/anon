@@ -95,8 +95,10 @@ EOF
 	      systemctl stop tor.service
 	fi
 	
-	sysctl -w net.ipv6.conf.all.disable_ipv6=1 &> /dev/null
-	sysctl -w net.ipv6.conf.default.disable_ipv6=1 &> /dev/null
+	if ! grep -qi microsoft /proc/version; then
+		sysctl -w net.ipv6.conf.all.disable_ipv6=1 &> /dev/null
+		sysctl -w net.ipv6.conf.default.disable_ipv6=1 &> /dev/null
+	fi
 	systemctl start tor.service &>/dev/null
 	sed -i 's/ip_changer_status="Disable"/ip_changer_status="Enable"/g' $SRCDIR/sources/config
 	info "Ip changer successfully enabled"
@@ -186,8 +188,10 @@ stop_ip_changer(){
 	if command -v ip6tables &> /dev/null && [ -f "$BACKUPDIR/ip6tables.rules.bak" ]; then
 		ip6tables-restore <"$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
 	fi
-	sysctl -w net.ipv6.conf.all.disable_ipv6=0 &> /dev/null
-	sysctl -w net.ipv6.conf.default.disable_ipv6=0 &> /dev/null
+	if ! grep -qi microsoft /proc/version; then
+		sysctl -w net.ipv6.conf.all.disable_ipv6=0 &> /dev/null
+		sysctl -w net.ipv6.conf.default.disable_ipv6=0 &> /dev/null
+	fi
 	
 	cat $BACKUPDIR/torrc.bak > $TORRC
 	if [ -f "$BACKUPDIR/resolv.conf.symlink.bak" ]; then

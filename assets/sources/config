@@ -74,12 +74,37 @@ input() {
 
 banner() {
     clear
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    
+    local art1="▄▀▀▄ █▄  █ ▄▀▀▀▄ █▄  █"
+    local art2="█▀▀█ █ ▀▄█ █   █ █ ▀▄█"
+    local art3="▀  ▀ ▀   ▀  ▀▀▀  ▀   ▀"
+    local sub="Extreme Privacy & Anonymity Tool"
+    
+    local art_len=${#art1}
+    local sub_len=${#sub}
+    local bar_len=56
+    
+    local art_pad=$(( (width - art_len) / 2 ))
+    local sub_pad=$(( (width - sub_len) / 2 ))
+    local bar_pad=$(( (width - bar_len) / 2 ))
+    
+    (( art_pad < 0 )) && art_pad=0
+    (( sub_pad < 0 )) && sub_pad=0
+    (( bar_pad < 0 )) && bar_pad=0
+    
+    echo ""
     echo -e "${BOLD}${CYAN}"
-    echo -e "         ▄▀▀▄ █▄  █ ▄▀▀▀▄ █▄  █"
-    echo -e "         █▀▀█ █ ▀▄█ █   █ █ ▀▄█"
-    echo -e "         ▀  ▀ ▀   ▀  ▀▀▀  ▀   ▀${RESET}"
-    echo -e "${DIM}  ========================================================${RESET}"
-    echo -e "           ${BOLD}${CYAN}Extreme Privacy & Anonymity Tool${RESET}"
-    echo -e "${DIM}  ========================================================${RESET}\n"
+    printf "%${art_pad}s%s\n" "" "$art1"
+    printf "%${art_pad}s%s\n" "" "$art2"
+    printf "%${art_pad}s%s${RESET}\n" "" "$art3"
+    printf "${DIM}%${bar_pad}s" ""
+    printf '═%.0s' $(seq 1 $bar_len)
+    printf "${RESET}\n"
+    printf "%${sub_pad}s${BOLD}${CYAN}%s${RESET}\n" "" "$sub"
+    printf "${DIM}%${bar_pad}s" ""
+    printf '═%.0s' $(seq 1 $bar_len)
+    printf "${RESET}\n\n"
 }
 

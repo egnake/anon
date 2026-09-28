@@ -96,6 +96,123 @@ fi
 
 options=("Anti Mitm" "Log killer" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration")
 
+
+# ══════════════════════════════════════════════════════════════════
+#  ANON TUI - Interactive Terminal User Interface
+# ══════════════════════════════════════════════════════════════════
+
+# ── Centering helper ──
+center() {
+    local text="$1"
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    # Strip ANSI codes for length calculation
+    local stripped
+    stripped=$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    local len=${#stripped}
+    local pad=$(( (width - len) / 2 ))
+    (( pad < 0 )) && pad=0
+    printf "%${pad}s" ""
+    echo -e "$text"
+}
+
+# ── Box drawing ──
+draw_line() {
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    local inner=$(( width - 4 ))
+    (( inner > 72 )) && inner=72
+    local pad=$(( (width - inner - 2) / 2 ))
+    (( pad < 0 )) && pad=0
+    printf "%${pad}s" ""
+    printf "${DIM}"
+    printf "╔"
+    printf '═%.0s' $(seq 1 $inner)
+    printf "╗"
+    printf "${RESET}\n"
+}
+
+draw_mid() {
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    local inner=$(( width - 4 ))
+    (( inner > 72 )) && inner=72
+    local pad=$(( (width - inner - 2) / 2 ))
+    (( pad < 0 )) && pad=0
+    printf "%${pad}s" ""
+    printf "${DIM}"
+    printf "╠"
+    printf '═%.0s' $(seq 1 $inner)
+    printf "╣"
+    printf "${RESET}\n"
+}
+
+draw_end() {
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    local inner=$(( width - 4 ))
+    (( inner > 72 )) && inner=72
+    local pad=$(( (width - inner - 2) / 2 ))
+    (( pad < 0 )) && pad=0
+    printf "%${pad}s" ""
+    printf "${DIM}"
+    printf "╚"
+    printf '═%.0s' $(seq 1 $inner)
+    printf "╝"
+    printf "${RESET}\n"
+}
+
+draw_sep() {
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    local inner=$(( width - 4 ))
+    (( inner > 72 )) && inner=72
+    local pad=$(( (width - inner - 2) / 2 ))
+    (( pad < 0 )) && pad=0
+    printf "%${pad}s" ""
+    printf "${DIM}"
+    printf "║"
+    printf '─%.0s' $(seq 1 $inner)
+    printf "║"
+    printf "${RESET}\n"
+}
+
+boxline() {
+    local text="$1"
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    local inner=$(( width - 4 ))
+    (( inner > 72 )) && inner=72
+    local pad=$(( (width - inner - 2) / 2 ))
+    (( pad < 0 )) && pad=0
+    
+    local stripped
+    stripped=$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    local tlen=${#stripped}
+    local rpad=$(( inner - tlen - 1 ))
+    (( rpad < 0 )) && rpad=0
+    
+    printf "%${pad}s" ""
+    printf "${DIM}║${RESET} "
+    echo -ne "$text"
+    printf "%${rpad}s" ""
+    printf "${DIM}║${RESET}\n"
+}
+
+emptybox() {
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    local inner=$(( width - 4 ))
+    (( inner > 72 )) && inner=72
+    local pad=$(( (width - inner - 2) / 2 ))
+    (( pad < 0 )) && pad=0
+    printf "%${pad}s" ""
+    printf "${DIM}║${RESET}"
+    printf "%${inner}s" ""
+    printf "${DIM}║${RESET}\n"
+}
+
+# ── Arrow-key interactive menu ──
 interactive_menu() {
     local title="$1"
     shift
@@ -103,95 +220,130 @@ interactive_menu() {
     local selected=0
     local key
 
-    tput civis
+    tput civis 2>/dev/null
     while true; do
         clear
         banner
-        echo -e "                  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
-        echo -e "                  ${BOLD}${CYAN}[?] $title${RESET}\n"
+        draw_line
+        emptybox
+        boxline "${BOLD}${CYAN}  $title${RESET}"
+        emptybox
+        draw_sep
 
         for i in "${!opts[@]}"; do
             if [[ $i -eq $selected ]]; then
-                echo -e "                   ${BOLD}${GREEN}  > ${opts[$i]}${RESET}"
+                boxline "${BOLD}${GREEN}  ▸ ${opts[$i]}${RESET}"
             else
-                echo -e "                   ${DIM}    ${opts[$i]}${RESET}"
+                boxline "${DIM}    ${opts[$i]}${RESET}"
             fi
         done
 
-        echo -e "
-          ${DIM}────────────────────────────────────────────────────────${RESET}"
-        [[ -n "$stat" ]] && echo -e "                  ${YELLOW}ℹ $stat${RESET}\n"
-        echo -e "                  ${DIM}Use UP/DOWN arrows to navigate. Press ENTER to select.${RESET}"
+        draw_sep
+        emptybox
+        [[ -n "$stat" ]] && boxline "${YELLOW}  ◆ $stat${RESET}"
+        boxline "${DIM}  ↑↓ Navigate  ⏎ Select  q Quit${RESET}"
+        emptybox
+        draw_end
 
         read -rsn1 key
         if [[ "$key" == $'\x1b' ]]; then
             read -rsn2 key
             if [[ "$key" == "[A" ]]; then
                 ((selected--))
-                if (( selected < 0 )); then selected=$((${#opts[@]} - 1)); fi
+                (( selected < 0 )) && selected=$((${#opts[@]} - 1))
             elif [[ "$key" == "[B" ]]; then
                 ((selected++))
-                if (( selected >= ${#opts[@]} )); then selected=0; fi
+                (( selected >= ${#opts[@]} )) && selected=0
             fi
         elif [[ "$key" == "" ]]; then
             break
         elif [[ "$key" == "q" || "$key" == "Q" ]]; then
-            tput cnorm
+            tput cnorm 2>/dev/null
             clear
-            echo -e "\n\e[32mExiting Anon Setup...\e[0m"
             exit 0
         fi
     done
-    tput cnorm
+    tput cnorm 2>/dev/null
     SELECTED_INDEX=$selected
 }
 
+# ── Arrow-key toggle menu for modules ──
 interactive_toggles() {
     local selected=0
     local key
+    local total=${#options[@]}
 
-    tput civis
+    tput civis 2>/dev/null
     while true; do
         clear
         banner
-        echo -e "                                  ${DIM}────────────────────────────────────────────────────────${RESET}\n"
-        echo -e "                                  ${BOLD}${CYAN}[?] CUSTOM MODULE CONFIGURATION:${RESET}\n"
-
-        for i in "${!options[@]}"; do
-            local mark=" "
-            [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}x${RESET}"
-            
+        draw_line
+        emptybox
+        boxline "${BOLD}${CYAN}  CUSTOM MODULE CONFIGURATION${RESET}"
+        emptybox
+        draw_sep
+        
+        # Network & Routing
+        boxline "${BOLD}${BLUE}  ── Network & Routing ──${RESET}"
+        for i in 2 3 4 13 11 15; do
+            local mark="${RED}✗${RESET}"
+            [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
             if [[ $i -eq $selected ]]; then
-                echo -e "                                   ${BOLD}${CYAN}  > [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
+                boxline "${BOLD}${CYAN}  ▸ [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
             else
-                echo -e "                                   ${DIM}    [${mark}${DIM}] ${options[$i]}${RESET}"
+                boxline "    [${mark}] ${options[$i]}"
             fi
         done
-
-        if [[ $selected -eq 16 ]]; then
-            echo -e "
-           ${BOLD}${YELLOW}  > [ BACK TO MAIN MENU ]${RESET}"
+        
+        emptybox
+        boxline "${BOLD}${MAGENTA}  ── System Obfuscation ──${RESET}"
+        for i in 5 6 7 8 10; do
+            local mark="${RED}✗${RESET}"
+            [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
+            if [[ $i -eq $selected ]]; then
+                boxline "${BOLD}${CYAN}  ▸ [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
+            else
+                boxline "    [${mark}] ${options[$i]}"
+            fi
+        done
+        
+        emptybox
+        boxline "${BOLD}${RED}  ── Active Defense ──${RESET}"
+        for i in 0 1 9 12 14; do
+            local mark="${RED}✗${RESET}"
+            [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
+            if [[ $i -eq $selected ]]; then
+                boxline "${BOLD}${CYAN}  ▸ [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
+            else
+                boxline "    [${mark}] ${options[$i]}"
+            fi
+        done
+        
+        emptybox
+        if [[ $selected -eq $total ]]; then
+            boxline "${BOLD}${YELLOW}  ▸ ◀ BACK TO MAIN MENU${RESET}"
         else
-            echo -e "
-           ${DIM}    [ BACK TO MAIN MENU ]${RESET}"
+            boxline "${DIM}    ◀ BACK TO MAIN MENU${RESET}"
         fi
 
-        echo -e "
-          ${DIM}────────────────────────────────────────────────────────${RESET}"
-        echo -e "                                  ${DIM}Use UP/DOWN arrows to navigate. Press ENTER to toggle. Select BACK to return.${RESET}"
+        draw_sep
+        emptybox
+        boxline "${DIM}  ↑↓ Navigate  ⏎ Toggle  q Quit${RESET}"
+        emptybox
+        draw_end
 
         read -rsn1 key
         if [[ "$key" == $'\x1b' ]]; then
             read -rsn2 key
             if [[ "$key" == "[A" ]]; then
                 ((selected--))
-                if (( selected < 0 )); then selected=16; fi
+                (( selected < 0 )) && selected=$total
             elif [[ "$key" == "[B" ]]; then
                 ((selected++))
-                if (( selected > 16 )); then selected=0; fi
+                (( selected > total )) && selected=0
             fi
         elif [[ "$key" == "" ]]; then
-            if [[ $selected -eq 16 ]]; then
+            if [[ $selected -eq $total ]]; then
                 break
             else
                 if [[ "${choices[$selected]}" == "✓" ]]; then
@@ -201,73 +353,135 @@ interactive_toggles() {
                 fi
             fi
         elif [[ "$key" == "q" || "$key" == "Q" ]]; then
-            tput cnorm
+            tput cnorm 2>/dev/null
             clear
-            echo -e "\n\e[32mExiting Anon Setup...\e[0m"
             exit 0
         fi
     done
-    tput cnorm
+    tput cnorm 2>/dev/null
 }
+
+# ── Execute selected modules ──
+execute_modules() {
+    clear
+    banner
+    draw_line
+    emptybox
+    boxline "${BOLD}${CYAN}  APPLYING CONFIGURATION...${RESET}"
+    emptybox
+    draw_end
+    echo ""
+
+    # Run tor_bridges first if selected so ip_changer can use it
+    if [[ "${choices[13]}" ]]; then
+        $(echo start_${options[13]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
+        choices[13]=""
+    fi
+
+    # Run mac_changer BEFORE anti_mitm
+    if [[ "${choices[4]}" ]]; then
+        $(echo start_${options[4]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
+        choices[4]=""
+    fi
+
+    for opt in "${!options[@]}"; do
+        start_anti_mitm(){
+            python3 "${BASE_DIR}/assets/scripts/anti_mitm" &
+            antimitmpid="$!"
+            sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' $SRCDIR/sources/config
+            info "Anti mitm successfully enabled"
+        }
+
+        for st in "${!options[@]}"; do
+            if [[ -n "${choices[opt]}" ]] && [[ "${options[opt]}" == "${options[st]}" ]]; then
+                $(echo "start_${options[st]}" | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
+            fi
+        done
+    done
+    
+    echo ""
+    draw_line
+    emptybox
+    boxline "${GREEN}${BOLD}  ✓ All selected modules have been activated.${RESET}"
+    emptybox
+    draw_end
+    echo ""
+    echo -e "  ${DIM}Press any key to continue to Operations Menu...${RESET}"
+    read -rsn1
+}
+
+# ── Post-execution operations menu ──
+operations_loop() {
+    while true; do
+        local ops_opts=("Live Dashboard" "System Status" "Stop All Modules" "Back to Configuration" "Exit Anon")
+        interactive_menu "OPERATIONS MENU:" "${ops_opts[@]}"
+        case $SELECTED_INDEX in
+            0) dashboard ;;
+            1) 
+                clear
+                banner
+                source $SRCDIR/sources/config
+                status
+                echo -e "  ${DIM}Press any key to return...${RESET}"
+                read -rsn1
+                ;;
+            2)
+                clear
+                banner
+                stop
+                echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                read -rsn1
+                ;;
+            3) return 1 ;;
+            4) clear; exit 0 ;;
+        esac
+    done
+}
+
+# ══════════════════════════════════════════════════════════════════
+#  MAIN UI LOOP
+# ══════════════════════════════════════════════════════════════════
 
 stat=""
 while true; do
-    main_opts=("Load Predefined Security Profile" "Custom Module Configuration" "Live Status & Dashboard" "System Maintenance (Update)" "APPLY CONFIGURATION & START" "Exit")
+    main_opts=("Load Security Profile" "Custom Module Configuration" "Live Dashboard" "System Status" "System Update" "APPLY & START" "Exit")
     interactive_menu "MAIN MENU:" "${main_opts[@]}"
     stat=""
     case $SELECTED_INDEX in
         0) 
-            prof_opts=("Paranoia Mode (Max Security)" "Quick Surf (Fast Anonymity)" "Pentest Mode (Offensive)" "Darknet Explorer (Tor + I2P)" "Physical Lockdown (Anti-Forensics)" "The Ghost (Ultimate / 16 Modules)" "Back to Main Menu")
-            interactive_menu "Select a Security Profile to Load:" "${prof_opts[@]}"
+            prof_opts=("Paranoia Mode  ─  Max Security" "Quick Surf  ─  Fast Anonymity" "Pentest Mode  ─  Offensive" "Darknet Explorer  ─  Tor + I2P" "Physical Lockdown  ─  Anti-Forensics" "The Ghost  ─  Ultimate (All 16)" "◀ Back")
+            interactive_menu "SELECT SECURITY PROFILE:" "${prof_opts[@]}"
             for i in "${!choices[@]}"; do choices[i]=""; done
             case $SELECTED_INDEX in
-                0) for i in 0 1 2 3 4 5 6 7 12 13 14; do choices[$i]="✓"; done; stat="Loaded: Paranoia Mode" ;;
-                1) for i in 2 3 7; do choices[$i]="✓"; done; stat="Loaded: Quick Surf Mode" ;;
-                2) for i in 0 2 4 6 8 10 11; do choices[$i]="✓"; done; stat="Loaded: Pentest Mode" ;;
-                3) for i in 2 3 13 15; do choices[$i]="✓"; done; stat="Loaded: Darknet Explorer" ;;
-                4) for i in 0 9 12 14; do choices[$i]="✓"; done; stat="Loaded: Physical Lockdown" ;;
-                5) for i in {0..15}; do choices[$i]="✓"; done; stat="Loaded: The Ghost (Ultimate)" ;;
+                0) for i in 0 1 2 3 4 5 6 7 12 13 14; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
+                1) for i in 2 3 7; do choices[$i]="✓"; done; stat="◆ Loaded: Quick Surf" ;;
+                2) for i in 0 2 4 6 8 10 11; do choices[$i]="✓"; done; stat="◆ Loaded: Pentest Mode" ;;
+                3) for i in 2 3 13 15; do choices[$i]="✓"; done; stat="◆ Loaded: Darknet Explorer" ;;
+                4) for i in 0 9 12 14; do choices[$i]="✓"; done; stat="◆ Loaded: Physical Lockdown" ;;
+                5) for i in {0..15}; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
                 6) stat="" ;;
             esac
             ;;
         1) interactive_toggles ;;
         2) dashboard ;;
-        3) update; exit 0 ;;
-        4) break ;;
-        5) echo -e "\n\e[32mExiting Anon Setup...\e[0m"; exit 0 ;;
+        3)
+            clear
+            banner
+            source $SRCDIR/sources/config
+            status
+            echo -e "  ${DIM}Press any key to return...${RESET}"
+            read -rsn1
+            ;;
+        4) update; exit 0 ;;
+        5)
+            execute_modules
+            operations_loop
+            if [[ $? -eq 1 ]]; then
+                continue
+            fi
+            ;;
+        6) clear; exit 0 ;;
     esac
-done
-
-banner
-#detect selected features and run
-# Run tor_bridges first if selected so that ip_changer can use it
-if [[ "${choices[13]}" ]]; then
-	$(echo start_${options[13]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
-	choices[13]=""
-fi
-
-# Run mac_changer BEFORE anti_mitm. 
-# mac_changer brings the network interface down/up which crashes scapy (anti_mitm) if run after it.
-if [[ "${choices[4]}" ]]; then
-	$(echo start_${options[4]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
-	choices[4]=""
-fi
-
-for opt in "${!options[@]}"; do
-
-	start_anti_mitm(){
-	python3 "${BASE_DIR}/assets/scripts/anti_mitm" &
-	antimitmpid="$!"
-	sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' $SRCDIR/sources/config
-	info "Anti mitm successfully enabled"
-	}
-
-	for st in "${!options[@]}"; do
-	  if [[ -n "${choices[opt]}" ]] && [[ "${options[opt]}" == "${options[st]}" ]]; then
-		 $(echo "start_${options[st]}" | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
-	  fi
-	done
-
 done
 
 }
@@ -332,62 +546,97 @@ echo -e " ${DIM}─────────────────────�
 
 }
 
+
 dashboard() {
+    tput civis 2>/dev/null
     while true; do
         clear
-        echo -e " ${BOLD}${MAGENTA}ANON LIVE DASHBOARD${RESET}"
-        echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
-        
-        # IP Information
-        local current_ip=$(curl -s --max-time 10 https://api.ipify.org || echo "Unknown/Offline")
-        if curl -s --max-time 10 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
-            echo -e " ${CYAN}● Network Status${RESET} : ${GREEN}${BOLD}SECURE (Tor Routing Active)${RESET}"
-        else
-            echo -e " ${CYAN}○ Network Status${RESET} : ${RED}${BOLD}UNSECURE (Direct Connection)${RESET}"
-        fi
-        echo -e " ${CYAN}● Current IP${RESET}     : ${YELLOW}${current_ip}${RESET}"
-        
-        # Network Traffic
-        local interface=$(ip route | grep default | awk '{print $5}' | head -n 1)
-        if [ -n "$interface" ] && [ -f "/sys/class/net/$interface/statistics/rx_bytes" ]; then
-            local rx_bytes=$(cat /sys/class/net/$interface/statistics/rx_bytes)
-            local tx_bytes=$(cat /sys/class/net/$interface/statistics/tx_bytes)
-            local rx_mb=$(awk "BEGIN {printf \"%.2f\", $rx_bytes/1048576}")
-            local tx_mb=$(awk "BEGIN {printf \"%.2f\", $tx_bytes/1048576}")
-            echo -e " ${CYAN}● Traffic (TX/RX)${RESET}: ${GREEN}${tx_mb} MB${RESET} / ${GREEN}${rx_mb} MB${RESET} on ${interface}"
-        fi
-        
-        echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
-        echo -e " ${BOLD}ACTIVE MODULES:${RESET}"
+        banner
+        draw_line
+        emptybox
+        boxline "${BOLD}${MAGENTA}  ◈ LIVE DASHBOARD${RESET}"
+        emptybox
+        draw_sep
         
         source $SRCDIR/sources/config
-        print_live_status() {
-            if [ "$2" == "Enable" ]; then
-                echo -ne " ${GREEN}[ON]${RESET} $1   "
+        
+        # Network status - use Tor SOCKS proxy for check
+        local tor_check
+        tor_check=$(curl -s --max-time 5 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
+        
+        if echo "$tor_check" | grep -q '"IsTor":true'; then
+            local current_ip
+            current_ip=$(echo "$tor_check" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
+            boxline "${GREEN}  ● Network    ${BOLD}SECURE${RESET}${GREEN} (Tor Active)${RESET}"
+            boxline "${CYAN}  ● Exit IP    ${YELLOW}${current_ip:-Hidden}${RESET}"
+        else
+            boxline "${RED}  ○ Network    ${BOLD}UNSECURE${RESET}${RED} (Direct)${RESET}"
+            local direct_ip
+            direct_ip=$(curl -s --max-time 3 https://api.ipify.org 2>/dev/null || echo "Offline")
+            boxline "${CYAN}  ● IP         ${YELLOW}${direct_ip}${RESET}"
+        fi
+        
+        # Traffic stats
+        local iface
+        iface=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1)
+        if [[ -n "$iface" ]] && [[ -f "/sys/class/net/$iface/statistics/rx_bytes" ]]; then
+            local rx=$(cat /sys/class/net/$iface/statistics/rx_bytes)
+            local tx=$(cat /sys/class/net/$iface/statistics/tx_bytes)
+            local rx_mb=$(awk "BEGIN {printf \"%.1f\", $rx/1048576}")
+            local tx_mb=$(awk "BEGIN {printf \"%.1f\", $tx/1048576}")
+            boxline "${CYAN}  ● Traffic    ${GREEN}↑${tx_mb}MB ${CYAN}↓${rx_mb}MB${RESET}${DIM} on ${iface}${RESET}"
+        fi
+        
+        draw_sep
+        boxline "${BOLD}${WHITE}  ACTIVE MODULES:${RESET}"
+        emptybox
+        
+        local mod_line=""
+        local count=0
+        
+        print_mod() {
+            if [[ "$2" == "Enable" ]]; then
+                mod_line+="${GREEN}■${RESET}$1  "
+                ((count++))
             fi
         }
         
-        print_live_status "Anti-MITM" "$anti_mitm_status"
-        print_live_status "IP-Changer" "$ip_changer_status"
-        print_live_status "DNS-Changer" "$dns_changer_status"
-        print_live_status "MAC-Changer" "$mac_changer_status"
-        print_live_status "Timezone" "$timezone_changer_status"
-        print_live_status "Hostname" "$hostname_changer_status"
-        print_live_status "Browser-Anon" "$browser_anonymization_status"
-        print_live_status "OS-Obfuscation" "$os_obfuscation_status"
-        print_live_status "Bluetooth-Off" "$bluetooth_disabler_status"
-        print_live_status "Proc-Obfuscation" "$process_obfuscation_status"
-        print_live_status "Proxychains" "$proxychains_integration_status"
-        print_live_status "Tor-Bridges" "$tor_bridges_status"
-        print_live_status "Kill-Switch" "$kill_switch_status"
+        print_mod "MITM " "$anti_mitm_status"
+        print_mod "IP   " "$ip_changer_status"
+        print_mod "DNS  " "$dns_changer_status"
+        print_mod "MAC  " "$mac_changer_status"
+        print_mod "TZ   " "$timezone_changer_status"
+        print_mod "HOST " "$hostname_changer_status"
+        print_mod "BRWS " "$browser_anonymization_status"
+        print_mod "OS   " "$os_obfuscation_status"
+        print_mod "BT   " "$bluetooth_disabler_status"
+        print_mod "PROC " "$process_obfuscation_status"
+        print_mod "PRXY " "$proxychains_integration_status"
+        print_mod "TOR  " "$tor_bridges_status"
+        print_mod "KILL " "$kill_switch_status"
+        print_mod "I2P  " "$i2p_integration_status"
         
-        echo -e "\n\n ${DIM}(Press 'q' to return to menu)${RESET}"
-        read -t 2 -n 1 key
+        if [[ $count -eq 0 ]]; then
+            boxline "${DIM}  No modules active${RESET}"
+        else
+            boxline "  ${mod_line}"
+        fi
+        
+        emptybox
+        draw_sep
+        emptybox
+        boxline "${DIM}  Press ${BOLD}q${RESET}${DIM} to return to menu  ·  Refreshes every 3s${RESET}"
+        emptybox
+        draw_end
+        
+        read -t 3 -rsn1 key
         if [[ "$key" == "q" || "$key" == "Q" ]]; then
             break
         fi
     done
+    tput cnorm 2>/dev/null
 }
+
 
 browser(){
     source "${BASE_DIR}/assets/scripts/disposable_browser"

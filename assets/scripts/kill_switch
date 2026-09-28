@@ -11,9 +11,29 @@ start_kill_switch(){
 		iptables -P FORWARD DROP
 		iptables -P OUTPUT DROP
 		
-		# Allow loopback
 		iptables -A INPUT -i lo -j ACCEPT
 		iptables -A OUTPUT -o lo -j ACCEPT
+		
+		# Allow established connections back in (critical for Tor responses)
+		iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+		iptables -A OUTPUT -m state --state ESTABLISHED -j ACCEPT
+		
+		# Allow Tor daemon to reach the network
+		if systemctl is-active tor.service >/dev/null 2>&1; then
+			tor_uid="$(id -u debian-tor 2>/dev/null)"
+			if [[ -n "$tor_uid" ]]; then
+				iptables -A OUTPUT -m owner --uid-owner $tor_uid -j ACCEPT
+			fi
+			# Allow local Tor TransPort and DNSPort (transparent proxy)
+			iptables -A OUTPUT -d 127.0.0.1/32 -p tcp --dport 9040 -j ACCEPT
+			iptables -A OUTPUT -d 127.0.0.1/32 -p udp --dport 5353 -j ACCEPT
+			iptables -A OUTPUT -d 127.0.0.1/32 -p tcp --dport 9050 -j ACCEPT
+		fi
+		
+		# Allow LAN/WSL traffic
+		for lan in 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+			iptables -A OUTPUT -d $lan -j ACCEPT
+		done
 		
 		sed -i 's/kill_switch_status="Disable"/kill_switch_status="Enable"/g' $SRCDIR/sources/config
 		info "Network Kill Switch successfully enabled. All external traffic is blocked."
