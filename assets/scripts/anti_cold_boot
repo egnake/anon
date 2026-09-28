@@ -28,11 +28,15 @@ start_anti_cold_boot(){
 		sysctl -w vm.oom_dump_tasks=0 &>/dev/null
 		
 		# Secure memory wipe (RAM)
-		if command -v sdmem &> /dev/null; then
-			info "Wiping free RAM securely (this may take a moment)..."
-			sdmem -f -ll &>/dev/null
+		if grep -qi microsoft /proc/version; then
+			warn "WSL environment detected! Skipping RAM/Swap wipe to prevent fatal E_UNEXPECTED host crash."
 		else
-			warn "sdmem not found! Skipping RAM wipe. Consider installing secure-delete."
+			if command -v sdmem &> /dev/null; then
+				info "Wiping free RAM securely (this may take a moment)..."
+				sdmem -f -ll &>/dev/null
+			else
+				warn "sdmem not found! Skipping RAM wipe. Consider installing secure-delete."
+			fi
 		fi
 		
 		sed -i 's/anti_cold_boot_status="Disable"/anti_cold_boot_status="Enable"/g' "$SRCDIR/sources/config"
