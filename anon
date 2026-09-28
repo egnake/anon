@@ -243,9 +243,9 @@ interactive_menu() {
         [[ -n "$stat" ]] && boxline "${YELLOW}  ◆ $stat${RESET}"
         # Show active module count if config is loaded
         if [[ -f "$SRCDIR/sources/config" ]]; then
-            local active_count
-            active_count=$(grep -c 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null || echo 0)
-            if [[ $active_count -gt 0 ]]; then
+            local active_count=0
+            active_count=$(grep -c 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null) || true
+            if [[ "$active_count" -gt 0 ]] 2>/dev/null; then
                 boxline "${GREEN}  ● ${active_count} module(s) active${RESET}"
             fi
         fi
