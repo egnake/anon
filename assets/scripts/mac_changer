@@ -24,21 +24,21 @@ if [[ "$mac_changer_status" == "Disable" ]]; then
 	while :
 	do
 	RAND_MAC() {
-
-	gen() {
-	NUM="$(tr -dc '0-9a-f' </dev/urandom | head -c 2)"
-	echo -n "$NUM:"
-	}
-
-	for c in {1..6}; do
-
-	if [ "$c" -lt "6" ]; then
-		gen
-	else
-		gen | tr -d ':'
-	fi
-
-	done
+		local hex_chars="0123456789abcdef"
+		local first_hex="${hex_chars:$((RANDOM%16)):1}"
+		local second_hex_opts=("2" "6" "a" "e")
+		local second_hex="${second_hex_opts[$((RANDOM%4))]}"
+		
+		echo -n "${first_hex}${second_hex}:"
+		
+		for c in {2..6}; do
+			NUM="$(tr -dc '0-9a-f' </dev/urandom | head -c 2)"
+			if [ "$c" -lt "6" ]; then
+				echo -n "$NUM:"
+			else
+				echo -n "$NUM"
+			fi
+		done
 	}
 	out=$(RAND_MAC)
 	ip link set $IFACE down
