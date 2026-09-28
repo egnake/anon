@@ -34,7 +34,13 @@ EOF
 }
 stop_process_obfuscation(){
     source "${BASE_DIR}/assets/sources/config"
-    rm -f /usr/local/bin/nmap /usr/local/bin/sqlmap
+    
+    if grep -q "systemd-kworker\|systemd-resolve" /usr/local/bin/nmap 2>/dev/null; then
+        rm -f /usr/local/bin/nmap
+    fi
+    if grep -q "systemd-kworker\|systemd-resolve" /usr/local/bin/sqlmap 2>/dev/null; then
+        rm -f /usr/local/bin/sqlmap
+    fi
     
     # Securely wipe the RAM-based spoofed binaries
     if command -v srm &> /dev/null; then
