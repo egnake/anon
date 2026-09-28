@@ -18,7 +18,7 @@ start_disposable_browser() {
     echo -e "\n ${CYAN}ℹ INFO:${RESET} Initializing true RAM-based disposable browser..."
     
     # Create temp directory for the profile
-    local ram_profile=$(mktemp -d -t anon_browser_XXXXXX)
+    local ram_profile=$(mktemp -d -p /dev/shm -t anon_browser_XXXXXX)
     
     echo -e " ${CYAN}ℹ INFO:${RESET} Hardening profile with anon OPSEC configurations..."
     # Inject anon.js configuration if it exists
