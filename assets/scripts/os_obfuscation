@@ -3,6 +3,13 @@
 start_os_obfuscation(){
     source ${BASE_DIR}/assets/sources/config
     if [[ "$os_obfuscation_status" == "Disable" ]]; then
+        # Backup original sysctl values
+        sysctl -n net.ipv4.ip_default_ttl > "$BACKUPDIR/ip_default_ttl.bak" 2>/dev/null
+        sysctl -n net.ipv4.tcp_timestamps > "$BACKUPDIR/tcp_timestamps.bak" 2>/dev/null
+        sysctl -n net.ipv4.ip_local_port_range > "$BACKUPDIR/ip_local_port_range.bak" 2>/dev/null
+        sysctl -n net.ipv4.tcp_window_scaling > "$BACKUPDIR/tcp_window_scaling.bak" 2>/dev/null
+        sysctl -n net.ipv4.icmp_echo_ignore_broadcasts > "$BACKUPDIR/icmp_echo_ignore_broadcasts.bak" 2>/dev/null
+
         # 1. TTL: Windows uses 128 (Linux default is 64)
         sysctl -w net.ipv4.ip_default_ttl=128 &> /dev/null
         
@@ -26,11 +33,20 @@ start_os_obfuscation(){
 }
 stop_os_obfuscation(){
     source ${BASE_DIR}/assets/sources/config
-    sysctl -w net.ipv4.ip_default_ttl=64 &> /dev/null
-    sysctl -w net.ipv4.tcp_timestamps=1 &> /dev/null
-    sysctl -w net.ipv4.ip_local_port_range="32768 60999" &> /dev/null
-    sysctl -w net.ipv4.tcp_window_scaling=1 &> /dev/null
-    sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1 &> /dev/null
+    
+    local orig_ttl=$(cat "$BACKUPDIR/ip_default_ttl.bak" 2>/dev/null || echo "64")
+    local orig_ts=$(cat "$BACKUPDIR/tcp_timestamps.bak" 2>/dev/null || echo "1")
+    local orig_pr=$(cat "$BACKUPDIR/ip_local_port_range.bak" 2>/dev/null || echo "32768 60999")
+    local orig_ws=$(cat "$BACKUPDIR/tcp_window_scaling.bak" 2>/dev/null || echo "1")
+    local orig_ib=$(cat "$BACKUPDIR/icmp_echo_ignore_broadcasts.bak" 2>/dev/null || echo "1")
+
+    sysctl -w net.ipv4.ip_default_ttl="$orig_ttl" &> /dev/null
+    sysctl -w net.ipv4.tcp_timestamps="$orig_ts" &> /dev/null
+    sysctl -w net.ipv4.ip_local_port_range="$orig_pr" &> /dev/null
+    sysctl -w net.ipv4.tcp_window_scaling="$orig_ws" &> /dev/null
+    sysctl -w net.ipv4.icmp_echo_ignore_broadcasts="$orig_ib" &> /dev/null
+    
+    rm -f "$BACKUPDIR/ip_default_ttl.bak" "$BACKUPDIR/tcp_timestamps.bak" "$BACKUPDIR/ip_local_port_range.bak" "$BACKUPDIR/tcp_window_scaling.bak" "$BACKUPDIR/icmp_echo_ignore_broadcasts.bak"
     sed -i 's/os_obfuscation_status="Enable"/os_obfuscation_status="Disable"/g' $SRCDIR/sources/config
     info "OS Obfuscation successfully disabled"
 }
