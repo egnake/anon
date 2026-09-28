@@ -72,6 +72,16 @@ input() {
    ${BOLD}${RED}anon${RESET} > "
 }
 
+# Initialize random banner once per session so it doesn't change on every menu redraw
+if [[ -z "$ANON_CURRENT_BANNER" && -d "$SRCDIR/banners" ]]; then
+    # Pick a random .txt file from assets/banners/
+    banners=("$SRCDIR/banners/"*.txt)
+    if [[ ${#banners[@]} -gt 0 ]]; then
+        rand_index=$(( RANDOM % ${#banners[@]} ))
+        ANON_CURRENT_BANNER="${banners[$rand_index]}"
+    fi
+fi
+
 banner() {
     clear
     local width
@@ -80,76 +90,40 @@ banner() {
     local bar_pad=$(( (width - bar_len) / 2 ))
     (( bar_pad < 0 )) && bar_pad=0
     
-    local style=$(( RANDOM % 6 ))
-    
-    local -a art
-    case $style in
-        0)
-            art=(
-                "  █████╗ ███╗   ██╗ ██████╗ ███╗   ██╗"
-                " ██╔══██╗████╗  ██║██╔═══██╗████╗  ██║"
-                " ███████║██╔██╗ ██║██║   ██║██╔██╗ ██║"
-                " ██╔══██║██║╚██╗██║██║   ██║██║╚██╗██║"
-                " ██║  ██║██║ ╚████║╚██████╔╝██║ ╚████║"
-                " ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝  ╚═══╝"
-            ) ;;
-        1)
-            art=(
-                " ▄▀▀▄ █▄  █ ▄▀▀▀▄ █▄  █"
-                " █▀▀█ █ ▀▄█ █   █ █ ▀▄█"
-                " ▀  ▀ ▀   ▀  ▀▀▀  ▀   ▀"
-            ) ;;
-        2)
-            art=(
-                "  ╔═╗ ╔╗╔ ╔═╗ ╔╗╔"
-                "  ╠═╣ ║║║ ║ ║ ║║║"
-                "  ╩ ╩ ╝╚╝ ╚═╝ ╝╚╝"
-            ) ;;
-        3)
-            art=(
-                " ┌─┐ ┌┐┌ ┌─┐ ┌┐┌"
-                " ├─┤ │││ │ │ │││"
-                " ┴ ┴ ┘└┘ └─┘ ┘└┘"
-            ) ;;
-        4)
-            art=(
-                " ░█▀▀█ ░█▄─░█ ░█▀▀▀█ ░█▄─░█"
-                " ░█▄▄█ ░█░█░█ ░█──░█ ░█░█░█"
-                " ░█─░█ ░█──▀█ ░█▄▄▄█ ░█──▀█"
-            ) ;;
-        5)
-            art=(
-                "  ▄▄▄      ▄▄    ▄  ▄▄▄▄▄  ▄▄    ▄"
-                " █   █    █  █   █ █     █ █  █   █"
-                " █▄▄▄█    █   █  █ █     █ █   █  █"
-                " █   █    █    █ █ █     █ █    █ █"
-                " █   █ ██ █     ██  █▄▄▄█  █     ██"
-            ) ;;
-    esac
-
     echo ""
     echo -e "${BOLD}${CYAN}"
-    for line in "${art[@]}"; do
-        local stripped_line
-        stripped_line=$(echo "$line" | sed 's/\x1b\[[0-9;]*m//g')
-        local line_len=${#stripped_line}
-        local line_pad=$(( (width - line_len) / 2 ))
-        (( line_pad < 0 )) && line_pad=0
-        printf "%${line_pad}s%s\n" "" "$line"
-    done
+    
+    # Read the chosen banner file and center it line by line
+    if [[ -f "$ANON_CURRENT_BANNER" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Replace common bash escapes if they exist in text
+            local stripped_line
+            stripped_line=$(echo -e "$line" | sed 's/\x1b\[[0-9;]*m//g')
+            local line_len=${#stripped_line}
+            local line_pad=$(( (width - line_len) / 2 ))
+            (( line_pad < 0 )) && line_pad=0
+            printf "%${line_pad}s%s\n" "" "$line"
+        done < "$ANON_CURRENT_BANNER"
+    fi
     echo -e "${RESET}"
     
     printf "${DIM}%${bar_pad}s" ""
     printf '═%.0s' $(seq 1 $bar_len)
     printf "${RESET}\n"
     
-    local sub="Extreme Privacy & Anonymity Tool"
+    local sub="Advanced OPSEC & Anonymity Framework"
     local ver="v3.0"
     local sub_stripped="${sub}  ${ver}"
     local sub_pad=$(( (width - ${#sub_stripped}) / 2 ))
     (( sub_pad < 0 )) && sub_pad=0
     printf "%${sub_pad}s" ""
     echo -e "${BOLD}${CYAN}${sub}  ${DIM}${ver}${RESET}"
+    
+    local contact="github.com/egnake | egcaem000@gmail.com | Report Issue"
+    local contact_pad=$(( (width - ${#contact}) / 2 ))
+    (( contact_pad < 0 )) && contact_pad=0
+    printf "%${contact_pad}s" ""
+    echo -e "${DIM}${contact}${RESET}"
     
     printf "${DIM}%${bar_pad}s" ""
     printf '═%.0s' $(seq 1 $bar_len)

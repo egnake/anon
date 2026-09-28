@@ -42,5 +42,4 @@ start_disposable_browser() {
     rm -rf "$ram_profile"
     
     echo -e " ${GREEN}✔ SUCCESS:${RESET} Disposable profile completely wiped. Zero traces left on disk.\n"
-    exit 0
 }
