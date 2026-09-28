@@ -190,7 +190,7 @@ if grep -q "Enable" "$SRCDIR/sources/config" 2>/dev/null; then
 
 	stop_anti_mitm(){
 
-	       kill $anti_mitm_pid 
+	       [[ -n "$anti_mitm_pid" && "$anti_mitm_pid" != "0" ]] && kill "$anti_mitm_pid" 2>/dev/null
 	       sed -i 's/anti_mitm_pid="'$anti_mitm_pid'"/anti_mitm_pid="0"/g;s/anti_mitm_status="Enable"/anti_mitm_status="Disable"/g' $SRCDIR/sources/config
 	       info "Anti mitm successfully disabled"
 	}
