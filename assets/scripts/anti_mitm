@@ -12,7 +12,9 @@ def process(packet):
                 real_mac = get_mac(packet[ARP].psrc)
                 response_mac = packet[ARP].hwsrc
                 if real_mac != response_mac:
-                       os.system("iptables -A INPUT -m mac --mac-source " + response_mac + " -j DROP")
+                    check = subprocess.run(["iptables", "-C", "INPUT", "-m", "mac", "--mac-source", response_mac, "-j", "DROP"], capture_output=True)
+                    if check.returncode != 0:
+                        subprocess.run(["iptables", "-A", "INPUT", "-m", "mac", "--mac-source", response_mac, "-j", "DROP"])
             except IndexError:
                 pass
 sniff(store=False, prn=process)
