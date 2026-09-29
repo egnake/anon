@@ -1,54 +1,85 @@
 #!/bin/bash
 
-start_process_obfuscation(){
-    source ${BASE_DIR}/assets/sources/config
-    if [[ "$process_obfuscation_status" == "Disable" ]]; then
-        # Advanced RAM-based Stealth Execution (Fileless-like)
-        # Instead of just changing argv[0] which leaks original path in /proc/PID/exe,
-        # we copy the binary to a hidden tmpfs (RAM) directory with a spoofed name.
-        
-        RAMDIR="/dev/shm/.systemd-kworker"
-        mkdir -p "$RAMDIR"
-        
-        # Copy original binaries to RAM if they exist
-        [ -f /usr/bin/nmap ] && cp /usr/bin/nmap "$RAMDIR/kworker"
-        [ -f /usr/bin/sqlmap ] && cp /usr/bin/sqlmap "$RAMDIR/systemd-resolve"
-        chmod +x "$RAMDIR"/* 2>/dev/null
+# ═══════════════════════════════════════════════════════════════════
+# Process Obfuscation — Kernel-level Isolation + RAM-based Stealth
+# ═══════════════════════════════════════════════════════════════════
+# Two-layer approach:
+#   1. hidepid=2 on /proc — prevents non-root users from seeing
+#      processes they don't own (blinds rogue scripts / malware)
+#   2. RAM-based stealth execution — copies pentesting binaries to
+#      tmpfs with spoofed names and exec -a for argv[0] masking
+# ═══════════════════════════════════════════════════════════════════
 
-        # Create wrappers for common pentesting tools
-        cat > /usr/local/bin/nmap << EOF
-#!/bin/bash
-exec -a "[kworker/u4:2]" "$RAMDIR/kworker" "\$@"
-EOF
-        cat > /usr/local/bin/sqlmap << EOF
-#!/bin/bash
-exec -a "/lib/systemd/systemd-resolved" "$RAMDIR/systemd-resolve" "\$@"
-EOF
-        chmod +x /usr/local/bin/nmap /usr/local/bin/sqlmap
-        
-        sed -i 's/process_obfuscation_status="Disable"/process_obfuscation_status="Enable"/g' "$SRCDIR/sources/config"
-        info "Process obfuscation successfully enabled (RAM-based Stealth Execution)"
-    else
+start_process_obfuscation(){
+    source "${BASE_DIR}/assets/sources/config"
+
+    if [[ "$process_obfuscation_status" == "Enable" ]]; then
         warn "Process obfuscation is already running"
+        return 0
     fi
+
+    # ── Layer 1: Kernel-level /proc isolation (hidepid=2) ────────
+    # Prevents any non-root user from enumerating processes they
+    # don't own.  Effectively blinds unprivileged malware from
+    # profiling ANON's background daemons.
+    info "Remounting /proc with hidepid=2..."
+    mount -o remount,rw,hidepid=2 /proc 2>/dev/null && \
+        info "/proc remounted with hidepid=2 — process isolation active" || \
+        warn "Could not remount /proc with hidepid=2 (kernel may not support it)"
+
+    # ── Layer 2: RAM-based Stealth Execution (Fileless-like) ─────
+    # Copy pentesting binaries to a hidden tmpfs (RAM) directory
+    # with kernel-like spoofed names.  Wrapper scripts use exec -a
+    # to set argv[0] so `ps`, `top`, etc. show innocent names.
+    RAMDIR="/dev/shm/.systemd-kworker"
+    mkdir -p "$RAMDIR"
+
+    # Copy original binaries to RAM if they exist
+    [[ -f /usr/bin/nmap ]]   && cp /usr/bin/nmap   "$RAMDIR/kworker"
+    [[ -f /usr/bin/sqlmap ]] && cp /usr/bin/sqlmap  "$RAMDIR/systemd-resolve"
+    chmod +x "$RAMDIR"/* 2>/dev/null
+
+    # Create wrappers for common pentesting tools
+    cat > /usr/local/bin/nmap << 'WRAPPER'
+#!/bin/bash
+exec -a "[kworker/u4:2]" "/dev/shm/.systemd-kworker/kworker" "$@"
+WRAPPER
+
+    cat > /usr/local/bin/sqlmap << 'WRAPPER'
+#!/bin/bash
+exec -a "/lib/systemd/systemd-resolved" "/dev/shm/.systemd-kworker/systemd-resolve" "$@"
+WRAPPER
+
+    chmod +x /usr/local/bin/nmap /usr/local/bin/sqlmap
+
+    sed -i 's/process_obfuscation_status="Disable"/process_obfuscation_status="Enable"/g' "$SRCDIR/sources/config"
+    info "Process obfuscation enabled (hidepid=2 + RAM-based stealth execution)"
 }
+
 stop_process_obfuscation(){
     source "${BASE_DIR}/assets/sources/config"
-    
-    if grep -q "systemd-kworker\|systemd-resolve" /usr/local/bin/nmap 2>/dev/null; then
+
+    # ── Restore /proc mount options ──────────────────────────────
+    mount -o remount,rw,hidepid=0 /proc 2>/dev/null && \
+        info "/proc restored to hidepid=0" || \
+        warn "Could not restore /proc hidepid"
+
+    # ── Remove wrapper scripts (only if they are ours) ───────────
+    if grep -q "systemd-kworker" /usr/local/bin/nmap 2>/dev/null; then
         rm -f /usr/local/bin/nmap
     fi
-    if grep -q "systemd-kworker\|systemd-resolve" /usr/local/bin/sqlmap 2>/dev/null; then
+    if grep -q "systemd-kworker" /usr/local/bin/sqlmap 2>/dev/null; then
         rm -f /usr/local/bin/sqlmap
     fi
-    
-    # Securely wipe the RAM-based spoofed binaries
-    if command -v srm &> /dev/null; then
-        srm -rf /dev/shm/.systemd-kworker
-    else
+
+    # ── Securely wipe the RAM-based spoofed binaries ─────────────
+    if [[ -d /dev/shm/.systemd-kworker ]]; then
+        if command -v shred &>/dev/null; then
+            find /dev/shm/.systemd-kworker -type f -exec shred -fzu {} + 2>/dev/null
+        fi
         rm -rf /dev/shm/.systemd-kworker
     fi
-    
+
     sed -i 's/process_obfuscation_status="Enable"/process_obfuscation_status="Disable"/g' "$SRCDIR/sources/config"
-    info "Process obfuscation successfully disabled"
+    info "Process obfuscation disabled"
 }
