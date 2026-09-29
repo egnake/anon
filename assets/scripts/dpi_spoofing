@@ -1,0 +1,31 @@
+#!/bin/bash
+set -euo pipefail
+source "${BASE_DIR}/assets/sources/config"
+
+# ═══════════════════════════════════════════════════════════════════
+# DPI Spoofing — Tor Snowflake WebRTC Traffic Camouflage
+# ═══════════════════════════════════════════════════════════════════
+
+start_dpi_spoofing(){
+    if [[ "$dpi_spoofing_status" == "Disable" ]]; then
+        # Check if snowflake-client is installed
+        if ! command -v snowflake-client &> /dev/null; then
+            echo -e "\n ${YELLOW}⚠ WARNING:${RESET} snowflake-client is not installed. Attempting to install..."
+            apt-get update -y && apt-get install snowflake-client -y || {
+                err "snowflake-client installation failed. Please run: sudo apt-get install snowflake-client"
+            }
+        fi
+
+        sed -i 's/dpi_spoofing_status="Disable"/dpi_spoofing_status="Enable"/g' "$SRCDIR/sources/config"
+        info "DPI Spoofing (WebRTC Camouflage) successfully enabled."
+        info "Note: You must restart IP Changer if it is currently running."
+    else
+        warn "DPI Spoofing is already enabled."
+    fi
+}
+
+stop_dpi_spoofing(){
+    sed -i 's/dpi_spoofing_status="Enable"/dpi_spoofing_status="Disable"/g' "$SRCDIR/sources/config"
+    info "DPI Spoofing successfully disabled."
+    info "Note: You must restart IP Changer to apply changes."
+}

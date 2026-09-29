@@ -32,7 +32,7 @@ src_check() {
                 err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
         fi
 }
-src_check fix kill_switch volatile_logging ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges i2p_integration
+src_check fix kill_switch volatile_logging ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges i2p_integration dpi_spoofing
 
 #check dependences function
 dep_check() {
@@ -92,7 +92,7 @@ if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
 	get_backups
 fi
 
-options=("Anti Mitm" "Volatile logging" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration" "Traffic Obfuscation" "Sandbox Isolation")
+options=("Anti Mitm" "Volatile logging" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration" "Traffic Obfuscation" "Sandbox Isolation" "DPI Spoofing")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -291,7 +291,7 @@ interactive_toggles() {
         
         # Network & Routing
         boxline "${BOLD}${BLUE}  ── Network & Routing ──${RESET}"
-        for i in 2 3 4 13 11 15 16; do
+        for i in 2 3 4 13 11 15 16 18; do
             local mark="${RED}✗${RESET}"
             [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
             if [[ $i -eq $selected ]]; then
@@ -568,7 +568,7 @@ stop(){
 #detect enable features and stop
 if grep -q "Enable" "$SRCDIR/sources/config" 2>/dev/null; then
 
-	options=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot" "i2p_integration" "traffic_obfuscation" "sandbox_isolation")
+	options=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing")
 
 	stop_anti_mitm(){
 
@@ -628,6 +628,7 @@ print_status "Tor bridges" "$tor_bridges_status"
 print_status "Network Kill Switch" "$kill_switch_status"
 print_status "I2P Integration" "$i2p_integration_status"
 print_status "Traffic Obfuscation" "$traffic_obfuscation_status"
+print_status "DPI Spoofing" "$dpi_spoofing_status"
 print_status "OS Sandbox Isolation" "$sandbox_isolation_status"
 
 echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}\n"
@@ -705,6 +706,7 @@ dashboard() {
         print_mod "KILL " "$kill_switch_status"
         print_mod "I2P  " "$i2p_integration_status"
         print_mod "TRAFF" "$traffic_obfuscation_status"
+        print_mod "DPI  " "$dpi_spoofing_status"
         print_mod "JAIL " "$sandbox_isolation_status"
         
         if [[ $count -eq 0 ]]; then
