@@ -1,0 +1,58 @@
+#!/bin/bash
+source ${BASE_DIR}/assets/sources/config
+
+start_traffic_obfuscation() {
+    if ! command -v tc &> /dev/null; then
+        echo -e "\n ${RED}✖ ERROR:${RESET} 'tc' (iproute2) command not found."
+        exit 1
+    fi
+
+    local iface=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1)
+    
+    if [[ -z "$iface" ]]; then
+        echo -e "\n ${RED}✖ ERROR:${RESET} Could not determine default network interface."
+        exit 1
+    fi
+
+    echo -e "\n ${CYAN}ℹ INFO:${RESET} Injecting latency and jitter to interface ${YELLOW}${iface}${RESET}..."
+    tc qdisc del dev "$iface" root 2>/dev/null
+    tc qdisc add dev "$iface" root netem delay 30ms 15ms distribution normal 2>/dev/null
+    
+    echo -e " ${CYAN}ℹ INFO:${RESET} Starting background dummy traffic generation..."
+    
+    (
+        while true; do
+            if command -v curl &> /dev/null; then
+                curl -s --max-time 5 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip > /dev/null 2>&1
+            fi
+            sleep $(( (RANDOM % 7) + 2 ))
+        done
+    ) &
+    local bg_pid=$!
+    
+    sed -i "s/traffic_obfuscation_pid=\"[^\"]*\"/traffic_obfuscation_pid=\"$bg_pid\"/g; s/traffic_obfuscation_status=\"Disable\"/traffic_obfuscation_status=\"Enable\"/g" "$SRCDIR/sources/config"
+    
+    echo -e " ${GREEN}✔ SUCCESS:${RESET} Traffic Obfuscation (Timing Attack Defense) initialized.\n"
+}
+
+stop_traffic_obfuscation() {
+    local iface=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1)
+    
+    if [[ -n "$iface" ]]; then
+        tc qdisc del dev "$iface" root 2>/dev/null
+    fi
+    
+    if [[ -n "$traffic_obfuscation_pid" && "$traffic_obfuscation_pid" != "0" ]]; then
+        kill "$traffic_obfuscation_pid" 2>/dev/null
+    fi
+    
+    sed -i 's/traffic_obfuscation_pid="[^\"]*"/traffic_obfuscation_pid="0"/g; s/traffic_obfuscation_status=\"Enable\"/traffic_obfuscation_status=\"Disable\"/g' "$SRCDIR/sources/config"
+    
+    echo -e "\n ${CYAN}ℹ INFO:${RESET} Traffic Obfuscation disabled.\n"
+}
+
+if [[ "$1" == "start" ]]; then
+    start_traffic_obfuscation
+elif [[ "$1" == "stop" ]]; then
+    stop_traffic_obfuscation
+fi
