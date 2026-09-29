@@ -638,6 +638,35 @@ echo -e " ${DIM}─────────────────────�
 
 dashboard() {
     tput civis 2>/dev/null
+    
+    local status_file="/dev/shm/anon_net_status"
+    echo "WAITING" > "$status_file"
+    
+    (
+        while true; do
+            source "$SRCDIR/sources/config"
+            if [[ "$ip_changer_status" == "Enable" ]]; then
+                local tor_check
+                tor_check=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
+                if echo "$tor_check" | grep -q '"IsTor":true'; then
+                    local current_ip
+                    current_ip=$(echo "$tor_check" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
+                    echo "SECURE_TOR|$current_ip" > "$status_file"
+                else
+                    echo "SECURE_SLOW|Hidden" > "$status_file"
+                fi
+            elif [[ "$i2p_integration_status" == "Enable" ]]; then
+                echo "SECURE_I2P|Hidden" > "$status_file"
+            else
+                local direct_ip
+                direct_ip=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || echo "Offline")
+                echo "UNSECURE|$direct_ip" > "$status_file"
+            fi
+            sleep 5
+        done
+    ) &
+    local bg_pid=$!
+
     while true; do
         clear
         banner
@@ -647,22 +676,29 @@ dashboard() {
         emptybox
         draw_sep
         
-        source $SRCDIR/sources/config
+        source "$SRCDIR/sources/config"
         
-        # Network status - use Tor SOCKS proxy for check
-        local tor_check
-        tor_check=$(curl -s --max-time 5 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
+        # Read async network status
+        local net_status
+        net_status=$(cat "$status_file" 2>/dev/null || echo "WAITING")
+        local net_state="${net_status%%|*}"
+        local net_ip="${net_status##*|}"
         
-        if echo "$tor_check" | grep -q '"IsTor":true'; then
-            local current_ip
-            current_ip=$(echo "$tor_check" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
+        if [[ "$net_state" == "SECURE_TOR" ]]; then
             boxline "${GREEN}  ● Network    ${BOLD}SECURE${RESET}${GREEN} (Tor Active)${RESET}"
-            boxline "${CYAN}  ● Exit IP    ${YELLOW}${current_ip:-Hidden}${RESET}"
+            boxline "${CYAN}  ● Exit IP    ${YELLOW}${net_ip}${RESET}"
+        elif [[ "$net_state" == "SECURE_SLOW" ]]; then
+            boxline "${YELLOW}  ● Network    ${BOLD}SECURE${RESET}${YELLOW} (Routing / High Latency)${RESET}"
+            boxline "${CYAN}  ● Exit IP    ${YELLOW}Hidden (Tor Encrypted)${RESET}"
+        elif [[ "$net_state" == "SECURE_I2P" ]]; then
+            boxline "${GREEN}  ● Network    ${BOLD}SECURE${RESET}${GREEN} (I2P Router Active)${RESET}"
+            boxline "${CYAN}  ● Exit IP    ${YELLOW}Hidden (I2P)${RESET}"
+        elif [[ "$net_state" == "WAITING" ]]; then
+            boxline "${CYAN}  ● Network    ${BOLD}SCANNING...${RESET}"
+            boxline "${CYAN}  ● Exit IP    ${YELLOW}Detecting...${RESET}"
         else
             boxline "${RED}  ○ Network    ${BOLD}UNSECURE${RESET}${RED} (Direct)${RESET}"
-            local direct_ip
-            direct_ip=$(curl -s --max-time 3 https://api.ipify.org 2>/dev/null || echo "Offline")
-            boxline "${CYAN}  ● IP         ${YELLOW}${direct_ip}${RESET}"
+            boxline "${CYAN}  ● IP         ${YELLOW}${net_ip}${RESET}"
         fi
         
         # Traffic stats
@@ -724,6 +760,8 @@ dashboard() {
         
         read -t 3 -rsn1 key
         if [[ "$key" == "q" || "$key" == "Q" ]]; then
+            kill "$bg_pid" 2>/dev/null || true
+            rm -f "$status_file"
             break
         fi
     done
