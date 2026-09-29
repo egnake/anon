@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/anon_hero.jpg" alt="ANON Hero Banner" width="100%">
+  <img src="assets/anon_logo.jpg" alt="ANON Logo" width="200" style="border-radius: 20px;">
   
   <h1>ANON: Gelişmiş OPSEC ve Anonimlik Çerçevesi</h1>
   <p><b>Linux ortamları için kapsamlı, modüler bir anonimlik ve anti-adli bilişim (anti-forensics) araç seti.</b></p>
@@ -168,13 +168,28 @@ Otomasyon veya komut dosyası oluşturmayı tercih eden kullanıcılar için ANO
 ## ❓ SSS ve Sorun Giderme
 
 **S: ANON'u çalıştırdıktan sonra internet bağlantım yok!**
-C: `Kill Switch` aktifken Tor bağlanamazsa tüm trafik düşürülür (DROP). Tor köprülerinizin çalıştığından emin olun. Ağınızı sıfırlamak için her zaman `sudo anon --stop` veya yedeklerden geri yüklemek için `sudo anon --fix` çalıştırabilirsiniz.
+C: `Kill Switch` aktifken Tor bağlanamazsa tüm trafik `iptables` tarafından düşürülür (DROP). Betiği başlatmadan önce internetinizin çalıştığından emin olun, sistem saatinizi kontrol edin (Tor doğru bir saate ihtiyaç duyar) veya Tor köprülerinizin çalıştığından emin olun. Ağınızı sıfırlamak için her zaman `sudo anon --stop` veya fiziksel yedeklerden geri yüklemek için `sudo anon --fix` çalıştırabilirsiniz.
 
 **S: Bunu Sanal Makinede (VM) kullanabilir miyim?**
-C: Evet. Ancak MAC Changer gibi bazı modüller, Hipervizörünüzün (VMware/VirtualBox) ağ bağdaştırıcısı ayarlarında MAC adresi sahtekarlığına (spoofing) izin vermesini gerektirebilir.
+C: Evet. Ancak MAC Changer gibi bazı modüller, Hipervizörünüzün (VMware, VirtualBox) ağ bağdaştırıcısı ayarlarında MAC adresi sahtekarlığına (spoofing) açıkça izin vermesini gerektirebilir. Bu izin olmadan MAC değiştirildiğinde VM internet bağlantısını kaybedebilir.
 
-**S: Tek Kullanımlık Tarayıcı yer imlerimi kaydeder mi?**
-C: Hayır. Tasarım gereği, tarayıcı profili yalnızca uçucu RAM'de (`/dev/shm`) bulunur. Tarayıcı penceresi kapatıldığı an her şey yok edilir.
+**S: Tek Kullanımlık Tarayıcı yer imlerimi veya şifrelerimi kaydeder mi?**
+C: Hayır. Tasarım gereği, tarayıcı profili yalnızca geçici RAM'de (`/dev/shm`) bulunur. Geçmiş, önbellek, eklentiler ve yer imleri dahil olmak üzere her şey, tarayıcı penceresi kapatıldığı an yok edilir. Yalnızca son derece hassas, tek kullanımlık oturumlar için tasarlanmıştır.
+
+**S: ANON kullanırken kişisel hesaplarıma (Google veya Facebook gibi) giriş yapmam güvenli mi?**
+C: Kesinlikle hayır. Bu çok kritik bir OPSEC (Operasyonel Güvenlik) hatasıdır. IP ve MAC adresiniz gizlenmiş olsa bile, gerçek kimliğinize bağlı bir hesaba giriş yapmak, anonim trafiğinizi anında sizinle ilişkilendirir. ANON makinenizi korur, ancak sizi davranışsal hatalarınızdan koruyamaz.
+
+**S: "Traffic Obfuscation" modülü bağlantımı neden yavaşlatıyor?**
+C: Bu modül, zamanlama korelasyonunu ve Website Fingerprinting (WFP) saldırılarını bozmak için paketlerinize bilinçli olarak yapay bir gecikme (jitter) enjekte eder. Bu küçük yavaşlama, gelişmiş ağ izleyicilerine karşı anonimliği büyük ölçüde artırmanın bir bedelidir.
+
+**S: Kernel netns İzolasyonu normal Proxychains'ten nasıl farklıdır?**
+C: Proxychains, uygulamaları Tor üzerinden yönlendirmek için standart kütüphane çağrılarını (örneğin `connect()`) ele geçirir. Ancak bazı uygulamalar (statik derlenmiş dosyalar veya özel DNS istekleri) bunu atlayabilir. Kernel `netns` ise kelimenin tam anlamıyla aşılmaz, fiziksel bir sanal alan (sandbox) yaratır. Bu hapishane içinden çıkmanın tek fiziksel yolu Tor TransPort'a bağlıdır. Atlanması imkansızdır.
+
+**S: Script çökerse veya bilgisayarımın gücü aniden kesilirse ne olur?**
+C: Kurulum sırasında ANON, orijinal `iptables`, `resolv.conf` ve `NetworkManager` durumlarınızı yedekler. Sistem beklenmedik şekilde yeniden başlarsa, tüm ağ ayarlarınızı saniyeler içinde fabrika varsayılanlarına geri döndürmek için `sudo anon --fix` komutunu çalıştırmanız yeterlidir.
+
+**S: Bu beni NSA'den veya devlet destekli aktörlerden gizler mi?**
+C: Hiçbir yazılım mutlak bir dokunulmazlık sağlamaz. ANON belirli teknik vektörleri (DPI, DNS sızıntıları, OS parmak izi, yerel adli bilişim) hafifletir. Ancak istihbarat seviyesindeki bir düşman küresel trafik korelasyonuna, sıfır gün (zero-day) uç nokta açıklarına ve fiziksel gözetime dayanır. ANON'u, kapsamlı bir operasyonel güvenlik stratejinizin bir katmanı olarak kullanın.
 
 ---
 

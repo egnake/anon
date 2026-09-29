@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/anon_hero.jpg" alt="ANON Hero Banner" width="100%">
+  <img src="assets/anon_logo.jpg" alt="ANON Logo" width="200" style="border-radius: 20px;">
   
   <h1>ANON: Advanced OPSEC & Anonymity Framework</h1>
   <p><b>A comprehensive, modular anonymity and anti-forensics toolkit for Linux environments.</b></p>
@@ -168,13 +168,28 @@ For users who prefer automation or scripting, ANON supports direct command-line 
 ## ❓ FAQ & Troubleshooting
 
 **Q: I have no internet connection after running ANON!**
-A: If Tor fails to connect while the `Kill Switch` is active, all traffic is dropped. Ensure your Tor bridges are functioning. You can always run `sudo anon --stop` to reset your network, or `sudo anon --fix` to restore from backups.
+A: If Tor fails to connect while the `Kill Switch` is active, all traffic is dropped by `iptables`. Ensure your network is working before starting the script, check your system clock (Tor needs an accurate clock), or verify your Tor bridges are functioning. You can run `sudo anon --stop` to reset your network, or `sudo anon --fix` to restore from physical backups.
 
-**Q: Can I use this on a Virtual Machine?**
-A: Yes. However, some modules (like MAC Changer) might require your hypervisor to allow MAC address spoofing in the VM network adapter settings.
+**Q: Can I use this on a Virtual Machine (VM)?**
+A: Yes. However, some modules (like MAC Changer) might require your hypervisor (VMware, VirtualBox) to explicitly allow MAC address spoofing in the network adapter settings. Without it, the VM might lose internet connectivity when the MAC is changed.
 
-**Q: Does the Disposable Browser save my bookmarks?**
-A: No. By design, the browser profile exists only in volatile RAM (`/dev/shm`). Everything is destroyed the moment the browser window is closed.
+**Q: Does the Disposable Browser save my bookmarks or passwords?**
+A: No. By design, the browser profile exists only in volatile RAM (`/dev/shm`). Everything—history, cache, extensions, and bookmarks—is destroyed the moment the browser window is closed. It is intended for highly sensitive, single-use sessions.
+
+**Q: Is it safe to log into my personal accounts (like Google or Facebook) while using ANON?**
+A: Absolutely not. This is a critical OPSEC failure. Even if your IP and MAC address are hidden, logging into an account tied to your real identity instantly correlates your anonymous traffic with you. ANON protects your machine, but it cannot protect you from behavioral mistakes.
+
+**Q: Why does the "Traffic Obfuscation" module slow down my connection?**
+A: This module intentionally injects artificial latency (jitter) into your packets to defeat timing correlation and Website Fingerprinting (WFP) attacks. The minor slowdown is a trade-off for significantly increased anonymity against sophisticated network observers.
+
+**Q: How does the Kernel netns Isolation differ from normal Proxychains?**
+A: Proxychains intercepts standard library calls (like `connect()`) to route applications through Tor. However, some applications can bypass this (e.g., static binaries, custom DNS resolution). Kernel `netns` creates a literal, hard-walled sandbox. Inside the jail, the only physical path out of the container is wired to the Tor TransPort. It is impossible to bypass it.
+
+**Q: What happens if the script crashes or my computer loses power abruptly?**
+A: Upon installation, ANON backs up your original `iptables`, `resolv.conf`, and `NetworkManager` states. If the system reboots unexpectedly, simply run `sudo anon --fix` to instantly restore all network settings to their default factory state.
+
+**Q: Will this hide me from the NSA or state-level adversaries?**
+A: No software provides absolute immunity. ANON mitigates specific technical vectors (DPI, DNS leaks, OS fingerprinting, local forensics). However, a state-level adversary relies heavily on global traffic correlation, zero-day endpoint exploits, and physical surveillance. Use ANON as one layer in a comprehensive operational security strategy.
 
 ---
 
