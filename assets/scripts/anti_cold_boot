@@ -1,14 +1,19 @@
 #!/bin/bash
 
+# ═══════════════════════════════════════════════════════════════════
+# Anti Cold Boot — RAM & Swap Secure Wipe
+# ═══════════════════════════════════════════════════════════════════
+
 start_anti_cold_boot(){
-	source ${BASE_DIR}/assets/sources/config
+	source "${BASE_DIR}/assets/sources/config"
 	if [[ "$anti_cold_boot_status" == "Disable" ]]; then
 		info "Initiating anti cold-boot sequence..."
 		
 		swapoff -a 
 		# Wipe swap partitions if sswap is available
 		if command -v sswap &> /dev/null; then
-			swaps=$(cat /proc/swaps | tail -n +2 | awk '{print $1}')
+			local swaps
+			swaps=$(awk 'NR>1{print $1}' /proc/swaps)
 			for swap in $swaps; do
 				sswap "$swap" &>/dev/null
 			done
@@ -47,11 +52,12 @@ start_anti_cold_boot(){
 }
 
 stop_anti_cold_boot(){
-	source ${BASE_DIR}/assets/sources/config
-	local orig_min_free=$(cat "$BACKUPDIR/min_free_kbytes.bak" 2>/dev/null || echo "67584")
-	local orig_oom_kill=$(cat "$BACKUPDIR/oom_kill_allocating_task.bak" 2>/dev/null || echo "0")
-	local orig_overcommit=$(cat "$BACKUPDIR/overcommit_memory.bak" 2>/dev/null || echo "0")
-	local orig_oom_dump=$(cat "$BACKUPDIR/oom_dump_tasks.bak" 2>/dev/null || echo "1")
+	source "${BASE_DIR}/assets/sources/config"
+	local orig_min_free orig_oom_kill orig_overcommit orig_oom_dump
+	orig_min_free=$(cat "$BACKUPDIR/min_free_kbytes.bak" 2>/dev/null || echo "67584")
+	orig_oom_kill=$(cat "$BACKUPDIR/oom_kill_allocating_task.bak" 2>/dev/null || echo "0")
+	orig_overcommit=$(cat "$BACKUPDIR/overcommit_memory.bak" 2>/dev/null || echo "0")
+	orig_oom_dump=$(cat "$BACKUPDIR/oom_dump_tasks.bak" 2>/dev/null || echo "1")
 
 	sysctl -w vm.min_free_kbytes="$orig_min_free" &>/dev/null
 	sysctl -w vm.oom_kill_allocating_task="$orig_oom_kill" &>/dev/null

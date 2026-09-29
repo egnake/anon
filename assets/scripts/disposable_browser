@@ -1,12 +1,15 @@
 #!/bin/bash
+source "${BASE_DIR}/assets/sources/config"
 
-source ${BASE_DIR}/assets/sources/config
+# ═══════════════════════════════════════════════════════════════════
+# Disposable Browser — RAM-based Ephemeral Firefox Session
+# ═══════════════════════════════════════════════════════════════════
 
 start_disposable_browser() {
     # Check for firefox
     if ! command -v firefox &> /dev/null && ! command -v firefox-esr &> /dev/null; then
         echo -e "\n ${RED}✖ ERROR:${RESET} Firefox is not installed. Please install it first."
-        exit 1
+        return 1
     fi
 
     # Determine binary name
@@ -16,23 +19,27 @@ start_disposable_browser() {
     fi
 
     echo -e "\n ${CYAN}ℹ INFO:${RESET} Initializing true RAM-based disposable browser..."
-    
-    # Create temp directory for the profile
-    local ram_profile=$(mktemp -d -p /dev/shm -t anon_browser_XXXXXX)
-    
+
+    # Create temp directory for the profile in shared memory
+    local ram_profile
+    ram_profile=$(mktemp -d -p /dev/shm -t anon_browser_XXXXXX)
+
+    # Ensure cleanup on any exit path
+    trap 'rm -rf "$ram_profile" 2>/dev/null' RETURN
+
     echo -e " ${CYAN}ℹ INFO:${RESET} Hardening profile with anon OPSEC configurations..."
     # Inject anon.js configuration if it exists
-    if [ -f "$SRCDIR/sources/anon.js" ]; then
+    if [[ -f "$SRCDIR/sources/anon.js" ]]; then
         cp "$SRCDIR/sources/anon.js" "$ram_profile/user.js"
     fi
 
     echo -e " ${CYAN}ℹ INFO:${RESET} Launching isolated instance. ${YELLOW}Do NOT close this terminal!${RESET}"
     echo -e " ${CYAN}ℹ INFO:${RESET} The profile will be securely wiped the exact second you close the browser.\n"
-    
+
     # Privilege drop and execution command
     local run_user="${SUDO_USER:-root}"
     local exec_cmd=""
-    
+
     # 1. OS Isolation (Network Namespace)
     if [[ "$sandbox_isolation_status" == "Enable" ]]; then
         echo -e " ${GREEN}✔ SUCCESS:${RESET} Launching browser inside strictly isolated 'anon_jail' Kernel Namespace..."
@@ -41,27 +48,25 @@ start_disposable_browser() {
         echo -e " ${YELLOW}⚠ WARNING:${RESET} Sandbox Isolation is disabled. Launching on host network stack..."
         exec_cmd="sudo -u $run_user "
     fi
-    
+
     # 2. Process Isolation (AppArmor / Firejail)
     if command -v firejail &> /dev/null; then
         echo -e " ${GREEN}✔ SUCCESS:${RESET} Firejail detected. Applying AppArmor profiles for process isolation..."
-        # If in netns, firejail still works. 
         exec_cmd="${exec_cmd} firejail --noprofile "
     else
         echo -e " ${YELLOW}⚠ WARNING:${RESET} Firejail not installed. Skipping process isolation. (Run 'apt install firejail')"
     fi
-    
+
     # Launch firefox pointing to this profile, in private mode
-    # We run it in foreground so the script waits for it to close
     $exec_cmd $ff_bin --profile "$ram_profile" --private-window "https://check.torproject.org/" --no-remote &> /dev/null
-    
+
     echo -e "\n ${CYAN}ℹ INFO:${RESET} Browser closed. Initiating secure deletion of RAM profile..."
-    
+
     # Securely wipe the profile using shred if available
     if command -v shred &> /dev/null; then
         find "$ram_profile" -type f -exec shred -u {} + &> /dev/null
     fi
     rm -rf "$ram_profile"
-    
+
     echo -e " ${GREEN}✔ SUCCESS:${RESET} Disposable profile completely wiped. Zero traces left on disk.\n"
 }

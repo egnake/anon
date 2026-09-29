@@ -1,14 +1,18 @@
 #!/bin/bash
 
+# ═══════════════════════════════════════════════════════════════════
+# I2P Integration — i2pd Router Daemon
+# ═══════════════════════════════════════════════════════════════════
+
 start_i2p_integration(){
     source "${BASE_DIR}/assets/sources/config"
     if [[ "$i2p_integration_status" == "Disable" ]]; then
         info "Starting I2P Router daemon (i2pd)..."
-        
+
         systemctl start i2pd &> /dev/null
         # Wait a moment for service to bind
         sleep 2
-        
+
         if systemctl is-active --quiet i2pd; then
             sed -i 's/i2p_integration_status="Disable"/i2p_integration_status="Enable"/g' "$SRCDIR/sources/config"
             info "I2P Router successfully started."

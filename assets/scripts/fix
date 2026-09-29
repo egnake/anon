@@ -1,48 +1,58 @@
 #!/bin/bash
 
+# ═══════════════════════════════════════════════════════════════════
+# Fix — System Backup & Restore Utilities
+# ═══════════════════════════════════════════════════════════════════
+
 get_backups(){
-
-	if [ -L /etc/resolv.conf ]; then
-		cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.symlink.bak"
-		cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak"
-	else
-		cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak"
-	fi
-	cat /etc/hostname > $BACKUPDIR/hostname.bak
-	cat $TORRC > $BACKUPDIR/torrc.bak
-	iptables-save > $BACKUPDIR/iptables.rules.bak
-	mkdir $BACKUPDIR/mac_addresses
-		IFACES=$(ip -o link show | awk -F': ' '{print $2}')
-		    for IFACE in $IFACES; do
-			if [ $IFACE != "lo" ]; then
-			    cat /sys/class/net/$IFACE/address > $BACKUPDIR/mac_addresses/$IFACE
-			fi
-		    done
-	timedatectl show | grep Timezone | sed 's/Timezone=//g' > $BACKUPDIR/timezone.bak
-	cd "$BACKUPDIR" && tar -czf anon_fix_backups.tar.gz *.bak mac_addresses 2>/dev/null
-	rm -fr "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
-
+    if [[ -L /etc/resolv.conf ]]; then
+        cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.symlink.bak"
+        cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak"
+    else
+        cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak"
+    fi
+    cat /etc/hostname > "$BACKUPDIR/hostname.bak"
+    cat "$TORRC" > "$BACKUPDIR/torrc.bak"
+    iptables-save > "$BACKUPDIR/iptables.rules.bak"
+    mkdir -p "$BACKUPDIR/mac_addresses"
+    local IFACES
+    IFACES=$(ip -o link show | awk -F': ' '{print $2}')
+    for IFACE in $IFACES; do
+        if [[ "$IFACE" != "lo" ]]; then
+            cat "/sys/class/net/$IFACE/address" > "$BACKUPDIR/mac_addresses/$IFACE"
+        fi
+    done
+    timedatectl show | grep Timezone | sed 's/Timezone=//g' > "$BACKUPDIR/timezone.bak"
+    ( cd "$BACKUPDIR" && tar -czf anon_fix_backups.tar.gz *.bak mac_addresses 2>/dev/null )
+    rm -rf "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
 }
 
 restore_system(){
-	
-	rm -fr "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses" && cd "$BACKUPDIR" && tar -xzf "$BACKUPDIR/anon_fix_backups.tar.gz"
-	if [ -f "$BACKUPDIR/resolv.conf.symlink.bak" ]; then
-		rm -f /etc/resolv.conf
-		mv "$BACKUPDIR/resolv.conf.symlink.bak" /etc/resolv.conf
-	else
-		cat "$BACKUPDIR/resolv.conf.bak" > /etc/resolv.conf 
-	fi
-	cat "$BACKUPDIR/hostname.bak" > /etc/hostname 
-	. "${BASE_DIR}/assets/sources/config"
-	cat "$BACKUPDIR/torrc.bak" > "$TORRC"
-	iptables-restore <$BACKUPDIR/iptables.rules.bak
-	for device in $(ls $BACKUPDIR/mac_addresses) ; do
-	    ip link set $device down
-	    ip link set $device address $(cat $BACKUPDIR/mac_addresses/$device)
-	    ip link set $device up
-	done
-	restore_timezone=$(cat "$BACKUPDIR/timezone.bak") && timedatectl set-timezone "$restore_timezone"
-	rm -fr "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
-
+    rm -rf "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
+    ( cd "$BACKUPDIR" && tar -xzf "$BACKUPDIR/anon_fix_backups.tar.gz" )
+    if [[ -f "$BACKUPDIR/resolv.conf.symlink.bak" ]]; then
+        rm -f /etc/resolv.conf
+        mv "$BACKUPDIR/resolv.conf.symlink.bak" /etc/resolv.conf
+    else
+        cat "$BACKUPDIR/resolv.conf.bak" > /etc/resolv.conf
+    fi
+    cat "$BACKUPDIR/hostname.bak" > /etc/hostname
+    source "${BASE_DIR}/assets/sources/config"
+    cat "$BACKUPDIR/torrc.bak" > "$TORRC"
+    iptables-restore <"$BACKUPDIR/iptables.rules.bak"
+    if [[ -d "$BACKUPDIR/mac_addresses" ]]; then
+        for device in "$BACKUPDIR/mac_addresses"/*; do
+            local devname
+            devname="$(basename "$device")"
+            ip link set "$devname" down
+            ip link set "$devname" address "$(cat "$device")"
+            ip link set "$devname" up
+        done
+    fi
+    if [[ -f "$BACKUPDIR/timezone.bak" ]]; then
+        local restore_timezone
+        restore_timezone="$(cat "$BACKUPDIR/timezone.bak")"
+        timedatectl set-timezone "$restore_timezone"
+    fi
+    rm -rf "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
 }
