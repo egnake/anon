@@ -1,0 +1,62 @@
+#!/bin/bash
+source ${BASE_DIR}/assets/sources/config
+
+start_sandbox_isolation() {
+    echo -e "\n ${CYAN}ℹ INFO:${RESET} Setting up Kernel-level Network Namespace (OS Isolation)..."
+    
+    # Clean up any existing namespace
+    ip netns del anon_jail 2>/dev/null
+    
+    # Create the namespace
+    ip netns add anon_jail
+    ip netns exec anon_jail ip link set lo up
+    
+    # Create veth pair
+    ip link add veth-anon type veth peer name veth-jail
+    
+    # Move veth-jail to the namespace
+    ip link set veth-jail netns anon_jail
+    
+    # Configure IPs
+    ip addr add 10.200.200.1/24 dev veth-anon
+    ip link set veth-anon up
+    
+    ip netns exec anon_jail ip addr add 10.200.200.2/24 dev veth-jail
+    ip netns exec anon_jail ip link set veth-jail up
+    
+    # Set default route in the jail to the host
+    ip netns exec anon_jail ip route add default via 10.200.200.1
+    
+    # Configure host to route jail traffic through Tor TransPort
+    # We will use iptables in the host
+    iptables -t nat -A PREROUTING -i veth-anon -p tcp -j REDIRECT --to-ports 9040
+    iptables -t nat -A PREROUTING -i veth-anon -p udp --dport 53 -j REDIRECT --to-ports 5353
+    
+    # Enable IP forwarding
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null
+    
+    sed -i 's/sandbox_isolation_status="Disable"/sandbox_isolation_status="Enable"/g' $SRCDIR/sources/config
+    
+    echo -e " ${GREEN}✔ SUCCESS:${RESET} OS-level Namespace Isolation created. The 'anon_jail' environment is ready.\n"
+}
+
+stop_sandbox_isolation() {
+    # Remove iptables rules
+    iptables -t nat -D PREROUTING -i veth-anon -p tcp -j REDIRECT --to-ports 9040 2>/dev/null
+    iptables -t nat -D PREROUTING -i veth-anon -p udp --dport 53 -j REDIRECT --to-ports 5353 2>/dev/null
+    
+    # Delete veth pair on host (this also removes the peer in netns)
+    ip link del veth-anon 2>/dev/null
+    
+    # Delete netns
+    ip netns del anon_jail 2>/dev/null
+    
+    sed -i 's/sandbox_isolation_status="Enable"/sandbox_isolation_status="Disable"/g' $SRCDIR/sources/config
+    echo -e "\n ${CYAN}ℹ INFO:${RESET} OS-level Namespace Isolation removed.\n"
+}
+
+if [[ "$1" == "start" ]]; then
+    start_sandbox_isolation
+elif [[ "$1" == "stop" ]]; then
+    stop_sandbox_isolation
+fi

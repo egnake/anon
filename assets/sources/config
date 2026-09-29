@@ -45,6 +45,7 @@ proxychains_integration_status="Disable"
 anti_cold_boot_status="Disable"
 i2p_integration_status="Disable"
 traffic_obfuscation_status="Disable"
+sandbox_isolation_status="Disable"
 anti_mitm_pid="0"
 traffic_obfuscation_pid="0"
 
