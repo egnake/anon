@@ -568,7 +568,7 @@ stop(){
 #detect enable features and stop
 if grep -q "Enable" "$SRCDIR/sources/config" 2>/dev/null; then
 
-	options=("anti_mitm" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot" "i2p_integration" "traffic_obfuscation" "sandbox_isolation")
+	options=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot" "i2p_integration" "traffic_obfuscation" "sandbox_isolation")
 
 	stop_anti_mitm(){
 
@@ -613,6 +613,7 @@ print_status() {
 }
 
 print_status "Anti Mitm" "$anti_mitm_status"
+print_status "Volatile Logging" "$volatile_logging_status"
 print_status "Ip changer" "$ip_changer_status"
 print_status "Dns changer" "$dns_changer_status"
 print_status "Mac changer" "$mac_changer_status"
@@ -689,6 +690,7 @@ dashboard() {
         }
         
         print_mod "MITM " "$anti_mitm_status"
+        print_mod "VLOG " "$volatile_logging_status"
         print_mod "IP   " "$ip_changer_status"
         print_mod "DNS  " "$dns_changer_status"
         print_mod "MAC  " "$mac_changer_status"
