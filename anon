@@ -87,7 +87,7 @@ dep_check() {
 start(){
 
 #check dependences
-dep_check tar tor curl python3 scapy sdmem obfs4proxy macchanger proxychains4 rfkill i2pd
+dep_check tar tor curl sdmem obfs4proxy macchanger proxychains4 rfkill i2pd
 
 #get a backup to fix it in case of a possible error 
 if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
@@ -394,7 +394,7 @@ execute_modules() {
 
     for opt in "${!options[@]}"; do
         start_anti_mitm(){
-            python3 "${BASE_DIR}/assets/scripts/anti_mitm" &
+            "${BASE_DIR}/assets/scripts/anti_mitm" &
             antimitmpid="$!"
             sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' $SRCDIR/sources/config
             info "Anti mitm successfully enabled"

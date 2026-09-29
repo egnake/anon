@@ -1,20 +1,91 @@
-#!/usr/bin/env python
+#!/bin/bash
+set -euo pipefail
 
-from scapy.all import Ether, ARP, srp, sniff, conf, os, subprocess
-def get_mac(ip):
-    p = Ether(dst='ff:ff:ff:ff:ff:ff')/ARP(pdst=ip)
-    result = srp(p, timeout=3, verbose=False)[0]
-    return result[0][1].hwsrc
-def process(packet):
-    if packet.haslayer(ARP):
-        if packet[ARP].op == 2:
-            try:                
-                real_mac = get_mac(packet[ARP].psrc)
-                response_mac = packet[ARP].hwsrc
-                if real_mac != response_mac:
-                    check = subprocess.run(["iptables", "-C", "INPUT", "-m", "mac", "--mac-source", response_mac, "-j", "DROP"], capture_output=True)
-                    if check.returncode != 0:
-                        subprocess.run(["iptables", "-A", "INPUT", "-m", "mac", "--mac-source", response_mac, "-j", "DROP"])
-            except IndexError:
-                pass
-sniff(store=False, prn=process)
+# Anti-MITM Daemon — Pure Bash Implementation
+# Monitors ARP cache for gateway MAC changes using 'ip neigh'.
+# If a MITM/ARP-spoof is detected, the network interface is
+# brought down immediately to prevent data exfiltration.
+
+POLL_INTERVAL="${ANON_MITM_POLL_INTERVAL:-2}"
+
+_get_default_iface() {
+    ip route 2>/dev/null | awk '/^default/{print $5; exit}'
+}
+
+_get_gateway_ip() {
+    ip route 2>/dev/null | awk '/^default/{print $3; exit}'
+}
+
+_get_gateway_mac() {
+    local gw_ip="$1"
+    ip neigh show "$gw_ip" 2>/dev/null | awk '{print $5; exit}'
+}
+
+_lockdown() {
+    local iface="$1"
+    local spoofed_mac="$2"
+    local gw_ip="$3"
+
+    echo "[ANON ANTI-MITM] *** ARP SPOOFING DETECTED ***" >&2
+    echo "[ANON ANTI-MITM] Gateway ${gw_ip} MAC changed to ${spoofed_mac}" >&2
+    echo "[ANON ANTI-MITM] Initiating network lockdown on ${iface}..." >&2
+
+    # Bring the interface down to sever all connectivity immediately
+    ip link set dev "$iface" down 2>/dev/null || true
+
+    # Additionally block the spoofed MAC via iptables as defense-in-depth
+    if command -v iptables &>/dev/null; then
+        iptables -C INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null \
+            || iptables -A INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null || true
+    fi
+
+    echo "[ANON ANTI-MITM] Network interface ${iface} is DOWN. Manual intervention required." >&2
+}
+
+main() {
+    local iface gw_ip baseline_mac
+
+    iface="$(_get_default_iface)"
+    if [[ -z "$iface" ]]; then
+        echo "[ANON ANTI-MITM] ERROR: No default network interface found." >&2
+        exit 1
+    fi
+
+    gw_ip="$(_get_gateway_ip)"
+    if [[ -z "$gw_ip" ]]; then
+        echo "[ANON ANTI-MITM] ERROR: No default gateway found." >&2
+        exit 1
+    fi
+
+    # Force an ARP resolution so ip neigh has an entry
+    ping -c1 -W1 "$gw_ip" &>/dev/null || true
+
+    baseline_mac="$(_get_gateway_mac "$gw_ip")"
+    if [[ -z "$baseline_mac" || "$baseline_mac" == "FAILED" || "$baseline_mac" == "INCOMPLETE" ]]; then
+        echo "[ANON ANTI-MITM] ERROR: Cannot resolve gateway MAC for ${gw_ip}." >&2
+        exit 1
+    fi
+
+    echo "[ANON ANTI-MITM] Monitoring gateway ${gw_ip} (MAC: ${baseline_mac}) on ${iface}" >&2
+    echo "[ANON ANTI-MITM] Poll interval: ${POLL_INTERVAL}s" >&2
+
+    while true; do
+        sleep "$POLL_INTERVAL"
+
+        local current_mac
+        current_mac="$(_get_gateway_mac "$gw_ip")"
+
+        # Skip incomplete / failed ARP states (transient)
+        if [[ -z "$current_mac" || "$current_mac" == "FAILED" || "$current_mac" == "INCOMPLETE" ]]; then
+            continue
+        fi
+
+        if [[ "$current_mac" != "$baseline_mac" ]]; then
+            _lockdown "$iface" "$current_mac" "$gw_ip"
+            # Exit after lockdown — the interface is down, nothing more to monitor
+            exit 2
+        fi
+    done
+}
+
+main "$@"
