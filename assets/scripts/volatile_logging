@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# ═══════════════════════════════════════════════════════════════════
+# Volatile Logging — Tails OS Paradigm
+# ═══════════════════════════════════════════════════════════════════
+# Instead of deleting logs (which is a forensic red flag), we mount
+# a tmpfs RAM disk over /var/log.  All writes go to RAM.  On unmount
+# the original, pre-session logs reappear intact — leaving only an
+# explainable time gap, not a suspicious deletion event.
+# ═══════════════════════════════════════════════════════════════════
+
+start_volatile_logging(){
+    source "${BASE_DIR}/assets/sources/config"
+
+    if [[ "$volatile_logging_status" == "Enable" ]]; then
+        warn "Volatile logging is already active"
+        return 0
+    fi
+
+    info "Initializing volatile logging (Tails OS paradigm)..."
+
+    # ── 1. Mount tmpfs over /var/log ─────────────────────────────
+    if mountpoint -q /var/log 2>/dev/null; then
+        warn "/var/log is already a mountpoint; skipping tmpfs overlay"
+    else
+        mount -t tmpfs -o size=50M,mode=0755 tmpfs /var/log || {
+            warn "Failed to mount tmpfs on /var/log"
+            return 1
+        }
+        info "Mounted tmpfs (50 MB) over /var/log"
+    fi
+
+    # ── 2. Mount tmpfs over systemd journal persistent dir ───────
+    if [[ -d /var/log/journal ]]; then
+        mkdir -p /var/log/journal
+    fi
+    # Ensure the journal directory exists on the tmpfs
+    mkdir -p /var/log/journal 2>/dev/null
+
+    # ── 3. Restart logging daemons so they write into RAM ────────
+    if command -v systemctl &>/dev/null; then
+        systemctl restart systemd-journald 2>/dev/null || true
+        info "Restarted systemd-journald → writing to RAM"
+    fi
+    if pidof rsyslogd &>/dev/null; then
+        kill -HUP "$(pidof rsyslogd)" 2>/dev/null || true
+        info "Sent SIGHUP to rsyslog → writing to RAM"
+    fi
+
+    # ── 4. Create minimal directory structure for daemons ────────
+    mkdir -p /var/log/{apt,cups,samba,journal,private} 2>/dev/null
+    chmod 0700 /var/log/private 2>/dev/null
+
+    sed -i 's/volatile_logging_status="Disable"/volatile_logging_status="Enable"/g' "$SRCDIR/sources/config"
+    info "Volatile logging enabled — all logs now write to volatile RAM"
+}
+
+stop_volatile_logging(){
+    source "${BASE_DIR}/assets/sources/config"
+
+    info "Restoring persistent logging..."
+
+    # ── 1. Unmount the tmpfs — original logs reappear ────────────
+    if mountpoint -q /var/log 2>/dev/null; then
+        # Sync first so daemons flush
+        sync
+        umount -l /var/log 2>/dev/null || umount /var/log 2>/dev/null || {
+            warn "Could not unmount /var/log — it may still be in use"
+        }
+        info "Unmounted tmpfs from /var/log — historical logs restored"
+    else
+        info "/var/log is not a tmpfs mountpoint; nothing to unmount"
+    fi
+
+    # ── 2. Restart logging daemons back to disk ──────────────────
+    if command -v systemctl &>/dev/null; then
+        systemctl restart systemd-journald 2>/dev/null || true
+        systemctl restart rsyslog 2>/dev/null || true
+        info "Logging daemons restarted — writing to persistent disk"
+    fi
+
+    sed -i 's/volatile_logging_status="Enable"/volatile_logging_status="Disable"/g' "$SRCDIR/sources/config"
+    info "Volatile logging disabled"
+}
