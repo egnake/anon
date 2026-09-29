@@ -1,0 +1,61 @@
+name: Release and Publish Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build Debian Package and Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Environment
+        run: sudo apt-get update && sudo apt-get install -y dpkg fakeroot
+
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Build .deb Package
+        run: |
+          mkdir -p anon_${VERSION}_all/DEBIAN
+          cat <<EOF > anon_${VERSION}_all/DEBIAN/control
+          Package: anon
+          Version: ${VERSION}
+          Architecture: all
+          Maintainer: egnake <egcaem000@gmail.com>
+          Depends: bash, python3, iptables, tor, obfs4proxy, macchanger, proxychains4, secure-delete, rfkill, firejail, iproute2, curl, net-tools
+          Description: Advanced OPSEC & Anonymity Framework
+           A comprehensive, modular anonymity and anti-forensics toolkit for Linux environments.
+          EOF
+          
+          mkdir -p anon_${VERSION}_all/usr/bin
+          mkdir -p anon_${VERSION}_all/usr/share/anon/backups
+          mkdir -p anon_${VERSION}_all/usr/share/applications
+          mkdir -p anon_${VERSION}_all/usr/share/kali-menu/applications
+          
+          install -m 755 anon anon_${VERSION}_all/usr/bin/
+          cp -vr assets anon_${VERSION}_all/usr/share/anon/
+          cp -vr assets/anon.desktop anon_${VERSION}_all/usr/share/applications/
+          cp -vr assets/anon.desktop anon_${VERSION}_all/usr/share/kali-menu/applications/
+          
+          fakeroot dpkg-deb --build anon_${VERSION}_all
+
+      - name: Create Tarball Source
+        run: |
+          tar -czvf anon_${VERSION}_source.tar.gz anon assets setup.sh setup.bat Makefile README.md README-TR.md LICENSE
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            anon_${VERSION}_all.deb
+            anon_${VERSION}_source.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
