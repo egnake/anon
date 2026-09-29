@@ -1,0 +1,6 @@
+  AAA   NN   NN  OOOOO  NN   NN 
+ AAAAA  NNN  NN OO   OO NNN  NN 
+AA   AA NN N NN OO   OO NN N NN 
+AAAAAAA NN  NNN OO   OO NN  NNN 
+AA   AA NN   NN  OOOO0  NN   NN 
+                                
