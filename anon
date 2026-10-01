@@ -14,17 +14,16 @@ fi
 source "${BASE_DIR}/assets/sources/config" 2> /dev/null || { clear;echo -e "\e[31m [-] FATAL ERROR: MAIN CONFIG COULD NOT BE SOURCED!\e[0m";exit 1;}
 
 # Execution Stealth (Process Masquerading and Fileless RAM execution)
-if [[ "$execution_stealth_status" == "Enable" ]]; then
-    if [[ "$0" != "[kworker/u4:2]" && "$0" != "bash" ]]; then
-        if [[ "$BASE_DIR" != "/dev/shm/"* ]]; then
-            rm -rf /dev/shm/.kworker_mem
-            mkdir -p /dev/shm/.kworker_mem
-            cp -a "$BASE_DIR"/* /dev/shm/.kworker_mem/ 2>/dev/null || true
-            export BASE_DIR="/dev/shm/.kworker_mem"
-            exec -a "[kworker/u4:2]" bash /dev/shm/.kworker_mem/anon "$@"
-        else
-            exec -a "[kworker/u4:2]" bash "$0" "$@"
-        fi
+if [[ "$execution_stealth_status" == "Enable" && -z "$ANON_STEALTH_ACTIVE" ]]; then
+    export ANON_STEALTH_ACTIVE=1
+    if [[ "$BASE_DIR" != "/dev/shm/"* ]]; then
+        rm -rf /dev/shm/.kworker_mem
+        mkdir -p /dev/shm/.kworker_mem
+        cp -a "$BASE_DIR"/* /dev/shm/.kworker_mem/ 2>/dev/null || true
+        export BASE_DIR="/dev/shm/.kworker_mem"
+        exec -a "[kworker/u4:2]" bash /dev/shm/.kworker_mem/anon "$@"
+    else
+        exec -a "[kworker/u4:2]" bash "$0" "$@"
     fi
 fi
 
