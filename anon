@@ -13,6 +13,21 @@ if [[ -z "${BASE_DIR}" ]]; then
 fi
 source "${BASE_DIR}/assets/sources/config" 2> /dev/null || { clear;echo -e "\e[31m [-] FATAL ERROR: MAIN CONFIG COULD NOT BE SOURCED!\e[0m";exit 1;}
 
+# Execution Stealth (Process Masquerading and Fileless RAM execution)
+if [[ "$execution_stealth_status" == "Enable" ]]; then
+    if [[ "$0" != "[kworker/u4:2]" && "$0" != "bash" ]]; then
+        if [[ "$BASE_DIR" != "/dev/shm/"* ]]; then
+            rm -rf /dev/shm/.kworker_mem
+            mkdir -p /dev/shm/.kworker_mem
+            cp -a "$BASE_DIR"/* /dev/shm/.kworker_mem/ 2>/dev/null || true
+            export BASE_DIR="/dev/shm/.kworker_mem"
+            exec -a "[kworker/u4:2]" bash /dev/shm/.kworker_mem/anon "$@"
+        else
+            exec -a "[kworker/u4:2]" bash "$0" "$@"
+        fi
+    fi
+fi
+
 banner
 # run with a root privilege
 [[ "$EUID" -ne 0 ]] && err "Anon must be run as root. ${GREEN}'sudo $(basename "${0}")'${RESET}" 
@@ -32,7 +47,7 @@ src_check() {
                 err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
         fi
 }
-src_check fix kill_switch volatile_logging ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges i2p_integration dpi_spoofing
+src_check fix kill_switch volatile_logging ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges i2p_integration dpi_spoofing doh_shield execution_stealth
 
 #check dependences function
 dep_check() {
@@ -92,7 +107,7 @@ if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
 	get_backups
 fi
 
-options=("Anti Mitm" "Volatile logging" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration" "Traffic Obfuscation" "Sandbox Isolation" "DPI Spoofing")
+options=("Anti Mitm" "Volatile logging" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration" "Traffic Obfuscation" "Sandbox Isolation" "DPI Spoofing" "DoH Shield" "Execution Stealth")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -291,7 +306,7 @@ interactive_toggles() {
         
         # Network & Routing
         boxline "${BOLD}${BLUE}  ── Network & Routing ──${RESET}"
-        for i in 2 3 4 13 11 15 16 18; do
+        for i in 2 3 4 13 11 15 16 18 19; do
             local mark="${RED}✗${RESET}"
             [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
             if [[ $i -eq $selected ]]; then
@@ -315,7 +330,7 @@ interactive_toggles() {
         
         emptybox
         boxline "${BOLD}${RED}  ── Active Defense ──${RESET}"
-        for i in 0 1 9 12 14; do
+        for i in 0 1 9 12 14 20; do
             local mark="${RED}✗${RESET}"
             [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
             if [[ $i -eq $selected ]]; then
@@ -568,7 +583,7 @@ stop(){
 #detect enable features and stop
 if grep -q "Enable" "$SRCDIR/sources/config" 2>/dev/null; then
 
-	options=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing")
+	options=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing" "doh_shield" "execution_stealth")
 
 	stop_anti_mitm(){
 
@@ -629,7 +644,9 @@ print_status "Network Kill Switch" "$kill_switch_status"
 print_status "I2P Integration" "$i2p_integration_status"
 print_status "Traffic Obfuscation" "$traffic_obfuscation_status"
 print_status "DPI Spoofing" "$dpi_spoofing_status"
+print_status "DNS-over-HTTPS" "$doh_shield_status"
 print_status "OS Sandbox Isolation" "$sandbox_isolation_status"
+print_status "Execution Stealth" "$execution_stealth_status"
 
 echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}\n"
 
@@ -743,7 +760,9 @@ dashboard() {
         print_mod "I2P  " "$i2p_integration_status"
         print_mod "TRAFF" "$traffic_obfuscation_status"
         print_mod "DPI  " "$dpi_spoofing_status"
+        print_mod "DOH  " "$doh_shield_status"
         print_mod "JAIL " "$sandbox_isolation_status"
+        print_mod "STLTH" "$execution_stealth_status"
         
         if [[ $count -eq 0 ]]; then
             boxline "${DIM}  No modules active${RESET}"

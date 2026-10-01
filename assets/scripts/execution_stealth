@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Execution Stealth Module
+# Enables Process Masquerading and Fileless (RAM) Execution
+
+start_execution_stealth() {
+    info "Activating Execution Stealth..."
+    
+    # Enable masquerading and RAM execution flag
+    sed -i 's/execution_stealth_status="Disable"/execution_stealth_status="Enable"/g' "$SRCDIR/sources/config"
+    
+    msg "Execution Stealth activated."
+    msg "Restart the framework for Process Masquerading and Fileless Execution to take effect."
+}
+
+stop_execution_stealth() {
+    info "Deactivating Execution Stealth..."
+    
+    # Disable flag
+    sed -i 's/execution_stealth_status="Enable"/execution_stealth_status="Disable"/g' "$SRCDIR/sources/config"
+    
+    msg "Execution Stealth deactivated."
+    msg "Any currently masked processes will remain masked until terminated."
+}

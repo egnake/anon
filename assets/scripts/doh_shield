@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# DNS-over-HTTPS (DoH) Shield Module
+# Enforces DNSCrypt-Proxy usage for system DNS resolution
+
+start_doh_shield() {
+    info "Starting DNS-over-HTTPS (DoH) Shield..."
+    
+    if ! command -v dnscrypt-proxy &> /dev/null; then
+        info "Installing dnscrypt-proxy..."
+        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y dnscrypt-proxy
+    fi
+    
+    systemctl unmask dnscrypt-proxy 2>/dev/null || true
+    systemctl start dnscrypt-proxy 2>/dev/null || true
+    
+    if [[ ! -f /etc/resolv.conf.anon.bak ]]; then
+        cp /etc/resolv.conf /etc/resolv.conf.anon.bak
+    fi
+    
+    # dnscrypt-proxy default port
+    cat > /etc/resolv.conf <<EOF
+# DoH Shield (DNSCrypt) managed by Anon
+nameserver 127.0.2.1
+nameserver 127.0.0.1
+options edns0
+EOF
+    
+    sed -i 's/doh_shield_status="Disable"/doh_shield_status="Enable"/g' "$SRCDIR/sources/config"
+    msg "DNS-over-HTTPS (DoH) Shield activated."
+}
+
+stop_doh_shield() {
+    info "Stopping DNS-over-HTTPS (DoH) Shield..."
+    systemctl stop dnscrypt-proxy 2>/dev/null || true
+    
+    if [[ -f /etc/resolv.conf.anon.bak ]]; then
+        cat /etc/resolv.conf.anon.bak > /etc/resolv.conf
+    fi
+    
+    sed -i 's/doh_shield_status="Enable"/doh_shield_status="Disable"/g' "$SRCDIR/sources/config"
+    msg "DoH Shield deactivated."
+}
