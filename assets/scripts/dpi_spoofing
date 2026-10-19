@@ -7,6 +7,7 @@ source "${BASE_DIR}/assets/sources/config"
 # ═══════════════════════════════════════════════════════════════════
 
 start_dpi_spoofing(){
+    source "${BASE_DIR}/assets/sources/config"
     if [[ "$dpi_spoofing_status" == "Disable" ]]; then
         # Check if snowflake-client is installed
         if ! command -v snowflake-client &> /dev/null; then
@@ -17,15 +18,24 @@ start_dpi_spoofing(){
         fi
 
         sed -i 's/dpi_spoofing_status="Disable"/dpi_spoofing_status="Enable"/g' "$SRCDIR/sources/config"
-        info "DPI Spoofing (WebRTC Camouflage) successfully enabled."
-        info "Note: You must restart IP Changer if it is currently running."
+        info "DPI Spoofing (Snowflake WebRTC Camouflage) successfully enabled."
+        if [[ "$ip_changer_status" == "Enable" ]]; then
+            info "Refreshing Tor transparent proxy configuration..."
+            stop_ip_changer
+            start_ip_changer
+        fi
     else
         warn "DPI Spoofing is already enabled."
     fi
 }
 
 stop_dpi_spoofing(){
+    source "${BASE_DIR}/assets/sources/config"
     sed -i 's/dpi_spoofing_status="Enable"/dpi_spoofing_status="Disable"/g' "$SRCDIR/sources/config"
     info "DPI Spoofing successfully disabled."
-    info "Note: You must restart IP Changer to apply changes."
+    if [[ "$ip_changer_status" == "Enable" ]]; then
+        info "Refreshing Tor transparent proxy configuration..."
+        stop_ip_changer
+        start_ip_changer
+    fi
 }
