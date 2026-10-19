@@ -8,34 +8,33 @@ start_hostname_changer(){
     source "${BASE_DIR}/assets/sources/config"
 
     if [[ "$hostname_changer_status" == "Disable" ]]; then
-        # Backup hostname
-        cat /etc/hostname > "$BACKUPDIR/hostname.bak"
+        # Backup hostname & hosts
+        cat /etc/hostname > "$BACKUPDIR/hostname.bak" 2>/dev/null || hostname > "$BACKUPDIR/hostname.bak"
+        if [[ -f /etc/hosts ]]; then
+            cat /etc/hosts > "$BACKUPDIR/hosts.bak"
+        fi
 
-        local -a hostnames=(
-            "Windows10-Enterprise"
-            "Windows10-Pro"
-            "Windows10-Enterprise-LTSC"
-            "Windows8.1-OEM"
-            "Windows8-Enterprise"
-            "Windows8.1-Pro"
-            "Windows7-Professional"
-            "Windows7-Enterprise"
-            "Windows7-Ultimate"
-            "Windows-Vista-Business"
-            "WindowsXP-Professional"
-            "macOS11"
-            "OSX10.11"
-            "MacBook-Air"
-            "MacBook"
-            "MacBook-Pro"
-        )
+        # Generate authentic Windows / OEM format hostname (e.g. DESKTOP-7R9BK2L)
+        local prefixes=("DESKTOP-" "LAPTOP-" "MSI-" "PC-" "WIN-")
+        local pfx="${prefixes[$((RANDOM % ${#prefixes[@]}))]}"
+        local suffix
+        suffix="$(tr -dc 'A-Z0-9' </dev/urandom 2>/dev/null | head -c 7 || echo "4K9A2BC")"
+        [[ -z "$suffix" ]] && suffix="7K9A2BC"
+        local new_hostname="${pfx}${suffix}"
 
-        local size=${#hostnames[@]}
-        local index=$((RANDOM % size))
+        echo "$new_hostname" > /etc/hostname
+        hostname "$new_hostname" 2>/dev/null || true
+        if command -v hostnamectl &>/dev/null; then
+            hostnamectl set-hostname "$new_hostname" 2>/dev/null || true
+        fi
 
-        echo "${hostnames[$index]}" > /etc/hostname
+        # Update /etc/hosts so sudo and local resolution don't lag or complain
+        if [[ -f /etc/hosts ]]; then
+            sed -i "s/127.0.1.1.*/127.0.1.1\t${new_hostname}/g" /etc/hosts 2>/dev/null || true
+        fi
+
         sed -i 's/hostname_changer_status="Disable"/hostname_changer_status="Enable"/g' "$SRCDIR/sources/config"
-        info "Hostname changer successfully enabled"
+        info "Hostname changer successfully enabled (Spoofed to: ${new_hostname})"
     else
         warn "Hostname changer is already running"
     fi
@@ -44,8 +43,18 @@ start_hostname_changer(){
 stop_hostname_changer(){
     source "${BASE_DIR}/assets/sources/config"
     if [[ -f "$BACKUPDIR/hostname.bak" ]]; then
-        cat "$BACKUPDIR/hostname.bak" > /etc/hostname
+        local orig_host
+        orig_host="$(cat "$BACKUPDIR/hostname.bak" 2>/dev/null || echo "localhost")"
+        echo "$orig_host" > /etc/hostname
+        hostname "$orig_host" 2>/dev/null || true
+        if command -v hostnamectl &>/dev/null; then
+            hostnamectl set-hostname "$orig_host" 2>/dev/null || true
+        fi
         rm -f "$BACKUPDIR/hostname.bak"
+    fi
+    if [[ -f "$BACKUPDIR/hosts.bak" ]]; then
+        cat "$BACKUPDIR/hosts.bak" > /etc/hosts
+        rm -f "$BACKUPDIR/hosts.bak"
     fi
     sed -i 's/hostname_changer_status="Enable"/hostname_changer_status="Disable"/g' "$SRCDIR/sources/config"
     info "Hostname changer successfully disabled"
