@@ -7,45 +7,56 @@
 start_anti_cold_boot(){
 	source "${BASE_DIR}/assets/sources/config"
 	if [[ "$anti_cold_boot_status" == "Disable" ]]; then
-		info "Initiating anti cold-boot sequence..."
+		info "Initiating anti cold-boot & anti-forensic memory lockdown..."
 		
-		swapoff -a 
+		# Record if swap was on, then disable swap completely for the session duration
+		if [[ -n "$(swapon --show 2>/dev/null)" ]]; then
+			touch "$BACKUPDIR/swap_was_active"
+		fi
+		swapoff -a 2>/dev/null || true
+
 		# Wipe swap partitions if sswap is available
 		if command -v sswap &> /dev/null; then
 			local swaps
-			swaps=$(awk 'NR>1{print $1}' /proc/swaps)
+			swaps=$(awk 'NR>1{print $1}' /proc/swaps 2>/dev/null)
 			for swap in $swaps; do
-				sswap "$swap" &>/dev/null
+				sswap "$swap" &>/dev/null || true
 			done
 		fi
-		swapon -a 
+		# IMPORTANT: Keep swap OFF during the entire session to prevent sensitive keys/RAM from hitting disk!
 		
-		# Backup original memory limits to avoid permanently crashing the OS
-		cat /proc/sys/vm/min_free_kbytes > "$BACKUPDIR/min_free_kbytes.bak" 2>/dev/null
-		cat /proc/sys/vm/oom_kill_allocating_task > "$BACKUPDIR/oom_kill_allocating_task.bak" 2>/dev/null
-		cat /proc/sys/vm/overcommit_memory > "$BACKUPDIR/overcommit_memory.bak" 2>/dev/null
-		cat /proc/sys/vm/oom_dump_tasks > "$BACKUPDIR/oom_dump_tasks.bak" 2>/dev/null
+		# Backup original memory and core-dump limits
+		cat /proc/sys/vm/min_free_kbytes > "$BACKUPDIR/min_free_kbytes.bak" 2>/dev/null || true
+		cat /proc/sys/vm/oom_kill_allocating_task > "$BACKUPDIR/oom_kill_allocating_task.bak" 2>/dev/null || true
+		cat /proc/sys/vm/overcommit_memory > "$BACKUPDIR/overcommit_memory.bak" 2>/dev/null || true
+		cat /proc/sys/vm/oom_dump_tasks > "$BACKUPDIR/oom_dump_tasks.bak" 2>/dev/null || true
+		sysctl -n fs.suid_dumpable > "$BACKUPDIR/suid_dumpable.bak" 2>/dev/null || true
+		sysctl -n kernel.core_pattern > "$BACKUPDIR/core_pattern.bak" 2>/dev/null || true
 
-		sysctl -w vm.min_free_kbytes=1024 &>/dev/null
-		sysctl -w vm.drop_caches=3 &>/dev/null
-		sysctl -w vm.oom_kill_allocating_task=1 &>/dev/null
-		sysctl -w vm.overcommit_memory=1 &>/dev/null
-		sysctl -w vm.oom_dump_tasks=0 &>/dev/null
+		sysctl -w vm.min_free_kbytes=1024 &>/dev/null || true
+		sysctl -w vm.drop_caches=3 &>/dev/null || true
+		sysctl -w vm.oom_kill_allocating_task=1 &>/dev/null || true
+		sysctl -w vm.overcommit_memory=1 &>/dev/null || true
+		sysctl -w vm.oom_dump_tasks=0 &>/dev/null || true
+
+		# Anti-forensics: Prevent memory core dumps on disk if processes crash
+		sysctl -w fs.suid_dumpable=0 &>/dev/null || true
+		sysctl -w kernel.core_pattern="|/bin/false" &>/dev/null || true
 		
 		# Secure memory wipe (RAM)
-		if grep -qi microsoft /proc/version; then
+		if grep -qi microsoft /proc/version 2>/dev/null; then
 			warn "WSL environment detected! Skipping RAM/Swap wipe to prevent fatal E_UNEXPECTED host crash."
 		else
 			if command -v sdmem &> /dev/null; then
 				info "Wiping free RAM securely (this may take a moment)..."
-				sdmem -f -ll &>/dev/null
+				sdmem -f -ll &>/dev/null || true
 			else
 				warn "sdmem not found! Skipping RAM wipe. Consider installing secure-delete."
 			fi
 		fi
 		
 		sed -i 's/anti_cold_boot_status="Disable"/anti_cold_boot_status="Enable"/g' "$SRCDIR/sources/config"
-		info "Anti cold boot successfully enabled"
+		info "Anti cold boot & memory lockdown successfully enabled (Swap locked OFF)"
 	else
 		warn "Anti cold boot is already running"
 	fi
@@ -53,18 +64,30 @@ start_anti_cold_boot(){
 
 stop_anti_cold_boot(){
 	source "${BASE_DIR}/assets/sources/config"
-	local orig_min_free orig_oom_kill orig_overcommit orig_oom_dump
+	local orig_min_free orig_oom_kill orig_overcommit orig_oom_dump orig_suid_dump orig_core_pat
 	orig_min_free=$(cat "$BACKUPDIR/min_free_kbytes.bak" 2>/dev/null || echo "67584")
 	orig_oom_kill=$(cat "$BACKUPDIR/oom_kill_allocating_task.bak" 2>/dev/null || echo "0")
 	orig_overcommit=$(cat "$BACKUPDIR/overcommit_memory.bak" 2>/dev/null || echo "0")
 	orig_oom_dump=$(cat "$BACKUPDIR/oom_dump_tasks.bak" 2>/dev/null || echo "1")
+	orig_suid_dump=$(cat "$BACKUPDIR/suid_dumpable.bak" 2>/dev/null || echo "2")
+	orig_core_pat=$(cat "$BACKUPDIR/core_pattern.bak" 2>/dev/null || echo "core")
 
-	sysctl -w vm.min_free_kbytes="$orig_min_free" &>/dev/null
-	sysctl -w vm.oom_kill_allocating_task="$orig_oom_kill" &>/dev/null
-	sysctl -w vm.overcommit_memory="$orig_overcommit" &>/dev/null
-	sysctl -w vm.oom_dump_tasks="$orig_oom_dump" &>/dev/null
+	sysctl -w vm.min_free_kbytes="$orig_min_free" &>/dev/null || true
+	sysctl -w vm.oom_kill_allocating_task="$orig_oom_kill" &>/dev/null || true
+	sysctl -w vm.overcommit_memory="$orig_overcommit" &>/dev/null || true
+	sysctl -w vm.oom_dump_tasks="$orig_oom_dump" &>/dev/null || true
+	sysctl -w fs.suid_dumpable="$orig_suid_dump" &>/dev/null || true
+	sysctl -w kernel.core_pattern="$orig_core_pat" &>/dev/null || true
 	
-	rm -f "$BACKUPDIR/min_free_kbytes.bak" "$BACKUPDIR/oom_kill_allocating_task.bak" "$BACKUPDIR/overcommit_memory.bak" "$BACKUPDIR/oom_dump_tasks.bak"
+	# Restore swap only if it was originally active
+	if [[ -f "$BACKUPDIR/swap_was_active" ]]; then
+		swapon -a 2>/dev/null || true
+		rm -f "$BACKUPDIR/swap_was_active"
+	fi
+
+	rm -f "$BACKUPDIR/min_free_kbytes.bak" "$BACKUPDIR/oom_kill_allocating_task.bak" \
+	      "$BACKUPDIR/overcommit_memory.bak" "$BACKUPDIR/oom_dump_tasks.bak" \
+	      "$BACKUPDIR/suid_dumpable.bak" "$BACKUPDIR/core_pattern.bak"
 	
 	sed -i 's/anti_cold_boot_status="Enable"/anti_cold_boot_status="Disable"/g' "$SRCDIR/sources/config"
 	info "Anti cold boot successfully disabled"
