@@ -20,6 +20,9 @@ start_ip_changer(){
             iptables-save > "$BACKUPDIR/iptables.rules.bak"
             ip6tables-save > "$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
 
+            local tor_uid
+            tor_uid="$(id -u debian-tor 2>/dev/null || id -u tor 2>/dev/null || id -u _tor 2>/dev/null || echo "109")"
+
             iptables -F
             iptables -X
             iptables -t nat -F
@@ -42,6 +45,13 @@ start_ip_changer(){
             iptables -A OUTPUT -m state --state INVALID -j DROP
             iptables -A OUTPUT -m state --state ESTABLISHED -j ACCEPT
             iptables -A OUTPUT -m owner --uid-owner "$tor_uid" -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -m state --state NEW -j ACCEPT
+
+            # Prevent LAN DNS leaks: Drop direct DNS requests to local gateways
+            for lan in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
+                iptables -A OUTPUT -d "$lan" -p udp --dport 53 -j DROP
+                iptables -A OUTPUT -d "$lan" -p tcp --dport 53 -j DROP
+            done
+
             for lan in 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16; do
                 iptables -A OUTPUT -d "$lan" -j ACCEPT
             done
@@ -54,13 +64,13 @@ start_ip_changer(){
 
             # Strict IPv6 Drop rules for Defense-in-Depth
             if command -v ip6tables &> /dev/null; then
-                ip6tables -F
-                ip6tables -X
-                ip6tables -P INPUT DROP
-                ip6tables -P FORWARD DROP
-                ip6tables -P OUTPUT DROP
-                ip6tables -A INPUT -i lo -j ACCEPT
-                ip6tables -A OUTPUT -o lo -j ACCEPT
+                ip6tables -F 2>/dev/null || true
+                ip6tables -X 2>/dev/null || true
+                ip6tables -P INPUT DROP 2>/dev/null || true
+                ip6tables -P FORWARD DROP 2>/dev/null || true
+                ip6tables -P OUTPUT DROP 2>/dev/null || true
+                ip6tables -A INPUT -i lo -j ACCEPT 2>/dev/null || true
+                ip6tables -A OUTPUT -o lo -j ACCEPT 2>/dev/null || true
             fi
 
             cat >"/etc/tor/torrc" <<EOF
@@ -74,7 +84,7 @@ EOF
             # Append bridges/camouflage if enabled
             if [[ "$dpi_spoofing_status" == "Enable" ]]; then
                 echo "UseBridges 1" >> /etc/tor/torrc
-                echo "ClientTransportPlugin snowflake exec /usr/bin/snowflake-client -url https://snowflake-broker.torproject.net.global.prod.fastly.net/ -front cdn.sstatic.net -ice stun:stun.l.google.com:19302,stun:stun.voip.blackberry.com:3478,stun:stun.altar.com.pl:3478,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.sonetel.net:3478,stun:stun.stunprotocol.org:3478,stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,stun:stun.voys.nl:3478 -max 3" >> /etc/tor/torrc
+                echo "ClientTransportPlugin snowflake exec /usr/bin/snowflake-client -url https://snowflake-broker.torproject.net.global.prod.fastly.net/ -front cdn.sstatic.net -ice stun:stun.voip.blackberry.com:3478,stun:stun.altar.com.pl:3478,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.uls.co.za:3478,stun:stun.voys.nl:3478 -max 3" >> /etc/tor/torrc
                 echo "Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72" >> /etc/tor/torrc
             elif [[ "$tor_bridges_status" == "Enable" ]]; then
                 echo "UseBridges 1" >> /etc/tor/torrc
@@ -90,11 +100,20 @@ EOF
                 fi
             fi
 
+            # Prevent NetworkManager from overwriting DNS
+            if [[ -d /etc/NetworkManager/conf.d ]]; then
+                mkdir -p /etc/NetworkManager/conf.d 2>/dev/null || true
+                echo -e "[main]\ndns=none" > /etc/NetworkManager/conf.d/anon-dns-lock.conf 2>/dev/null || true
+            fi
+
+            # Set loopback DNS and lock with immutable attribute if possible
+            chattr -i /etc/resolv.conf 2>/dev/null || true
             cat >"/etc/resolv.conf" <<EOF
 # This file was edited by anon. Do not change manually!
 nameserver 127.0.0.1
 EOF
-            systemctl --system daemon-reload
+            chattr +i /etc/resolv.conf 2>/dev/null || true
+            systemctl --system daemon-reload 2>/dev/null || true
 
             if systemctl is-active tor.service >/dev/null 2>&1; then
                 systemctl stop tor.service
@@ -197,6 +216,11 @@ stop_ip_changer(){
     fi
 
     cat "$BACKUPDIR/torrc.bak" > "$TORRC"
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if [[ -f /etc/NetworkManager/conf.d/anon-dns-lock.conf ]]; then
+        rm -f /etc/NetworkManager/conf.d/anon-dns-lock.conf 2>/dev/null || true
+        systemctl reload NetworkManager 2>/dev/null || true
+    fi
     if [[ -f "$BACKUPDIR/resolv.conf.symlink.bak" ]]; then
         rm -f /etc/resolv.conf
         mv "$BACKUPDIR/resolv.conf.symlink.bak" /etc/resolv.conf
