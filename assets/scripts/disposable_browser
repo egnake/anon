@@ -33,26 +33,47 @@ start_disposable_browser() {
         cp "$SRCDIR/sources/anon.js" "$ram_profile/user.js"
     fi
 
+    # Enforce Tor SOCKS5 with remote DNS resolution to guarantee zero browser DNS leaks
+    cat >> "$ram_profile/user.js" << 'EOF'
+user_pref("network.proxy.type", 1);
+user_pref("network.proxy.socks", "127.0.0.1");
+user_pref("network.proxy.socks_port", 9050);
+user_pref("network.proxy.socks_version", 5);
+user_pref("network.proxy.socks_remote_dns", true);
+user_pref("network.dns.disablePrefetch", true);
+user_pref("network.prefetch-next", false);
+user_pref("places.history.enabled", false);
+user_pref("browser.formfill.enable", false);
+user_pref("signon.rememberSignons", false);
+EOF
+
     echo -e " ${CYAN}ℹ INFO:${RESET} Launching isolated instance. ${YELLOW}Do NOT close this terminal!${RESET}"
     echo -e " ${CYAN}ℹ INFO:${RESET} The profile will be securely wiped the exact second you close the browser.\n"
 
     # Privilege drop and execution command
     local run_user="${SUDO_USER:-root}"
+    chown -R "$run_user":"$run_user" "$ram_profile" 2>/dev/null || true
+
+    # Preserve GUI Display environment for unprivileged user
+    export DISPLAY="${DISPLAY:-:0}"
+    export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+    xhost +si:localuser:"$run_user" 2>/dev/null || true
+
     local exec_cmd=""
 
     # 1. OS Isolation (Network Namespace)
     if [[ "$sandbox_isolation_status" == "Enable" ]]; then
         echo -e " ${GREEN}✔ SUCCESS:${RESET} Launching browser inside strictly isolated 'anon_jail' Kernel Namespace..."
-        exec_cmd="ip netns exec anon_jail sudo -u $run_user "
+        exec_cmd="ip netns exec anon_jail sudo -u $run_user env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY "
     else
         echo -e " ${YELLOW}⚠ WARNING:${RESET} Sandbox Isolation is disabled. Launching on host network stack..."
-        exec_cmd="sudo -u $run_user "
+        exec_cmd="sudo -u $run_user env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY "
     fi
 
     # 2. Process Isolation (AppArmor / Firejail)
     if command -v firejail &> /dev/null; then
-        echo -e " ${GREEN}✔ SUCCESS:${RESET} Firejail detected. Applying AppArmor profiles for process isolation..."
-        exec_cmd="${exec_cmd} firejail --noprofile "
+        echo -e " ${GREEN}✔ SUCCESS:${RESET} Firejail sandbox active with strict seccomp and capability dropping..."
+        exec_cmd="${exec_cmd} firejail --caps.drop=all --nonewprivs --seccomp --no3d --nosound --nodvd "
     else
         echo -e " ${YELLOW}⚠ WARNING:${RESET} Firejail not installed. Skipping process isolation. (Run 'apt install firejail')"
     fi
