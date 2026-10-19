@@ -17,13 +17,16 @@ start_kill_switch(){
     fi
 
     # ── Backup current ruleset ───────────────────────────────────
-    iptables-save > "$BACKUPDIR/iptables_killswitch.bak"
+    iptables-save > "$BACKUPDIR/iptables_killswitch.bak" 2>/dev/null || true
+    if command -v ip6tables-save &>/dev/null; then
+        ip6tables-save > "$BACKUPDIR/ip6tables_killswitch.bak" 2>/dev/null || true
+    fi
 
     # ── Detect Tor UID ───────────────────────────────────────────
     local tor_uid=""
     local tor_rules=""
     if systemctl is-active tor.service >/dev/null 2>&1; then
-        tor_uid="$(id -u debian-tor 2>/dev/null)"
+        tor_uid="$(id -u debian-tor 2>/dev/null || id -u tor 2>/dev/null || true)"
     fi
 
     # ── Build iptables rules for tor_uid if available ────────────
@@ -32,6 +35,24 @@ start_kill_switch(){
 -A OUTPUT -d 127.0.0.1/32 -p tcp --dport 9040 -j ACCEPT
 -A OUTPUT -d 127.0.0.1/32 -p udp --dport 5353 -j ACCEPT
 -A OUTPUT -d 127.0.0.1/32 -p tcp --dport 9050 -j ACCEPT"
+    fi
+
+    # ── Strict IPv6 lockdown ──────────────────────────────────────
+    if ! grep -qi microsoft /proc/version 2>/dev/null; then
+        sysctl -w net.ipv6.conf.all.disable_ipv6=1 &>/dev/null || true
+        sysctl -w net.ipv6.conf.default.disable_ipv6=1 &>/dev/null || true
+    fi
+
+    if command -v ip6tables-restore &>/dev/null; then
+        ip6tables-restore <<IP6_RULES 2>/dev/null || true
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+-A INPUT -i lo -j ACCEPT
+-A OUTPUT -o lo -j ACCEPT
+COMMIT
+IP6_RULES
     fi
 
     # ── Generate the complete ruleset and apply ATOMICALLY ───────
@@ -55,7 +76,15 @@ start_kill_switch(){
 # Tor daemon rules (if active)
 ${tor_rules}
 
-# LAN / WSL traffic
+# Prevent LAN DNS leaks: Drop any direct DNS attempts to local gateways
+-A OUTPUT -d 10.0.0.0/8 -p udp --dport 53 -j DROP
+-A OUTPUT -d 10.0.0.0/8 -p tcp --dport 53 -j DROP
+-A OUTPUT -d 172.16.0.0/12 -p udp --dport 53 -j DROP
+-A OUTPUT -d 172.16.0.0/12 -p tcp --dport 53 -j DROP
+-A OUTPUT -d 192.168.0.0/16 -p udp --dport 53 -j DROP
+-A OUTPUT -d 192.168.0.0/16 -p tcp --dport 53 -j DROP
+
+# LAN / WSL traffic (non-DNS)
 -A OUTPUT -d 127.0.0.0/8 -j ACCEPT
 -A OUTPUT -d 10.0.0.0/8 -j ACCEPT
 -A OUTPUT -d 172.16.0.0/12 -j ACCEPT
@@ -66,10 +95,15 @@ KILLSWITCH_RULES
 
     if [[ $? -eq 0 ]]; then
         sed -i 's/kill_switch_status="Disable"/kill_switch_status="Enable"/g' "$SRCDIR/sources/config"
-        info "Network Kill Switch enabled (atomic iptables-restore). All non-Tor traffic blocked."
+        info "Network Kill Switch enabled (atomic IPv4+IPv6 iptables-restore). All non-Tor traffic blocked."
     else
         warn "Failed to apply Kill Switch rules. Restoring previous state..."
-        iptables-restore < "$BACKUPDIR/iptables_killswitch.bak"
+        if [[ -f "$BACKUPDIR/iptables_killswitch.bak" ]]; then
+            iptables-restore < "$BACKUPDIR/iptables_killswitch.bak" 2>/dev/null || true
+        fi
+        if [[ -f "$BACKUPDIR/ip6tables_killswitch.bak" ]] && command -v ip6tables-restore &>/dev/null; then
+            ip6tables-restore < "$BACKUPDIR/ip6tables_killswitch.bak" 2>/dev/null || true
+        fi
     fi
 }
 
@@ -81,8 +115,19 @@ stop_kill_switch(){
         return 1
     fi
 
-    iptables-restore < "$BACKUPDIR/iptables_killswitch.bak"
+    iptables-restore < "$BACKUPDIR/iptables_killswitch.bak" 2>/dev/null || true
     rm -f "$BACKUPDIR/iptables_killswitch.bak"
+
+    if [[ -f "$BACKUPDIR/ip6tables_killswitch.bak" ]] && command -v ip6tables-restore &>/dev/null; then
+        ip6tables-restore < "$BACKUPDIR/ip6tables_killswitch.bak" 2>/dev/null || true
+        rm -f "$BACKUPDIR/ip6tables_killswitch.bak"
+    fi
+
+    if ! grep -qi microsoft /proc/version 2>/dev/null; then
+        sysctl -w net.ipv6.conf.all.disable_ipv6=0 &>/dev/null || true
+        sysctl -w net.ipv6.conf.default.disable_ipv6=0 &>/dev/null || true
+    fi
+
     sed -i 's/kill_switch_status="Enable"/kill_switch_status="Disable"/g' "$SRCDIR/sources/config"
     info "Network Kill Switch disabled — original firewall rules restored."
 }
