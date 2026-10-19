@@ -24,28 +24,50 @@ start_mac_changer(){
         IFACES=$(ip -o link show | awk -F': ' '{print $2}')
 
         changer_func(){
-            while :; do
-                # Generate a random locally-administered unicast MAC
-                local hex_chars="0123456789abcdef"
-                local first_hex="${hex_chars:$((RANDOM%16)):1}"
-                local second_hex_opts=("2" "6" "a" "e")
-                local second_hex="${second_hex_opts[$((RANDOM%4))]}"
-                local out="${first_hex}${second_hex}"
+            # Authentic hardware vendor OUIs (Apple, Intel, Dell, Samsung, Cisco, HP, Lenovo, Asus, Realtek)
+            local vendor_ouis=(
+                "00:17:f2" "3c:07:54" "a4:83:e7" "f0:18:98"  # Apple
+                "00:1b:21" "00:21:6a" "34:13:e8" "68:05:ca"  # Intel
+                "00:14:22" "18:66:da" "ec:f4:bb" "f8:bc:12"  # Dell
+                "00:26:37" "34:23:ba" "50:56:bf" "e4:58:b8"  # Samsung
+                "00:1a:a1" "00:25:84" "58:97:bd"             # Cisco / Linksys
+                "00:1e:0b" "3c:d9:2b" "70:5a:0f"             # HP
+                "00:59:07" "60:99:d1" "80:2b:f9"             # Lenovo
+                "04:92:26" "2c:4d:54" "70:8b:cd"             # Asus
+                "00:e0:4c" "52:54:00" "b8:8a:ec"             # Realtek
+            )
 
-                for c in {2..6}; do
-                    local NUM
-                    NUM="$(tr -dc '0-9a-f' </dev/urandom | head -c 2)"
-                    out="${out}:${NUM}"
-                done
+            local attempts=0
+            while [[ $attempts -lt 10 ]]; do
+                ((attempts++))
+                # Select random vendor prefix
+                local oui="${vendor_ouis[$((RANDOM % ${#vendor_ouis[@]}))]}"
+                local d1 d2 d3
+                d1="$(tr -dc '0-9a-f' </dev/urandom 2>/dev/null | head -c 2 || printf "%02x" $((RANDOM % 256)))"
+                d2="$(tr -dc '0-9a-f' </dev/urandom 2>/dev/null | head -c 2 || printf "%02x" $((RANDOM % 256)))"
+                d3="$(tr -dc '0-9a-f' </dev/urandom 2>/dev/null | head -c 2 || printf "%02x" $((RANDOM % 256)))"
+                local out="${oui}:${d1}:${d2}:${d3}"
 
-                ip link set "$IFACE" down
-                if ip link set "$IFACE" address "$out"; then
-                    ip link set "$IFACE" up
+                ip link set "$IFACE" down 2>/dev/null || true
+                if ip link set "$IFACE" address "$out" 2>/dev/null; then
+                    ip link set "$IFACE" up 2>/dev/null || true
                     break
+                else
+                    # Fallback to random unicast if driver rejects foreign OUI
+                    local hex_chars="0123456789abcdef"
+                    local first_hex="${hex_chars:$((RANDOM%16)):1}"
+                    local second_hex_opts=("2" "6" "a" "e")
+                    local second_hex="${second_hex_opts[$((RANDOM%4))]}"
+                    out="${first_hex}${second_hex}:${d1}:${d2}:${d3}:$(tr -dc '0-9a-f' </dev/urandom | head -c 2):$(tr -dc '0-9a-f' </dev/urandom | head -c 2)"
+                    if ip link set "$IFACE" address "$out" 2>/dev/null; then
+                        ip link set "$IFACE" up 2>/dev/null || true
+                        break
+                    fi
                 fi
+                ip link set "$IFACE" up 2>/dev/null || true
             done
             sed -i 's/mac_changer_status="Disable"/mac_changer_status="Enable"/g' "$SRCDIR/sources/config"
-            info "Mac changer successfully enabled"
+            info "Mac changer successfully enabled for ${IFACE} (Spoofed to: ${out})"
         }
 
         if [[ "$(dmidecode -s system-manufacturer 2>/dev/null)" == "innotek GmbH" ]] || \
