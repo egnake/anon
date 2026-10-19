@@ -1,0 +1,75 @@
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════════════
+# Emergency Panic — Anti-Forensic Duress & Lockdown Protocol
+# ═══════════════════════════════════════════════════════════════════
+
+trigger_panic() {
+    clear
+    echo -e "\e[1;31m"
+    echo "  ╔══════════════════════════════════════════════════════════════╗"
+    echo "  ║        CRITICAL: EMERGENCY PANIC PROTOCOL ACTIVATED          ║"
+    echo "  ╚══════════════════════════════════════════════════════════════╝"
+    echo -e "\e[0m"
+
+    echo -e " \e[33m[1/6]\e[0m Severing all network physical and wireless interfaces..."
+    local ifaces
+    ifaces=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}')
+    for iface in $ifaces; do
+        if [[ "$iface" != "lo" ]]; then
+            ip link set "$iface" down 2>/dev/null || true
+        fi
+    done
+
+    echo -e " \e[33m[2/6]\e[0m Locking down kernel firewall (IPv4/IPv6 total drop)..."
+    iptables -F 2>/dev/null || true
+    iptables -X 2>/dev/null || true
+    iptables -t nat -F 2>/dev/null || true
+    iptables -t nat -X 2>/dev/null || true
+    iptables -t mangle -F 2>/dev/null || true
+    iptables -t mangle -X 2>/dev/null || true
+    iptables -P INPUT DROP 2>/dev/null || true
+    iptables -P FORWARD DROP 2>/dev/null || true
+    iptables -P OUTPUT DROP 2>/dev/null || true
+
+    if command -v ip6tables &>/dev/null; then
+        ip6tables -F 2>/dev/null || true
+        ip6tables -X 2>/dev/null || true
+        ip6tables -t mangle -F 2>/dev/null || true
+        ip6tables -t mangle -X 2>/dev/null || true
+        ip6tables -P INPUT DROP 2>/dev/null || true
+        ip6tables -P FORWARD DROP 2>/dev/null || true
+        ip6tables -P OUTPUT DROP 2>/dev/null || true
+    fi
+
+    echo -e " \e[33m[3/6]\e[0m Force-terminating all anonymization & browser processes..."
+    killall -9 firefox firefox-esr tor i2pd dnscrypt-proxy snowflake-client obfs4proxy 2>/dev/null || true
+    systemctl stop tor.service i2pd dnscrypt-proxy 2>/dev/null || true
+
+    echo -e " \e[33m[4/6]\e[0m Shredding ephemeral session directories and RAM profiles..."
+    find /dev/shm -maxdepth 2 \( -name "*anon*" -o -name "*kworker*" \) -exec rm -rf {} + 2>/dev/null || true
+    rm -rf /tmp/anon* /dev/shm/.anon* /dev/shm/.kworker* /dev/shm/.systemd-kworker 2>/dev/null || true
+
+    echo -e " \e[33m[5/6]\e[0m Flushing memory caches and wiping history..."
+    sync 2>/dev/null || true
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    swapoff -a 2>/dev/null || true
+    history -c 2>/dev/null || true
+    > ~/.bash_history 2>/dev/null || true
+    > /root/.bash_history 2>/dev/null || true
+
+    # Reset config status
+    if [[ -f "${BASE_DIR}/assets/sources/config" ]]; then
+        sed -i 's/_status="Enable"/_status="Disable"/g' "${BASE_DIR}/assets/sources/config" 2>/dev/null || true
+        sed -i 's/anti_mitm_pid="[^"]*"/anti_mitm_pid="0"/g' "${BASE_DIR}/assets/sources/config" 2>/dev/null || true
+        sed -i 's/traffic_obfuscation_pid="[^"]*"/traffic_obfuscation_pid="0"/g' "${BASE_DIR}/assets/sources/config" 2>/dev/null || true
+    fi
+
+    echo -e " \e[33m[6/6]\e[0m Restoring baseline system configuration..."
+    if [[ -f "${BASE_DIR}/backups/anon_fix_backups.tar.gz" ]]; then
+        source "${BASE_DIR}/assets/scripts/fix" 2>/dev/null
+        restore_system 2>/dev/null || true
+    fi
+
+    echo -e "\n \e[1;32m✔ SUCCESS: System has been sanitized and isolated.\e[0m"
+    echo -e " \e[2mNetwork severed, memory caches flushed, and sensitive processes eliminated.\e[0m\n"
+}

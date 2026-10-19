@@ -55,7 +55,7 @@ src_check() {
                 err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
         fi
 }
-src_check fix kill_switch volatile_logging ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges i2p_integration dpi_spoofing doh_shield execution_stealth
+src_check fix kill_switch volatile_logging ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges i2p_integration dpi_spoofing doh_shield execution_stealth emergency_panic
 
 #check dependences function
 dep_check() {
@@ -450,7 +450,7 @@ execute_modules() {
 # ── Post-execution operations menu ──
 operations_loop() {
     while true; do
-        local ops_opts=("Live Dashboard" "System Status" "New Tor Identity" "IP Leak Test" "Secure Browser" "Stop All Modules" "Back to Configuration" "Exit Anon")
+        local ops_opts=("Live Dashboard" "System Status" "New Tor Identity" "IP Leak Test" "Secure Browser" "Emergency Panic Lockdown" "Stop All Modules" "Back to Configuration" "Exit Anon")
         interactive_menu "OPERATIONS:" "${ops_opts[@]}"
         case $SELECTED_INDEX in
             0) dashboard ;;
@@ -525,6 +525,9 @@ operations_loop() {
                 read -rsn1
                 ;;
             5)
+                panic
+                ;;
+            6)
                 clear
                 banner
                 source $SRCDIR/sources/config
@@ -532,8 +535,8 @@ operations_loop() {
                 echo -e "\n  ${DIM}Press any key to return...${RESET}"
                 read -rsn1
                 ;;
-            6) return 1 ;;
-            7) clear; exit 0 ;;
+            7) return 1 ;;
+            8) clear; exit 0 ;;
         esac
     done
 }
@@ -838,6 +841,12 @@ update() {
     exit 0
 }
 
+panic() {
+    source "${BASE_DIR}/assets/scripts/emergency_panic"
+    trigger_panic
+    exit 0
+}
+
 help() {
 
 msg "Usage : sudo anon ${GREEN}[option]${RESET}
@@ -847,6 +856,7 @@ msg "Usage : sudo anon ${GREEN}[option]${RESET}
  ${GREEN}--status    :${RESET}   Provides information about IP address and working status.
  ${GREEN}--dashboard :${RESET}   Opens a live real-time monitoring dashboard.
  ${GREEN}--browser   :${RESET}   Launches a disposable secure browser session.
+ ${GREEN}--panic     :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
  ${GREEN}--fix       :${RESET}   Used to repair the system in case of a possible bug.
  ${GREEN}--update    :${RESET}   Automatically downloads and installs the latest version.
  ${GREEN}--help      :${RESET}   This shows the menu."
@@ -874,6 +884,9 @@ fi
         ;;
     --[bB][rR][oO][wW][sS][eE][rR]|-[bB])
         browser
+        ;;
+    --[pP][aA][nN][iI][cC]|-[pP])
+        panic
         ;;
     --[fF][iI][xX]|-[fF])
         fix  
