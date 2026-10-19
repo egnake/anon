@@ -11,48 +11,104 @@ get_backups(){
     else
         cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak"
     fi
-    cat /etc/hostname > "$BACKUPDIR/hostname.bak"
-    cat "$TORRC" > "$BACKUPDIR/torrc.bak"
-    iptables-save > "$BACKUPDIR/iptables.rules.bak"
+    cat /etc/hostname > "$BACKUPDIR/hostname.bak" 2>/dev/null || hostname > "$BACKUPDIR/hostname.bak"
+    if [[ -f /etc/hosts ]]; then
+        cat /etc/hosts > "$BACKUPDIR/hosts.bak"
+    fi
+    cat "$TORRC" > "$BACKUPDIR/torrc.bak" 2>/dev/null || true
+    iptables-save > "$BACKUPDIR/iptables.rules.bak" 2>/dev/null || true
+    if command -v ip6tables-save &>/dev/null; then
+        ip6tables-save > "$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
+    fi
     mkdir -p "$BACKUPDIR/mac_addresses"
     local IFACES
-    IFACES=$(ip -o link show | awk -F': ' '{print $2}')
+    IFACES=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}')
     for IFACE in $IFACES; do
-        if [[ "$IFACE" != "lo" ]]; then
+        if [[ "$IFACE" != "lo" && -f "/sys/class/net/$IFACE/address" ]]; then
             cat "/sys/class/net/$IFACE/address" > "$BACKUPDIR/mac_addresses/$IFACE"
         fi
     done
-    timedatectl show | grep Timezone | sed 's/Timezone=//g' > "$BACKUPDIR/timezone.bak"
+    timedatectl show 2>/dev/null | grep Timezone | sed 's/Timezone=//g' > "$BACKUPDIR/timezone.bak" || true
     ( cd "$BACKUPDIR" && tar -czf anon_fix_backups.tar.gz *.bak mac_addresses 2>/dev/null )
     rm -rf "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
 }
 
 restore_system(){
     rm -rf "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
-    ( cd "$BACKUPDIR" && tar -xzf "$BACKUPDIR/anon_fix_backups.tar.gz" )
+    ( cd "$BACKUPDIR" && tar -xzf "$BACKUPDIR/anon_fix_backups.tar.gz" 2>/dev/null )
+    
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if [[ -f /etc/NetworkManager/conf.d/anon-dns-lock.conf ]]; then
+        rm -f /etc/NetworkManager/conf.d/anon-dns-lock.conf 2>/dev/null || true
+        systemctl reload NetworkManager 2>/dev/null || true
+    fi
+
     if [[ -f "$BACKUPDIR/resolv.conf.symlink.bak" ]]; then
         rm -f /etc/resolv.conf
         mv "$BACKUPDIR/resolv.conf.symlink.bak" /etc/resolv.conf
-    else
+    elif [[ -f "$BACKUPDIR/resolv.conf.bak" ]]; then
         cat "$BACKUPDIR/resolv.conf.bak" > /etc/resolv.conf
     fi
-    cat "$BACKUPDIR/hostname.bak" > /etc/hostname
+
+    if [[ -f "$BACKUPDIR/hostname.bak" ]]; then
+        local restore_hostname
+        restore_hostname="$(cat "$BACKUPDIR/hostname.bak")"
+        echo "$restore_hostname" > /etc/hostname
+        hostname "$restore_hostname" 2>/dev/null || true
+        if command -v hostnamectl &>/dev/null; then
+            hostnamectl set-hostname "$restore_hostname" 2>/dev/null || true
+        fi
+    fi
+
+    if [[ -f "$BACKUPDIR/hosts.bak" ]]; then
+        cat "$BACKUPDIR/hosts.bak" > /etc/hosts
+    fi
+
     source "${BASE_DIR}/assets/sources/config"
-    cat "$BACKUPDIR/torrc.bak" > "$TORRC"
-    iptables-restore <"$BACKUPDIR/iptables.rules.bak"
+    if [[ -f "$BACKUPDIR/torrc.bak" ]]; then
+        cat "$BACKUPDIR/torrc.bak" > "$TORRC"
+    fi
+
+    if [[ -f "$BACKUPDIR/iptables.rules.bak" ]]; then
+        iptables-restore <"$BACKUPDIR/iptables.rules.bak" 2>/dev/null || true
+    fi
+
+    if [[ -f "$BACKUPDIR/ip6tables.rules.bak" ]] && command -v ip6tables-restore &>/dev/null; then
+        ip6tables-restore <"$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
+    fi
+
+    if ! grep -qi microsoft /proc/version 2>/dev/null; then
+        sysctl -w net.ipv6.conf.all.disable_ipv6=0 &>/dev/null || true
+        sysctl -w net.ipv6.conf.default.disable_ipv6=0 &>/dev/null || true
+    fi
+
     if [[ -d "$BACKUPDIR/mac_addresses" ]]; then
         for device in "$BACKUPDIR/mac_addresses"/*; do
-            local devname
-            devname="$(basename "$device")"
-            ip link set "$devname" down
-            ip link set "$devname" address "$(cat "$device")"
-            ip link set "$devname" up
+            if [[ -f "$device" ]]; then
+                local devname
+                devname="$(basename "$device")"
+                ip link set "$devname" down 2>/dev/null || true
+                ip link set "$devname" address "$(cat "$device")" 2>/dev/null || true
+                ip link set "$devname" up 2>/dev/null || true
+            fi
         done
     fi
+
     if [[ -f "$BACKUPDIR/timezone.bak" ]]; then
         local restore_timezone
         restore_timezone="$(cat "$BACKUPDIR/timezone.bak")"
-        timedatectl set-timezone "$restore_timezone"
+        timedatectl set-timezone "$restore_timezone" 2>/dev/null || true
+    fi
+
+    # Reset module states in config
+    if [[ -f "$SRCDIR/sources/config" ]]; then
+        sed -i 's/_status="Enable"/_status="Disable"/g' "$SRCDIR/sources/config" 2>/dev/null || true
+        sed -i 's/anti_mitm_pid="[^"]*"/anti_mitm_pid="0"/g' "$SRCDIR/sources/config" 2>/dev/null || true
+        sed -i 's/traffic_obfuscation_pid="[^"]*"/traffic_obfuscation_pid="0"/g' "$SRCDIR/sources/config" 2>/dev/null || true
+    fi
+
+    if command -v shred &>/dev/null; then
+        find "$BACKUPDIR" -maxdepth 1 -name "*.bak" -exec shred -u {} + 2>/dev/null || true
     fi
     rm -rf "$BACKUPDIR"/*.bak "$BACKUPDIR/mac_addresses"
 }

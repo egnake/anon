@@ -22,23 +22,24 @@ if [[ -z "${BASE_DIR}" ]]; then
     fi
 fi
 BACKUPDIR="${BASE_DIR}/backups"
+mkdir -p "$BACKUPDIR" 2>/dev/null
 SRCDIR="${BASE_DIR}/assets"
 
 # tor config file
 TORRC="/etc/tor/torrc"
-tor_uid="$(id -u debian-tor)"
+tor_uid="$(id -u debian-tor 2>/dev/null || id -u tor 2>/dev/null || id -u _tor 2>/dev/null || echo "109")"
 
 #Defaults
 anti_mitm_status="Disable"
-ip_changer_status="Disable"
+ip_changer_status="Enable"
 dns_changer_status="Disable"
-mac_changer_status="Disable"
+mac_changer_status="Enable"
 timezone_changer_status="Disable"
 hostname_changer_status="Disable"
 browser_anonymization_status="Disable"
 kill_switch_status="Disable"
 tor_bridges_status="Disable"
-os_obfuscation_status="Disable"
+os_obfuscation_status="Enable"
 bluetooth_disabler_status="Disable"
 process_obfuscation_status="Disable"
 proxychains_integration_status="Disable"
