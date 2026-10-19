@@ -31,15 +31,15 @@ tor_uid="$(id -u debian-tor 2>/dev/null || id -u tor 2>/dev/null || id -u _tor 2
 
 #Defaults
 anti_mitm_status="Disable"
-ip_changer_status="Enable"
+ip_changer_status="Disable"
 dns_changer_status="Disable"
-mac_changer_status="Enable"
+mac_changer_status="Disable"
 timezone_changer_status="Disable"
 hostname_changer_status="Disable"
 browser_anonymization_status="Disable"
 kill_switch_status="Disable"
 tor_bridges_status="Disable"
-os_obfuscation_status="Enable"
+os_obfuscation_status="Disable"
 bluetooth_disabler_status="Disable"
 process_obfuscation_status="Disable"
 proxychains_integration_status="Disable"

@@ -20,4 +20,8 @@ __pycache__/
 # Log files
 *.log
 assets/sources/bridges.txt
-assets/sources/bridges.txt
+
+# Dynamic backups
+backups/*
+!backups/.gitkeep
+

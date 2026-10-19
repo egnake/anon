@@ -160,6 +160,7 @@ For users who prefer automation or scripting, ANON supports direct command-line 
 | `sudo anon --status` | Prints a comprehensive visual report of all active and inactive OPSEC modules. |
 | `sudo anon --dashboard` | Opens the live monitoring dashboard (auto-refreshes every 3 seconds). |
 | `sudo anon --browser` | Directly launches the RAM-based disposable browser inside the isolated network namespace. |
+| `sudo anon --panic` | Emergency Duress Protocol: immediately cuts all network interfaces, drops all firewall traffic, terminates processes, and sanitizes RAM. |
 | `sudo anon --fix` | Restores default system network configurations from backup in the event of a crash or abrupt shutdown. |
 | `sudo anon --update` | Fetches the latest source code from GitHub and reinstalls the framework automatically. |
 

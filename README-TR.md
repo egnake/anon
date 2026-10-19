@@ -160,6 +160,7 @@ Otomasyon veya komut dosyası oluşturmayı tercih eden kullanıcılar için ANO
 | `sudo anon --status` | Tüm aktif ve pasif OPSEC modüllerinin kapsamlı bir görsel raporunu yazdırır. |
 | `sudo anon --dashboard` | Canlı izleme panelini açar (her 3 saniyede bir otomatik yenilenir). |
 | `sudo anon --browser` | RAM tabanlı tek kullanımlık tarayıcıyı doğrudan izole edilmiş ağ alanı (namespace) içinde başlatır. |
+| `sudo anon --panic` | Acil Durum / Panik Protokolü: Tüm ağ arayüzlerini anında kapatır, güvenlik duvarını kilitler, süreçleri sonlandırır ve RAM'i temizler. |
 | `sudo anon --fix` | Çökme veya ani kapanma durumunda varsayılan sistem ağ yapılandırmalarını yedeklerden geri yükler. |
 | `sudo anon --update` | En son kaynak kodunu GitHub'dan getirir ve çerçeveyi otomatik olarak yeniden yükler. |
 
