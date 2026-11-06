@@ -6,14 +6,15 @@ RUN apt-get update && apt-get install -y \
     tar \
     tor \
     curl \
-    python3 \
-    python3-scapy \
-    network-manager \
-    secure-delete \
+    iproute2 \
     iptables \
-    sudo \
     macchanger \
+    obfs4proxy \
+    proxychains4 \
+    rfkill \
+    secure-delete \
     i2pd \
+    sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

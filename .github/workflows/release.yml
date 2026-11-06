@@ -29,7 +29,7 @@ jobs:
           Version: ${VERSION}
           Architecture: all
           Maintainer: egnake <egcaem000@gmail.com>
-          Depends: bash, python3, iptables, tor, obfs4proxy, macchanger, proxychains4, secure-delete, rfkill, firejail, iproute2, curl, net-tools
+          Depends: bash, iptables, tor, obfs4proxy, macchanger, proxychains4, secure-delete, rfkill, firejail, iproute2, curl, net-tools, i2pd
           Description: Advanced OPSEC & Anonymity Framework
            A comprehensive, modular anonymity and anti-forensics toolkit for Linux environments.
           EOF
