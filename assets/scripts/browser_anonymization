@@ -1,19 +1,33 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════════
-# Browser Anonymization — Firefox ESR Hardening
+# Browser Anonymization — System-wide Firefox Hardening
 # ═══════════════════════════════════════════════════════════════════
 
 start_browser_anonymization(){
     source "${BASE_DIR}/assets/sources/config"
 
     if [[ "$browser_anonymization_status" == "Disable" ]]; then
-        if [[ -d /etc/firefox-esr ]]; then
-            cp "$SRCDIR/sources/anon.js" /etc/firefox-esr/
+        local target_dirs=(
+            "/etc/firefox-esr"
+            "/etc/firefox"
+            "/etc/firefox/pref"
+            "/usr/lib/firefox-esr/defaults/pref"
+            "/usr/lib/firefox/defaults/pref"
+        )
+        local installed=0
+        for dir in "${target_dirs[@]}"; do
+            if [[ -d "$dir" ]]; then
+                cp "$SRCDIR/sources/anon.js" "$dir/anon.js"
+                installed=1
+            fi
+        done
+
+        if [[ $installed -eq 1 ]]; then
             sed -i 's/browser_anonymization_status="Disable"/browser_anonymization_status="Enable"/g' "$SRCDIR/sources/config"
             info "Browser anonymization successfully enabled"
         else
-            warn "Browser anonymization only supports Firefox ESR and it was not found on your system"
+            warn "No supported Firefox directory found (checked /etc/firefox-esr, /etc/firefox, etc.)"
         fi
     else
         warn "Browser anonymization is already running"
@@ -22,7 +36,11 @@ start_browser_anonymization(){
 
 stop_browser_anonymization(){
     source "${BASE_DIR}/assets/sources/config"
-    rm -f /etc/firefox-esr/anon.js
+    rm -f /etc/firefox-esr/anon.js \
+          /etc/firefox/anon.js \
+          /etc/firefox/pref/anon.js \
+          /usr/lib/firefox-esr/defaults/pref/anon.js \
+          /usr/lib/firefox/defaults/pref/anon.js
     sed -i 's/browser_anonymization_status="Enable"/browser_anonymization_status="Disable"/g' "$SRCDIR/sources/config"
     info "Browser anonymization successfully disabled"
 }

@@ -24,13 +24,13 @@ start_disposable_browser() {
     local ram_profile
     ram_profile=$(mktemp -d -p /dev/shm -t anon_browser_XXXXXX)
 
-    # Ensure cleanup on any exit path
-    trap 'rm -rf "$ram_profile" 2>/dev/null' RETURN
+    # Ensure cleanup on any exit path (normal return or interruption)
+    trap 'if command -v shred &>/dev/null; then find "$ram_profile" -type f -exec shred -u {} + 2>/dev/null; fi; rm -rf "$ram_profile" 2>/dev/null' RETURN INT TERM
 
     echo -e " ${CYAN}ℹ INFO:${RESET} Hardening profile with anon OPSEC configurations..."
-    # Inject anon.js configuration if it exists
+    # Inject anon.js configuration if it exists, converting pref() to user_pref() for profile user.js
     if [[ -f "$SRCDIR/sources/anon.js" ]]; then
-        cp "$SRCDIR/sources/anon.js" "$ram_profile/user.js"
+        sed 's/^pref(/user_pref(/' "$SRCDIR/sources/anon.js" > "$ram_profile/user.js"
     fi
 
     # Enforce Tor SOCKS5 with remote DNS resolution to guarantee zero browser DNS leaks
@@ -63,27 +63,32 @@ EOF
     export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
     xhost +si:localuser:"$run_user" 2>/dev/null || true
 
-    local exec_cmd=""
+    local -a cmd=()
 
     # 1. OS Isolation (Network Namespace)
-    if [[ "$sandbox_isolation_status" == "Enable" ]]; then
+    if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
         echo -e " ${GREEN}✔ SUCCESS:${RESET} Launching browser inside strictly isolated 'anon_jail' Kernel Namespace..."
-        exec_cmd="ip netns exec anon_jail sudo -u $run_user env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY "
+        cmd+=(ip netns exec anon_jail)
     else
         echo -e " ${YELLOW}⚠ WARNING:${RESET} Sandbox Isolation is disabled. Launching on host network stack..."
-        exec_cmd="sudo -u $run_user env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY "
+    fi
+
+    if [[ -n "$run_user" && "$run_user" != "root" ]]; then
+        cmd+=(sudo -u "$run_user" env "DISPLAY=$DISPLAY" "XAUTHORITY=$XAUTHORITY")
     fi
 
     # 2. Process Isolation (AppArmor / Firejail)
     if command -v firejail &> /dev/null; then
         echo -e " ${GREEN}✔ SUCCESS:${RESET} Firejail sandbox active with strict seccomp and capability dropping..."
-        exec_cmd="${exec_cmd} firejail --caps.drop=all --nonewprivs --seccomp --no3d --nosound --nodvd "
+        cmd+=(firejail --caps.drop=all --nonewprivs --seccomp --no3d --nosound --nodvd)
     else
         echo -e " ${YELLOW}⚠ WARNING:${RESET} Firejail not installed. Skipping process isolation. (Run 'apt install firejail')"
     fi
 
-    # Launch firefox pointing to this profile, in private mode
-    $exec_cmd $ff_bin --profile "$ram_profile" --private-window "https://check.torproject.org/" --no-remote &> /dev/null
+    cmd+=("$ff_bin" --profile "$ram_profile" --private-window "https://check.torproject.org/" --no-remote)
+
+    # Launch browser pointing to this profile, in private mode
+    "${cmd[@]}" &> /dev/null || true
 
     echo -e "\n ${CYAN}ℹ INFO:${RESET} Browser closed. Initiating secure deletion of RAM profile..."
 
