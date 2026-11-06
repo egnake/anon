@@ -413,39 +413,38 @@ execute_modules() {
     draw_end
     echo ""
 
-    # Run tor_bridges first if selected so ip_changer can use it
-    if [[ "${choices[13]}" ]]; then
-        $(echo start_${options[13]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
-        choices[13]=""
-    fi
+    start_anti_mitm(){
+        "${BASE_DIR}/assets/scripts/anti_mitm" &
+        local antimitmpid="$!"
+        sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' "$SRCDIR/sources/config"
+        info "Anti mitm successfully enabled"
+    }
 
-    # Run mac_changer BEFORE anti_mitm
-    if [[ "${choices[4]}" ]]; then
-        $(echo start_${options[4]} | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
-        choices[4]=""
-    fi
+    start_traffic_obfuscation(){
+        "${BASE_DIR}/assets/scripts/traffic_obfuscation" start
+    }
+    
+    start_sandbox_isolation(){
+        "${BASE_DIR}/assets/scripts/sandbox_isolation" start
+    }
 
-    for opt in "${!options[@]}"; do
-        start_anti_mitm(){
-            "${BASE_DIR}/assets/scripts/anti_mitm" &
-            antimitmpid="$!"
-            sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' $SRCDIR/sources/config
-            info "Anti mitm successfully enabled"
-        }
+    # Deterministic, secure execution order:
+    # 1. Hardware/System fingerprint spoofing (MAC, Hostname, TZ, OS, Logging, Cold-boot, Stealth)
+    # 2. Bridge / DPI camouflage
+    # 3. Network Namespace sandbox
+    # 4. Tor Transparent Proxy or alternative DNS
+    # 5. I2P, Proxychains, Traffic Obfuscation
+    # 6. Active defense: Anti-MITM, Kill Switch, Browser hardening
+    local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7)
 
-        start_traffic_obfuscation(){
-            "${BASE_DIR}/assets/scripts/traffic_obfuscation" start
-        }
-        
-        start_sandbox_isolation(){
-            "${BASE_DIR}/assets/scripts/sandbox_isolation" start
-        }
-
-        for st in "${!options[@]}"; do
-            if [[ -n "${choices[opt]}" ]] && [[ "${options[opt]}" == "${options[st]}" ]]; then
-                $(echo "start_${options[st]}" | sed -e 's/ /_/g;s/\(.*\)/\L\1/;s/ı/i/g')
+    for idx in "${exec_order[@]}"; do
+        if [[ -n "${choices[$idx]:-}" ]]; then
+            local mod_fn
+            mod_fn="start_$(echo "${options[$idx]}" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')"
+            if declare -F "$mod_fn" >/dev/null 2>&1; then
+                "$mod_fn"
             fi
-        done
+        fi
     done
     
     echo ""
@@ -564,16 +563,16 @@ while true; do
     stat=""
     case $SELECTED_INDEX in
         0) 
-            prof_opts=("Paranoia Mode  ─  Max Security" "Quick Surf  ─  Fast Anonymity" "Pentest Mode  ─  Offensive" "Darknet Explorer  ─  Tor + I2P" "Physical Lockdown  ─  Anti-Forensics" "The Ghost  ─  Ultimate (All 16)" "◀ Back")
+            prof_opts=("Paranoia Mode  ─  Max Security" "Quick Surf  ─  Fast Anonymity" "Pentest Mode  ─  Offensive" "Darknet Explorer  ─  Tor + I2P" "Physical Lockdown  ─  Anti-Forensics" "The Ghost  ─  Ultimate (All Features)" "◀ Back")
             interactive_menu "SELECT SECURITY PROFILE:" "${prof_opts[@]}"
             for i in "${!choices[@]}"; do choices[i]=""; done
             case $SELECTED_INDEX in
-                0) for i in 0 1 2 3 4 5 6 7 12 13 14; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
-                1) for i in 2 3 7; do choices[$i]="✓"; done; stat="◆ Loaded: Quick Surf" ;;
-                2) for i in 0 2 4 6 8 10 11; do choices[$i]="✓"; done; stat="◆ Loaded: Pentest Mode" ;;
-                3) for i in 2 3 13 15; do choices[$i]="✓"; done; stat="◆ Loaded: Darknet Explorer" ;;
-                4) for i in 0 9 12 14; do choices[$i]="✓"; done; stat="◆ Loaded: Physical Lockdown" ;;
-                5) for i in {0..15}; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
+                0) for i in 0 1 2 4 5 6 7 8 12 13 14 16 17 18; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
+                1) for i in 2 7 17; do choices[$i]="✓"; done; stat="◆ Loaded: Quick Surf" ;;
+                2) for i in 0 2 4 6 8 10 11 16; do choices[$i]="✓"; done; stat="◆ Loaded: Pentest Mode" ;;
+                3) for i in 2 13 15; do choices[$i]="✓"; done; stat="◆ Loaded: Darknet Explorer" ;;
+                4) for i in 0 1 9 12 14 20; do choices[$i]="✓"; done; stat="◆ Loaded: Physical Lockdown" ;;
+                5) for i in 0 1 2 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 20; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
                 6) stat="" ;;
             esac
             ;;
@@ -702,9 +701,7 @@ dashboard() {
             elif [[ "$i2p_integration_status" == "Enable" ]]; then
                 echo "SECURE_I2P|Hidden" > "$status_file"
             else
-                local direct_ip
-                direct_ip=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || echo "Offline")
-                echo "UNSECURE|$direct_ip" > "$status_file"
+                echo "UNSECURE|Direct (Unprotected)" > "$status_file"
             fi
             sleep 5
         done
