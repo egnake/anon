@@ -8,7 +8,7 @@ fi
 
 echo "[*] Kurulum baslatiliyor..."
 apt-get update
-apt-get install -y make tar tor curl iproute2 iptables macchanger obfs4proxy proxychains4 rfkill secure-delete i2pd firejail network-manager
+apt-get install -y make tar tor curl iproute2 iptables macchanger obfs4proxy proxychains4 rfkill secure-delete i2pd firejail network-manager mat2 libimage-exiftool-perl
 
 make install
 

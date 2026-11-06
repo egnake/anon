@@ -15,7 +15,7 @@ touch "$TEST_LOGS"
 # Cleanup trap to ensure 100% clean exit with zero leftovers
 cleanup() {
     rm -rf "$MOCK_DIR"
-    rm -f blackbox_out.txt blackbox_help.txt blackbox_audit.txt
+    rm -f blackbox_out.txt blackbox_help.txt blackbox_audit.txt blackbox_meta.txt
 }
 trap cleanup EXIT INT TERM
 
@@ -83,6 +83,8 @@ mock_cmd tor
 mock_cmd proxychains4
 mock_cmd sdmem
 mock_cmd i2pd
+mock_cmd mat2
+mock_cmd exiftool
 
 # Isolated paths
 export BASE_DIR="$(pwd)"
@@ -225,6 +227,13 @@ else
     ((FAIL_COUNT++))
 fi
 
+# --- 12. metadata_cleaner ---
+echo -e "\n\e[1;34m-> Module: metadata_cleaner\e[0m"
+TEST_SAMPLE="$MOCK_DIR/sample_image.jpg"
+touch "$TEST_SAMPLE"
+assets/scripts/metadata_cleaner "$TEST_SAMPLE" >/dev/null 2>&1
+assert_log "mat2 --inplace $TEST_SAMPLE" "Invokes MAT2 engine for file sanitization"
+
 echo -e "\n\e[1;33m[*] Running Blackbox Tests (End-to-End Execution)...\e[0m"
 > "$TEST_LOGS"
 
@@ -240,8 +249,8 @@ fi
 
 echo -e "\n\e[1;34m-> Feature: CLI Argument (--help)\e[0m"
 "$MOCK_DIR/anon_test" --help > blackbox_help.txt 2>&1 || true
-if grep -q "\-\-panic" blackbox_help.txt && grep -q "\-\-audit" blackbox_help.txt; then
-    echo -e "  \e[32m[PASS]\e[0m CLI help displays all options including --audit"
+if grep -q "\-\-panic" blackbox_help.txt && grep -q "\-\-audit" blackbox_help.txt && grep -q "\-\-clean-meta" blackbox_help.txt; then
+    echo -e "  \e[32m[PASS]\e[0m CLI help displays all options including --audit and --clean-meta"
     ((PASS_COUNT++))
 else
     echo -e "  \e[31m[FAIL]\e[0m CLI help missing options"
@@ -255,6 +264,16 @@ if grep -q "Audit complete" blackbox_audit.txt; then
     ((PASS_COUNT++))
 else
     echo -e "  \e[31m[FAIL]\e[0m CLI --audit failed"
+    ((FAIL_COUNT++))
+fi
+
+echo -e "\n\e[1;34m-> Feature: CLI Argument (--clean-meta)\e[0m"
+"$MOCK_DIR/anon_test" --clean-meta "$TEST_SAMPLE" > blackbox_meta.txt 2>&1 || true
+if grep -q "Metadata sanitized successfully" blackbox_meta.txt; then
+    echo -e "  \e[32m[PASS]\e[0m CLI --clean-meta executes metadata sanitizer successfully"
+    ((PASS_COUNT++))
+else
+    echo -e "  \e[31m[FAIL]\e[0m CLI --clean-meta failed"
     ((FAIL_COUNT++))
 fi
 

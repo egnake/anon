@@ -111,6 +111,15 @@ Cihaz kapatılırken veya oturum sonlandırılırken swap alanını kapatır, be
 **[21] Bluetooth Disabler (rfkill Donanım Bloğu)**
 `rfkill` aracılığıyla cihazdaki tüm Bluetooth denetleyicilerine donanım düzeyinde tam blok uygular; yakınlık tabanlı izleme ve saldırıları önler.
 
+**[22] Arka Plan Sızıntı Denetleyicisi (Background Leak Auditor)**
+Arka planda asenkron olarak çalışan nöbetçi daemon; ağ çıkışlarını, `/etc/resolv.conf` DNS sunucularını ve Tor devresini periyodik denetler. Sızıntı durumunda masaüstü bildirimi basıp anında Kill Switch'i devreye sokar.
+
+**[23] Masaüstü Bildirimleri (notify-send GUI Uyarıları)**
+Root/daemon olaylarını aktif masaüstü oturumuna aktararak ARP spoofing tespiti, Tor bağlantı durumu, sızıntı uyarıları ve acil durum panik kilitlenmelerinde anlık GUI bildirimleri iletir.
+
+**[24] Metadata Temizleyici (MAT2 & ExifTool Entegrasyonu)**
+Resimler, PDF'ler, ofis belgeleri ve medyadan EXIF, GPS konumları, yazar bilgileri ve cihaz seri numaralarını MAT2 (Tails OS standardı) veya ExifTool ile adli bilişime karşı temizler.
+
 **[Ekstra] Volatile Logging (Tails OS RAM Loglama)**
 `/var/log` dizini üzerine bir RAM diski (`tmpfs`) bağlar. Oturum boyunca tüm loglar geçici RAM'e yazılır; oturum kapandığında eski loglar bozulmadan geri gelir ve şüpheli log silme izi bırakmaz.
 
@@ -132,7 +141,7 @@ ANON, Linux ağ yığınına derinden entegredir. Gereksinimleri:
 
 - **İşletim Sistemi:** Kali Linux, Parrot Security OS, Debian, Ubuntu veya WSL2 (netns desteği için özel Kernel önerilir).
 - **İzinler:** `iptables`, kernel ağ alanlarını (namespaces) ve ağ arayüzlerini manipüle etmek için Root ayrıcalıkları (`sudo`) gereklidir.
-- **Bağımlılıklar (Otomatik kurulur):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`, `iptables`, `i2pd`.
+- **Bağımlılıklar (Otomatik kurulur):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`.
 
 ---
 
@@ -170,9 +179,11 @@ Otomasyon veya komut dosyası oluşturmayı tercih eden kullanıcılar için ANO
 | :--- | :--- |
 | `sudo anon --start` | Aracı, en son kaydedilen modül yapılandırmasını (veya varsayılan Tor + Kill Switch) kullanarak doğrudan başlatır. |
 | `sudo anon --stop` | Tüm aktif modülleri anında devre dışı bırakır, iptables'ı temizler ve orijinal ağ durumunu geri yükler. |
-| `sudo anon --status` | Tüm 21 aktif ve pasif OPSEC modülünün kapsamlı bir görsel raporunu yazdırır. |
+| `sudo anon --status` | Tüm aktif ve pasif OPSEC modülünün kapsamlı bir görsel raporunu yazdırır. |
 | `sudo anon --dashboard` | Canlı izleme panelini açar (her 3 saniyede bir otomatik yenilenir). |
 | `sudo anon --browser` | RAM tabanlı tek kullanımlık tarayıcıyı doğrudan izole edilmiş ağ alanı (namespace) içinde başlatır. |
+| `sudo anon --audit` | Anlık derinlemesine IP, DNS ve soket sızıntı denetimi yürütür. |
+| `sudo anon --clean-meta <hedef>` | Dosya veya klasörlerdeki adli metaverileri (EXIF/GPS/etiketler) MAT2 veya ExifTool ile temizler. |
 | `sudo anon --panic` | Acil Durum / Panik Protokolü: Tüm ağ arayüzlerini anında kapatır, güvenlik duvarını kilitler, süreçleri sonlandırır ve RAM'i temizler. |
 | `sudo anon --fix` | Çökme veya ani kapanma durumunda varsayılan sistem ağ yapılandırmalarını yedeklerden geri yükler. |
 | `sudo anon --update` | En son kaynak kodunu GitHub'dan getirir ve çerçeveyi otomatik olarak yeniden yükler. |

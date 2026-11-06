@@ -57,7 +57,7 @@ src_check() {
 			check_status="0"
                 fi
         done
-        for standalone in anti_mitm traffic_obfuscation sandbox_isolation disposable_browser leak_auditor; do
+        for standalone in anti_mitm traffic_obfuscation sandbox_isolation disposable_browser leak_auditor metadata_cleaner; do
                 if [[ ! -f "$SRCDIR/scripts/$standalone" ]]; then
 			warn "The source file could not be found. Please re-install the tool. (Module: $standalone)"
 			check_status="0"
@@ -471,7 +471,7 @@ execute_modules() {
 # ── Post-execution operations menu ──
 operations_loop() {
     while true; do
-        local ops_opts=("Live Dashboard" "System Status" "New Tor Identity" "IP Leak Test" "Secure Browser" "Emergency Panic Lockdown" "Stop All Modules" "Back to Configuration" "Exit Anon")
+        local ops_opts=("Live Dashboard" "System Status" "New Tor Identity" "IP Leak Test" "Secure Browser" "Metadata Sanitizer" "Emergency Panic Lockdown" "Stop All Modules" "Back to Configuration" "Exit Anon")
         interactive_menu "OPERATIONS:" "${ops_opts[@]}"
         case $SELECTED_INDEX in
             0) dashboard ;;
@@ -546,9 +546,23 @@ operations_loop() {
                 read -rsn1
                 ;;
             5)
-                panic
+                clear
+                banner
+                info "Metadata Sanitizer (MAT2 / ExifTool)"
+                echo -ne "  ${YELLOW}Enter file or directory path to sanitize:${RESET} "
+                read -r target_path
+                if [[ -n "$target_path" ]]; then
+                    "${BASE_DIR}/assets/scripts/metadata_cleaner" "$target_path"
+                else
+                    warn "No target path entered."
+                fi
+                echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                read -rsn1
                 ;;
             6)
+                panic
+                ;;
+            7)
                 clear
                 banner
                 source $SRCDIR/sources/config
@@ -556,8 +570,8 @@ operations_loop() {
                 echo -e "\n  ${DIM}Press any key to return...${RESET}"
                 read -rsn1
                 ;;
-            7) return 1 ;;
-            8) clear; exit 0 ;;
+            8) return 1 ;;
+            9) clear; exit 0 ;;
         esac
     done
 }
@@ -577,12 +591,12 @@ while true; do
             interactive_menu "SELECT SECURITY PROFILE:" "${prof_opts[@]}"
             for i in "${!choices[@]}"; do choices[i]=""; done
             case $SELECTED_INDEX in
-                0) for i in 0 1 2 4 5 6 7 8 12 13 14 16 17 18; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
+                0) for i in 0 1 2 4 5 6 7 8 12 13 14 16 17 18 21; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
                 1) for i in 2 7 17; do choices[$i]="✓"; done; stat="◆ Loaded: Quick Surf" ;;
                 2) for i in 0 2 4 6 8 10 11 16; do choices[$i]="✓"; done; stat="◆ Loaded: Pentest Mode" ;;
                 3) for i in 2 13 15; do choices[$i]="✓"; done; stat="◆ Loaded: Darknet Explorer" ;;
                 4) for i in 0 1 9 12 14 20; do choices[$i]="✓"; done; stat="◆ Loaded: Physical Lockdown" ;;
-                5) for i in 0 1 2 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 20; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
+                5) for i in 0 1 2 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 20 21; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
                 6) stat="" ;;
             esac
             ;;
@@ -946,20 +960,35 @@ audit() {
     exit 0
 }
 
+clean_meta() {
+    local target="${1:-}"
+    if [[ -z "$target" ]]; then
+        echo -ne "  ${YELLOW}Enter file or directory path to sanitize:${RESET} "
+        read -r target
+    fi
+    if [[ -n "$target" ]]; then
+        "${BASE_DIR}/assets/scripts/metadata_cleaner" "$target"
+    else
+        err "No target path specified for metadata cleaning."
+    fi
+    exit 0
+}
+
 help() {
 
 msg "Usage : sudo anon ${GREEN}[option]${RESET}
 
- ${GREEN}--start     :${RESET}   It will make backups and start the program.
- ${GREEN}--stop      :${RESET}   Closes the program using a backup.
- ${GREEN}--status    :${RESET}   Provides information about IP address and working status.
- ${GREEN}--dashboard :${RESET}   Opens a live real-time monitoring dashboard.
- ${GREEN}--browser   :${RESET}   Launches a disposable secure browser session.
- ${GREEN}--audit     :${RESET}   Executes an instant deep IP and DNS leak audit.
- ${GREEN}--panic     :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
- ${GREEN}--fix       :${RESET}   Used to repair the system in case of a possible bug.
- ${GREEN}--update    :${RESET}   Automatically downloads and installs the latest version.
- ${GREEN}--help      :${RESET}   This shows the menu."
+ ${GREEN}--start      :${RESET}   It will make backups and start the program.
+ ${GREEN}--stop       :${RESET}   Closes the program using a backup.
+ ${GREEN}--status     :${RESET}   Provides information about IP address and working status.
+ ${GREEN}--dashboard  :${RESET}   Opens a live real-time monitoring dashboard.
+ ${GREEN}--browser    :${RESET}   Launches a disposable secure browser session.
+ ${GREEN}--audit      :${RESET}   Executes an instant deep IP and DNS leak audit.
+ ${GREEN}--clean-meta :${RESET}   Sanitizes metadata from files/folders (EXIF/GPS/tags) via MAT2/ExifTool.
+ ${GREEN}--panic      :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
+ ${GREEN}--fix        :${RESET}   Used to repair the system in case of a possible bug.
+ ${GREEN}--update     :${RESET}   Automatically downloads and installs the latest version.
+ ${GREEN}--help       :${RESET}   This shows the menu."
 }
 
 main() {
@@ -987,6 +1016,10 @@ fi
         ;;
     --[aA][uU][dD][iI][tT]|-[aA])
         audit
+        ;;
+    --[cC][lL][eE][aA][nN]-[mM][eE][tT][aA]|-[cC][mM])
+        shift
+        clean_meta "${1:-}"
         ;;
     --[pP][aA][nN][iI][cC]|-[pP])
         panic

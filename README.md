@@ -111,6 +111,15 @@ Disables swap, locks memory core dumps, and executes `sdmem` (Secure Delete Memo
 **[21] Bluetooth Disabler (rfkill Hardware Block)**
 Interfaces with Linux `rfkill` to enforce a hardware-level block on all Bluetooth controllers, eliminating proximity-based attacks and hardware beacon tracking.
 
+**[22] Background Leak Auditor (Continuous Sentry)**
+Runs an asynchronous watchdog daemon that continuously monitors active network egress, `/etc/resolv.conf` resolvers, and Tor circuits. If an unexpected clearnet connection or DNS leak is detected, it dispatches a critical desktop notification and instantly engages the Network Kill Switch.
+
+**[23] Desktop Notifications (notify-send GUI Alerts)**
+Bridges root/daemon events to active unprivileged desktop sessions, delivering high-priority GUI notifications for ARP spoofing attempts, Tor connection changes, leak detections, and panic lockdown triggers.
+
+**[24] Metadata Cleaner (MAT2 & ExifTool Integration)**
+Forensic sanitization tool to strip EXIF tags, GPS coordinates, author history, and device serial numbers from images, PDFs, office documents, and media using MAT2 (Tails OS standard) with seamless fallback to ExifTool.
+
 **[Bonus] Volatile Logging (Tails OS RAM Overlay)**
 Mounts an in-memory `tmpfs` disk over `/var/log` and journal directories during the session. All logs are written to volatile RAM; upon stopping, historical logs reappear with only a clean time gap and zero suspicious deletion traces.
 
@@ -132,7 +141,7 @@ ANON is heavily integrated with the Linux networking stack. It requires:
 
 - **Operating System:** Kali Linux, Parrot Security OS, Debian, Ubuntu, or WSL2 (Custom Kernel recommended for netns support).
 - **Permissions:** Root privileges (`sudo`) are required to manipulate `iptables`, kernel namespaces, and network interfaces.
-- **Dependencies (Automatically installed):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`, `iptables`, `i2pd`.
+- **Dependencies (Automatically installed):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`.
 
 ---
 
@@ -170,9 +179,11 @@ For users who prefer automation or scripting, ANON supports direct command-line 
 | :--- | :--- |
 | `sudo anon --start` | Starts the framework non-interactively using the last saved module configuration (or default Tor + Kill Switch). |
 | `sudo anon --stop` | Immediately disables all active modules, flushes iptables, and restores the original network state. |
-| `sudo anon --status` | Prints a comprehensive visual report of all 21 active and inactive OPSEC modules. |
+| `sudo anon --status` | Prints a comprehensive visual report of all active and inactive OPSEC modules. |
 | `sudo anon --dashboard` | Opens the live monitoring dashboard (auto-refreshes every 3 seconds). |
 | `sudo anon --browser` | Directly launches the RAM-based disposable browser inside the isolated network namespace. |
+| `sudo anon --audit` | Performs an instant deep IP, DNS, and socket leak audit. |
+| `sudo anon --clean-meta <path>` | Sanitizes forensic metadata (EXIF/GPS/tags) from files or directories via MAT2/ExifTool. |
 | `sudo anon --panic` | Emergency Duress Protocol: immediately cuts all network interfaces, drops all firewall traffic, terminates processes, and sanitizes RAM. |
 | `sudo anon --fix` | Restores default system network configurations from backup in the event of a crash or abrupt shutdown. |
 | `sudo anon --update` | Fetches the latest source code from GitHub and reinstalls the framework automatically. |

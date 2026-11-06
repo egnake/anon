@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y \
     rfkill \
     secure-delete \
     i2pd \
+    mat2 \
+    libimage-exiftool-perl \
     sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
