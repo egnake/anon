@@ -37,7 +37,11 @@ start_kill_switch(){
 -A OUTPUT -d 127.0.0.1/32 -p tcp --dport 9050 -j ACCEPT"
     fi
 
-    # ── Strict IPv6 lockdown ──────────────────────────────────────
+    local sandbox_rules=""
+    if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
+        sandbox_rules="-A INPUT -i veth-anon -s 10.200.200.0/24 -p tcp -m multiport --dports 9040,9050,5353 -j ACCEPT
+-A INPUT -i veth-anon -s 10.200.200.0/24 -p udp --dport 5353 -j ACCEPT"
+    fi
     if ! grep -qi microsoft /proc/version 2>/dev/null; then
         sysctl -w net.ipv6.conf.all.disable_ipv6=1 &>/dev/null || true
         sysctl -w net.ipv6.conf.default.disable_ipv6=1 &>/dev/null || true
@@ -68,6 +72,7 @@ IP6_RULES
 # Loopback — always allowed
 -A INPUT -i lo -j ACCEPT
 -A OUTPUT -o lo -j ACCEPT
+${sandbox_rules}
 
 # Established connections — critical for Tor responses
 -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT

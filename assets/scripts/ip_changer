@@ -70,6 +70,14 @@ start_ip_changer(){
             iptables -t nat -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports 9040
             iptables -A INPUT -m state --state ESTABLISHED -j ACCEPT
             iptables -A INPUT -i lo -j ACCEPT
+            if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
+                iptables -t nat -A PREROUTING -i veth-anon -p tcp --dport 9050 -j ACCEPT
+                iptables -t nat -A PREROUTING -i veth-anon -p tcp -j REDIRECT --to-ports 9040
+                iptables -t nat -A PREROUTING -i veth-anon -p udp --dport 53 -j REDIRECT --to-ports 5353
+                iptables -t nat -A PREROUTING -i veth-anon -p tcp --dport 53 -j REDIRECT --to-ports 5353
+                iptables -A INPUT -i veth-anon -s 10.200.200.0/24 -p tcp -m multiport --dports 9040,9050,5353 -j ACCEPT
+                iptables -A INPUT -i veth-anon -s 10.200.200.0/24 -p udp --dport 5353 -j ACCEPT
+            fi
             iptables -A INPUT -j DROP
             iptables -A FORWARD -j DROP
             iptables -A OUTPUT -m conntrack --ctstate INVALID -j DROP
@@ -112,6 +120,13 @@ TransPort 9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDe
 SocksPort 9050
 DNSPort 5353
 EOF
+            if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
+                cat >>"$torrc_path" <<'EOF'
+TransPort 10.200.200.1:9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort # ANON_SANDBOX
+SocksPort 10.200.200.1:9050 # ANON_SANDBOX
+DNSPort 10.200.200.1:5353 # ANON_SANDBOX
+EOF
+            fi
 
             # Append bridges/camouflage if enabled
             local active_bridges_file

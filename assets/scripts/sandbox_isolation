@@ -8,18 +8,19 @@ source "${BASE_DIR}/assets/sources/config"
 # Two-layer approach:
 #   1. Network namespace (anon_jail) with Tor-routed veth pair
 #   2. Mandatory Access Control (AppArmor / Firejail) enforcement
-#      on Tor daemon and any external tools spawned by ANON
+#      on Tor daemon and external tools spawned by ANON
 # ═══════════════════════════════════════════════════════════════════
 
-# ── AppArmor profile for Tor ─────────────────────────────────────
-APPARMOR_TOR_PROFILE="/etc/apparmor.d/usr.bin.tor.anon"
+APPARMOR_TOR_PROFILE="${APPARMOR_TOR_PROFILE:-/etc/apparmor.d/usr.bin.tor.anon}"
+NETNS_ETC_DIR="${NETNS_ETC_DIR:-/etc/netns/anon_jail}"
 
 _install_apparmor_profile() {
     if ! command -v apparmor_parser &>/dev/null; then
         info "AppArmor not available — skipping MAC profile installation"
-        return 1
+        return 0
     fi
 
+    mkdir -p "$(dirname "$APPARMOR_TOR_PROFILE")" 2>/dev/null || true
     cat > "$APPARMOR_TOR_PROFILE" << 'AAPROFILE'
 # AppArmor profile for Tor — ANON Framework
 # Restricts Tor to only the resources it needs
@@ -77,28 +78,26 @@ _remove_apparmor_profile() {
 _apply_firejail_wrappers() {
     if ! command -v firejail &>/dev/null; then
         info "Firejail not available — skipping sandboxed tool wrappers"
-        return 1
+        return 0
     fi
 
-    # Create firejail wrappers for common tools that ANON may spawn
-    local tools=("curl" "wget" "nmap" "obfs4proxy")
-    local wrapper_dir="/usr/local/bin"
+    local tools=("curl" "wget" "nmap")
+    local wrapper_dir="${WRAPPER_DIR:-/usr/local/bin}"
+    mkdir -p "$wrapper_dir" 2>/dev/null || true
 
     for tool in "${tools[@]}"; do
         local real_path
-        real_path=$(command -v "$tool" 2>/dev/null)
-        # Skip if tool doesn't exist or is already a firejail wrapper
+        real_path=$(command -v "$tool" 2>/dev/null || true)
         if [[ -z "$real_path" ]] || grep -q "firejail" "$real_path" 2>/dev/null; then
             continue
         fi
-        # Skip if the real path is already under /usr/local/bin (our wrapper)
-        if [[ "$real_path" == /usr/local/bin/* ]]; then
+        if [[ "$real_path" == "${wrapper_dir}"/* ]]; then
             continue
         fi
 
         cat > "${wrapper_dir}/${tool}.anon-sandbox" << FJWRAP
 #!/bin/bash
-exec firejail --quiet --private --net=none --no3d --nodvd --nosound \\
+exec firejail --quiet --caps.drop=all --no3d --nodvd --nosound \\
     --nogroups --nonewprivs --seccomp \\
     "${real_path}" "\$@"
 FJWRAP
@@ -108,7 +107,8 @@ FJWRAP
 }
 
 _remove_firejail_wrappers() {
-    rm -f /usr/local/bin/*.anon-sandbox 2>/dev/null
+    local wrapper_dir="${WRAPPER_DIR:-/usr/local/bin}"
+    rm -f "${wrapper_dir}"/*.anon-sandbox 2>/dev/null || true
     info "Firejail sandboxed wrappers removed"
 }
 
@@ -117,38 +117,64 @@ _remove_firejail_wrappers() {
 # ═══════════════════════════════════════════════════════════════════
 
 start_sandbox_isolation() {
+    source "${BASE_DIR}/assets/sources/config"
+    local torrc_path="${TORRC:-/etc/tor/torrc}"
+
+    if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
+        warn "Sandbox Isolation is already active"
+        return 0
+    fi
+
     info "Setting up Kernel-level Network Namespace + MAC enforcement..."
 
     # ── 1. Network Namespace ─────────────────────────────────────
-    # Clean up any existing namespace
-    ip netns del anon_jail 2>/dev/null
+    ip link del veth-anon 2>/dev/null || true
+    ip netns del anon_jail 2>/dev/null || true
 
-    # Create the namespace
     ip netns add anon_jail
     ip netns exec anon_jail ip link set lo up
 
-    # Create veth pair
-    ip link add veth-anon type veth peer name veth-jail
+    # Configure namespace-scoped DNS pointing to host veth endpoint (redirected to Tor DNSPort 5353)
+    mkdir -p "$NETNS_ETC_DIR" 2>/dev/null || true
+    cat > "$NETNS_ETC_DIR/resolv.conf" << 'EOF'
+# ANON Sandbox Isolation DNS (routed via veth-anon -> Tor DNSPort)
+nameserver 10.200.200.1
+EOF
 
-    # Move veth-jail to the namespace
+    # Create veth pair and assign namespace endpoint
+    ip link add veth-anon type veth peer name veth-jail
     ip link set veth-jail netns anon_jail
 
-    # Configure IPs
     ip addr add 10.200.200.1/24 dev veth-anon
     ip link set veth-anon up
 
     ip netns exec anon_jail ip addr add 10.200.200.2/24 dev veth-jail
     ip netns exec anon_jail ip link set veth-jail up
-
-    # Set default route in the jail to the host
     ip netns exec anon_jail ip route add default via 10.200.200.1
 
-    # Configure host to route jail traffic through Tor TransPort
+    # Route jail traffic through host Tor SocksPort / TransPort / DNSPort
+    iptables -t nat -A PREROUTING -i veth-anon -p tcp --dport 9050 -j ACCEPT
     iptables -t nat -A PREROUTING -i veth-anon -p tcp -j REDIRECT --to-ports 9040
     iptables -t nat -A PREROUTING -i veth-anon -p udp --dport 53 -j REDIRECT --to-ports 5353
+    iptables -t nat -A PREROUTING -i veth-anon -p tcp --dport 53 -j REDIRECT --to-ports 5353
 
-    # Enable IP forwarding
-    sysctl -w net.ipv4.ip_forward=1 > /dev/null
+    # Ensure host INPUT filter permits traffic from anon_jail to Tor ports even under strict DROP policy
+    iptables -I INPUT 1 -i veth-anon -s 10.200.200.0/24 -p tcp -m multiport --dports 9040,9050,5353 -j ACCEPT
+    iptables -I INPUT 1 -i veth-anon -s 10.200.200.0/24 -p udp --dport 5353 -j ACCEPT
+
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null 2>&1 || true
+
+    # Bind Tor listeners on 10.200.200.1 if torrc exists and lacks sandbox bindings
+    if [[ -f "$torrc_path" ]] && ! grep -q "10.200.200.1:9040" "$torrc_path" 2>/dev/null; then
+        cat >> "$torrc_path" << 'EOF'
+TransPort 10.200.200.1:9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort # ANON_SANDBOX
+SocksPort 10.200.200.1:9050 # ANON_SANDBOX
+DNSPort 10.200.200.1:5353 # ANON_SANDBOX
+EOF
+        if systemctl is-active tor.service >/dev/null 2>&1; then
+            systemctl restart tor.service &>/dev/null || true
+        fi
+    fi
 
     info "Network namespace 'anon_jail' created and routed through Tor"
 
@@ -161,15 +187,29 @@ start_sandbox_isolation() {
 }
 
 stop_sandbox_isolation() {
+    source "${BASE_DIR}/assets/sources/config"
+    local torrc_path="${TORRC:-/etc/tor/torrc}"
+
     # ── Remove iptables rules ────────────────────────────────────
-    iptables -t nat -D PREROUTING -i veth-anon -p tcp -j REDIRECT --to-ports 9040 2>/dev/null
-    iptables -t nat -D PREROUTING -i veth-anon -p udp --dport 53 -j REDIRECT --to-ports 5353 2>/dev/null
+    iptables -t nat -D PREROUTING -i veth-anon -p tcp --dport 9050 -j ACCEPT 2>/dev/null || true
+    iptables -t nat -D PREROUTING -i veth-anon -p tcp -j REDIRECT --to-ports 9040 2>/dev/null || true
+    iptables -t nat -D PREROUTING -i veth-anon -p udp --dport 53 -j REDIRECT --to-ports 5353 2>/dev/null || true
+    iptables -t nat -D PREROUTING -i veth-anon -p tcp --dport 53 -j REDIRECT --to-ports 5353 2>/dev/null || true
+    iptables -D INPUT -i veth-anon -s 10.200.200.0/24 -p tcp -m multiport --dports 9040,9050,5353 -j ACCEPT 2>/dev/null || true
+    iptables -D INPUT -i veth-anon -s 10.200.200.0/24 -p udp --dport 5353 -j ACCEPT 2>/dev/null || true
 
-    # ── Delete veth pair on host (also removes the peer in netns) ─
-    ip link del veth-anon 2>/dev/null
+    # ── Remove sandbox Tor bindings ──────────────────────────────
+    if [[ -f "$torrc_path" ]] && grep -q "ANON_SANDBOX" "$torrc_path" 2>/dev/null; then
+        sed -i '/# ANON_SANDBOX$/d' "$torrc_path" 2>/dev/null || true
+        if systemctl is-active tor.service >/dev/null 2>&1; then
+            systemctl restart tor.service &>/dev/null || true
+        fi
+    fi
 
-    # ── Delete netns ─────────────────────────────────────────────
-    ip netns del anon_jail 2>/dev/null
+    # ── Delete veth pair & netns ─────────────────────────────────
+    ip link del veth-anon 2>/dev/null || true
+    ip netns del anon_jail 2>/dev/null || true
+    rm -rf "$NETNS_ETC_DIR" 2>/dev/null || true
 
     # ── Remove MAC enforcement ───────────────────────────────────
     _remove_apparmor_profile
@@ -179,8 +219,8 @@ stop_sandbox_isolation() {
     info "Sandbox Isolation removed (Namespace + MAC profiles cleaned)"
 }
 
-if [[ "$1" == "start" ]]; then
+if [[ "${1:-}" == "start" ]]; then
     start_sandbox_isolation
-elif [[ "$1" == "stop" ]]; then
+elif [[ "${1:-}" == "stop" ]]; then
     stop_sandbox_isolation
 fi
