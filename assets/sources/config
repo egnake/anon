@@ -21,7 +21,7 @@ if [[ -z "${BASE_DIR}" ]]; then
         export BASE_DIR="$(dirname "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")")"
     fi
 fi
-BACKUPDIR="${BASE_DIR}/backups"
+BACKUPDIR="${ANON_PERSIST_DIR:-${BASE_DIR}}/backups"
 mkdir -p "$BACKUPDIR" 2>/dev/null
 SRCDIR="${BASE_DIR}/assets"
 

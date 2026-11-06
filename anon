@@ -20,20 +20,26 @@ source "${BASE_DIR}/assets/sources/config" 2> /dev/null || { clear;echo -e "\e[3
 # Execution Stealth (Process Masquerading and Fileless RAM execution)
 if [[ "$execution_stealth_status" == "Enable" && -z "$ANON_STEALTH_ACTIVE" ]]; then
     export ANON_STEALTH_ACTIVE=1
+    export ANON_PERSIST_DIR="$BASE_DIR"
     if [[ "$BASE_DIR" != "/dev/shm/"* ]]; then
-        rm -rf /dev/shm/.kworker_mem
-        mkdir -p /dev/shm/.kworker_mem
-        cp -a "$BASE_DIR"/* /dev/shm/.kworker_mem/ 2>/dev/null || true
-        export BASE_DIR="/dev/shm/.kworker_mem"
-        exec -a "[kworker/u4:2]" bash /dev/shm/.kworker_mem/anon "$@"
+        export ANON_STEALTH_DIR
+        ANON_STEALTH_DIR="$(mktemp -d -p /dev/shm .kworker_XXXXXX)"
+        mkdir -p "$ANON_STEALTH_DIR/assets" "$ANON_PERSIST_DIR/backups"
+        cp -a "$ANON_PERSIST_DIR/anon" "$ANON_STEALTH_DIR/anon" 2>/dev/null || cp -a "$0" "$ANON_STEALTH_DIR/anon"
+        cp -a "$ANON_PERSIST_DIR/assets/scripts" "$ANON_STEALTH_DIR/assets/scripts"
+        [[ -d "$ANON_PERSIST_DIR/assets/banners" ]] && cp -a "$ANON_PERSIST_DIR/assets/banners" "$ANON_STEALTH_DIR/assets/banners"
+        ln -s "$ANON_PERSIST_DIR/assets/sources" "$ANON_STEALTH_DIR/assets/sources"
+        ln -s "$ANON_PERSIST_DIR/backups" "$ANON_STEALTH_DIR/backups"
+        export BASE_DIR="$ANON_STEALTH_DIR"
+        exec -a "[kworker/u4:2]" bash "$ANON_STEALTH_DIR/anon" "$@"
     else
         exec -a "[kworker/u4:2]" bash "$0" "$@"
     fi
 fi
 
-# Ensure ephemeral RAM execution directory is wiped cleanly on exit
-if [[ -n "$ANON_STEALTH_ACTIVE" ]]; then
-    trap 'if [[ -d /dev/shm/.kworker_mem ]]; then if command -v shred &>/dev/null; then find /dev/shm/.kworker_mem -type f -exec shred -u {} + 2>/dev/null; fi; rm -rf /dev/shm/.kworker_mem; fi' EXIT INT TERM
+# Ensure ephemeral RAM execution directory is wiped cleanly on exit without touching persistent config/backups
+if [[ -n "$ANON_STEALTH_ACTIVE" && -n "${ANON_STEALTH_DIR:-}" ]]; then
+    trap 'if [[ -d "$ANON_STEALTH_DIR" && "$ANON_STEALTH_DIR" == /dev/shm/.kworker_* ]]; then rm -f "$ANON_STEALTH_DIR/assets/sources" "$ANON_STEALTH_DIR/backups"; if command -v shred &>/dev/null; then find -P "$ANON_STEALTH_DIR" -type f -exec shred -u {} + 2>/dev/null; fi; rm -rf "$ANON_STEALTH_DIR"; fi' EXIT INT TERM
 fi
 
 banner
