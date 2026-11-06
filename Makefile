@@ -8,6 +8,7 @@ install:
 	install -m 755 anon $(trigger_dir)
 	mkdir -p $(src_dir)/$(tool_name)/backups
 	cp -vr assets $(src_dir)/$(tool_name)
+	chmod 755 $(src_dir)/$(tool_name)/assets/scripts/*
 	mkdir -p /usr/share/kali-menu/applications/ || true
 	cp -vr  $(src_dir)/$(tool_name)/assets/anon.desktop /usr/share/kali-menu/applications/ || true
 	mkdir -p /usr/share/applications/ || true
@@ -30,6 +31,7 @@ reinstall:
 	install -m 755 anon $(trigger_dir)
 	mkdir -p $(src_dir)/$(tool_name)/backups
 	cp -vr assets $(src_dir)/$(tool_name)
+	chmod 755 $(src_dir)/$(tool_name)/assets/scripts/*
 	mkdir -p /usr/share/kali-menu/applications/ || true
 	cp -vr  $(src_dir)/$(tool_name)/assets/anon.desktop /usr/share/kali-menu/applications/ || true
 	cp -v  $(src_dir)/$(tool_name)/assets/anon.desktop /usr/share/applications/

@@ -41,6 +41,7 @@ jobs:
           
           install -m 755 anon anon_${VERSION}_all/usr/bin/
           cp -vr assets anon_${VERSION}_all/usr/share/anon/
+          chmod 755 anon_${VERSION}_all/usr/share/anon/assets/scripts/*
           cp -vr assets/anon.desktop anon_${VERSION}_all/usr/share/applications/
           cp -vr assets/anon.desktop anon_${VERSION}_all/usr/share/kali-menu/applications/
           
