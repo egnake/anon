@@ -886,25 +886,30 @@ update() {
     info "Starting Anon Self-Update..."
     if ! command -v unzip &> /dev/null; then
         warn "unzip is not installed. Installing..."
-        apt-get update && apt-get install -y unzip
+        if command -v apt-get &>/dev/null; then
+            apt-get update && apt-get install -y unzip
+        fi
     fi
     
-    local tmp_dir=$(mktemp -d)
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$tmp_dir"' EXIT
     info "Downloading latest release from GitHub..."
-    curl -sL https://github.com/egnake/anon/archive/refs/heads/main.zip -o $tmp_dir/anon.zip
-    
-    if [ $? -eq 0 ]; then
+    if curl -fsSL https://github.com/egnake/anon/archive/refs/heads/main.zip -o "$tmp_dir/anon.zip" && unzip -tq "$tmp_dir/anon.zip" &>/dev/null; then
         info "Extracting..."
-        unzip -q $tmp_dir/anon.zip -d $tmp_dir
-        cd $tmp_dir/anon-main
-        info "Running make reinstall..."
-        make reinstall
-        msg "Anon has been successfully updated to the latest version!"
-        info "Please restart Anon by typing 'sudo anon'"
+        unzip -q "$tmp_dir/anon.zip" -d "$tmp_dir"
+        if [[ -d "$tmp_dir/anon-main" ]]; then
+            cd "$tmp_dir/anon-main"
+            info "Running make reinstall..."
+            make reinstall
+            msg "Anon has been successfully updated to the latest version!"
+            info "Please restart Anon by typing 'sudo anon'"
+        else
+            err "Corrupted update archive: anon-main directory not found."
+        fi
     else
-        err "Failed to download the update."
+        err "Failed to download or verify the update archive."
     fi
-    rm -rf $tmp_dir
     exit 0
 }
 

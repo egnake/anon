@@ -24,8 +24,8 @@ uninstall:
 	
 reinstall:
 
-	rm -Rf $(trigger_dir)/$(tool_name)
-	rm -Rf $(src_dir)/$(tool_name)
+	rm -f $(trigger_dir)/$(tool_name)
+	rm -Rf $(src_dir)/$(tool_name)/assets
 	rm -Rf $(src_dir)/kali-menu/applications/anon.desktop
 	rm -Rf $(src_dir)/applications/anon.desktop
 	install -m 755 anon $(trigger_dir)
@@ -34,4 +34,4 @@ reinstall:
 	chmod 755 $(src_dir)/$(tool_name)/assets/scripts/*
 	mkdir -p /usr/share/kali-menu/applications/ || true
 	cp -vr  $(src_dir)/$(tool_name)/assets/anon.desktop /usr/share/kali-menu/applications/ || true
-	cp -v  $(src_dir)/$(tool_name)/assets/anon.desktop /usr/share/applications/
+	cp -v  $(src_dir)/$(tool_name)/assets/anon.desktop /usr/share/applications/ || true
