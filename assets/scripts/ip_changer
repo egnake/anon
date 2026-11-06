@@ -4,18 +4,46 @@
 # IP Changer — Tor Transparent Proxy Integration
 # ═══════════════════════════════════════════════════════════════════
 
+_resolve_bridges_file() {
+    if [[ -s "$SRCDIR/sources/bridges.txt" ]]; then
+        echo "$SRCDIR/sources/bridges.txt"
+    elif [[ -s "$SRCDIR/sources/bridges.default.txt" ]]; then
+        echo "$SRCDIR/sources/bridges.default.txt"
+    else
+        echo ""
+    fi
+}
+
+_append_bridges_to_torrc() {
+    local target_torrc="$1"
+    local bridges_file="$2"
+    [[ -z "$bridges_file" || ! -f "$bridges_file" ]] && return 1
+
+    while IFS= read -r bridge_line || [[ -n "$bridge_line" ]]; do
+        bridge_line="${bridge_line%$'\r'}"
+        # Skip empty lines and comments
+        [[ -z "${bridge_line//[[:space:]]/}" || "$bridge_line" == \#* ]] && continue
+        if [[ "$bridge_line" != Bridge\ * ]]; then
+            echo "Bridge $bridge_line" >> "$target_torrc"
+        else
+            echo "$bridge_line" >> "$target_torrc"
+        fi
+    done < "$bridges_file"
+}
+
 start_ip_changer(){
     source "${BASE_DIR}/assets/sources/config"
+    local torrc_path="${TORRC:-/etc/tor/torrc}"
 
-    if [[ "$dns_changer_status" == "Disable" ]]; then
+    if [[ "$dns_changer_status" == "Disable" && "${doh_shield_status:-Disable}" == "Disable" ]]; then
         if [[ "$ip_changer_status" == "Disable" ]]; then
             # Backup current state
-            cat "$TORRC" > "$BACKUPDIR/torrc.bak"
+            cat "$torrc_path" > "$BACKUPDIR/torrc.bak" 2>/dev/null || touch "$BACKUPDIR/torrc.bak"
             if [[ -L /etc/resolv.conf ]]; then
                 cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.symlink.bak"
                 rm -f /etc/resolv.conf
             else
-                cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak"
+                cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak" 2>/dev/null || true
             fi
             iptables-save > "$BACKUPDIR/iptables.rules.bak"
             ip6tables-save > "$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
@@ -29,6 +57,7 @@ start_ip_changer(){
             iptables -t nat -X
             iptables -t nat -A OUTPUT -d 10.192.0.0/10 -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports 9040
             iptables -t nat -A OUTPUT -d 127.0.0.1/32 -p udp -m udp --dport 53 -j REDIRECT --to-ports 5353
+            iptables -t nat -A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport 53 --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports 5353
             iptables -t nat -A OUTPUT -m owner --uid-owner "$tor_uid" -j RETURN
             iptables -t nat -A OUTPUT -o lo -j RETURN
 
@@ -36,6 +65,8 @@ start_ip_changer(){
                 iptables -t nat -A OUTPUT -d "$lan" -j RETURN
             done
 
+            # Transparently redirect any hardcoded external UDP DNS into Tor DNSPort
+            iptables -t nat -A OUTPUT -p udp -m udp --dport 53 -j REDIRECT --to-ports 5353
             iptables -t nat -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports 9040
             iptables -A INPUT -m state --state ESTABLISHED -j ACCEPT
             iptables -A INPUT -i lo -j ACCEPT
@@ -56,6 +87,7 @@ start_ip_changer(){
                 iptables -A OUTPUT -d "$lan" -j ACCEPT
             done
             iptables -A OUTPUT -d 127.0.0.1/32 -o lo -j ACCEPT
+            iptables -A OUTPUT -d 127.0.0.1/32 -p udp -m udp --dport 5353 -j ACCEPT
             iptables -A OUTPUT -d 127.0.0.1/32 -p tcp -m tcp --dport 9040 --tcp-flags FIN,SYN,RST,ACK SYN -j ACCEPT
             iptables -A OUTPUT -j DROP
             iptables -P INPUT DROP
@@ -73,7 +105,7 @@ start_ip_changer(){
                 ip6tables -A OUTPUT -o lo -j ACCEPT 2>/dev/null || true
             fi
 
-            cat >"/etc/tor/torrc" <<EOF
+            cat >"$torrc_path" <<EOF
 VirtualAddrNetworkIPv4 10.192.0.0/10
 AutomapHostsOnResolve 1
 TransPort 9040 IsolateClientAddr IsolateClientProtocol IsolateDestAddr IsolateDestPort
@@ -82,22 +114,16 @@ DNSPort 5353
 EOF
 
             # Append bridges/camouflage if enabled
+            local active_bridges_file
+            active_bridges_file="$(_resolve_bridges_file)"
             if [[ "$dpi_spoofing_status" == "Enable" ]]; then
-                echo "UseBridges 1" >> /etc/tor/torrc
-                echo "ClientTransportPlugin snowflake exec /usr/bin/snowflake-client -url https://snowflake-broker.torproject.net.global.prod.fastly.net/ -front cdn.sstatic.net -ice stun:stun.voip.blackberry.com:3478,stun:stun.altar.com.pl:3478,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.uls.co.za:3478,stun:stun.voys.nl:3478 -max 3" >> /etc/tor/torrc
-                echo "Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72" >> /etc/tor/torrc
-            elif [[ "$tor_bridges_status" == "Enable" ]]; then
-                echo "UseBridges 1" >> /etc/tor/torrc
-                echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> /etc/tor/torrc
-                if [[ -f "$SRCDIR/sources/bridges.txt" ]]; then
-                    while IFS= read -r bridge_line; do
-                        if [[ "$bridge_line" != Bridge* ]]; then
-                            echo "Bridge $bridge_line" >> /etc/tor/torrc
-                        else
-                            echo "$bridge_line" >> /etc/tor/torrc
-                        fi
-                    done < "$SRCDIR/sources/bridges.txt"
-                fi
+                echo "UseBridges 1" >> "$torrc_path"
+                echo "ClientTransportPlugin snowflake exec /usr/bin/snowflake-client -url https://snowflake-broker.torproject.net.global.prod.fastly.net/ -front cdn.sstatic.net -ice stun:stun.voip.blackberry.com:3478,stun:stun.altar.com.pl:3478,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.uls.co.za:3478,stun:stun.voys.nl:3478 -max 3" >> "$torrc_path"
+                echo "Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72" >> "$torrc_path"
+            elif [[ "$tor_bridges_status" == "Enable" ]] && [[ -n "$active_bridges_file" ]]; then
+                echo "UseBridges 1" >> "$torrc_path"
+                echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> "$torrc_path"
+                _append_bridges_to_torrc "$torrc_path" "$active_bridges_file"
             fi
 
             # Prevent NetworkManager from overwriting DNS
@@ -119,9 +145,9 @@ EOF
                 systemctl stop tor.service
             fi
 
-            if ! grep -qi microsoft /proc/version; then
-                sysctl -w net.ipv6.conf.all.disable_ipv6=1 &> /dev/null
-                sysctl -w net.ipv6.conf.default.disable_ipv6=1 &> /dev/null
+            if ! grep -qi microsoft /proc/version 2>/dev/null; then
+                sysctl -w net.ipv6.conf.all.disable_ipv6=1 &> /dev/null || true
+                sysctl -w net.ipv6.conf.default.disable_ipv6=1 &> /dev/null || true
             fi
             systemctl start tor.service &>/dev/null
             sed -i 's/ip_changer_status="Disable"/ip_changer_status="Enable"/g' "$SRCDIR/sources/config"
@@ -145,16 +171,17 @@ EOF
             done
 
             if [[ "$success" -eq 0 ]]; then
-                if [[ "$tor_bridges_status" == "Disable" ]] && [[ -s "$SRCDIR/sources/bridges.txt" ]]; then
+                active_bridges_file="$(_resolve_bridges_file)"
+                if [[ "$tor_bridges_status" == "Disable" ]] && [[ -n "$active_bridges_file" ]]; then
                     warn "Tor connection failed. Attempting Auto-Fallback to Tor Bridges..."
                     source "$SRCDIR/scripts/tor_bridges"
                     sed -i 's/tor_bridges_status="Disable"/tor_bridges_status="Enable"/g' "$SRCDIR/sources/config"
                     info "Bridges enabled. Restarting Tor..."
 
-                    # Append bridges to torrc
-                    echo "UseBridges 1" >> /etc/tor/torrc
-                    echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> /etc/tor/torrc
-                    cat "$SRCDIR/sources/bridges.txt" >> /etc/tor/torrc
+                    # Append formatted Bridge directives to torrc
+                    echo "UseBridges 1" >> "$torrc_path"
+                    echo "ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy" >> "$torrc_path"
+                    _append_bridges_to_torrc "$torrc_path" "$active_bridges_file"
 
                     systemctl restart tor.service &>/dev/null
                     info "Tor restarted with Obfs4 Bridges. Retrying leak test..."
@@ -174,13 +201,13 @@ EOF
                     done
 
                     if [[ "$fallback_success" -eq 0 ]]; then
-                        err "CRITICAL: Auto-Fallback failed. Tor is completely blocked! Triggering Kill Switch..."
+                        warn "CRITICAL: Auto-Fallback failed. Tor is completely blocked! Triggering Kill Switch..."
                         source "$SRCDIR/scripts/kill_switch"
                         start_kill_switch
                         err "Network locked down. Check your network or update your bridges."
                     fi
                 else
-                    err "CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety..."
+                    warn "CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety..."
                     source "$SRCDIR/scripts/kill_switch"
                     start_kill_switch
                     err "Network locked down to prevent leaks. Please check your Tor connection and restart."
@@ -191,12 +218,13 @@ EOF
             warn "Ip changer is already running"
         fi
     else
-        warn "The Ip changer is not available. (Dns changer enabled)"
+        warn "The Ip changer is not available. (Dns changer or DoH Shield enabled)"
     fi
 }
 
 stop_ip_changer(){
     source "${BASE_DIR}/assets/sources/config"
+    local torrc_path="${TORRC:-/etc/tor/torrc}"
 
     iptables -F
     iptables -X
@@ -206,16 +234,20 @@ stop_ip_changer(){
     iptables -P FORWARD ACCEPT
     iptables -P OUTPUT ACCEPT
     systemctl stop tor.service
-    iptables-restore <"$BACKUPDIR/iptables.rules.bak"
+    if [[ -f "$BACKUPDIR/iptables.rules.bak" ]]; then
+        iptables-restore <"$BACKUPDIR/iptables.rules.bak"
+    fi
     if command -v ip6tables &> /dev/null && [[ -f "$BACKUPDIR/ip6tables.rules.bak" ]]; then
         ip6tables-restore <"$BACKUPDIR/ip6tables.rules.bak" 2>/dev/null || true
     fi
-    if ! grep -qi microsoft /proc/version; then
-        sysctl -w net.ipv6.conf.all.disable_ipv6=0 &> /dev/null
-        sysctl -w net.ipv6.conf.default.disable_ipv6=0 &> /dev/null
+    if ! grep -qi microsoft /proc/version 2>/dev/null; then
+        sysctl -w net.ipv6.conf.all.disable_ipv6=0 &> /dev/null || true
+        sysctl -w net.ipv6.conf.default.disable_ipv6=0 &> /dev/null || true
     fi
 
-    cat "$BACKUPDIR/torrc.bak" > "$TORRC"
+    if [[ -f "$BACKUPDIR/torrc.bak" ]]; then
+        cat "$BACKUPDIR/torrc.bak" > "$torrc_path"
+    fi
     chattr -i /etc/resolv.conf 2>/dev/null || true
     if [[ -f /etc/NetworkManager/conf.d/anon-dns-lock.conf ]]; then
         rm -f /etc/NetworkManager/conf.d/anon-dns-lock.conf 2>/dev/null || true

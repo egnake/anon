@@ -26,7 +26,7 @@ mkdir -p "$BACKUPDIR" 2>/dev/null
 SRCDIR="${BASE_DIR}/assets"
 
 # tor config file
-TORRC="/etc/tor/torrc"
+TORRC="${TORRC:-/etc/tor/torrc}"
 tor_uid="$(id -u debian-tor 2>/dev/null || id -u tor 2>/dev/null || id -u _tor 2>/dev/null || echo "109")"
 
 #Defaults
