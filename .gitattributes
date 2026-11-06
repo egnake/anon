@@ -1,0 +1,10 @@
+# Enforce LF line endings across all Linux scripts, configs, and ASCII banners
+* text=auto eol=lf
+
+# Windows batch scripts require CRLF
+*.bat text eol=crlf
+
+# Binary assets
+*.jpg binary
+*.png binary
+*.gz binary

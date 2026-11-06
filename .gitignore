@@ -8,6 +8,7 @@ desktop.ini
 *.bak
 *.tmp
 *.swp
+scratch/
 
 # Python caches
 __pycache__/
@@ -24,4 +25,3 @@ assets/sources/bridges.txt
 # Dynamic backups
 backups/*
 !backups/.gitkeep
-
