@@ -1,24 +1,52 @@
 #!/bin/bash
 
+# ═══════════════════════════════════════════════════════════════════
 # DNS-over-HTTPS (DoH) Shield Module
-# Enforces DNSCrypt-Proxy usage for system DNS resolution
+# Enforces DNSCrypt-Proxy usage for encrypted system DNS resolution
+# ═══════════════════════════════════════════════════════════════════
 
 start_doh_shield() {
+    source "${BASE_DIR}/assets/sources/config"
+
+    if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
+        warn "DoH Shield is not available while Ip changer is active."
+        return 0
+    fi
+    if [[ "${dns_changer_status:-Disable}" == "Enable" ]]; then
+        warn "DoH Shield is not available while Dns changer is active."
+        return 0
+    fi
+
+    if [[ "${doh_shield_status:-Disable}" == "Enable" ]]; then
+        warn "DoH Shield is already running."
+        return 0
+    fi
+
     info "Starting DNS-over-HTTPS (DoH) Shield..."
     
     if ! command -v dnscrypt-proxy &> /dev/null; then
         info "Installing dnscrypt-proxy..."
-        apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y dnscrypt-proxy
+        if command -v apt-get &>/dev/null; then
+            apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y dnscrypt-proxy || {
+                warn "Failed to install dnscrypt-proxy. Please install it manually."
+                return 1
+            }
+        fi
     fi
     
     systemctl unmask dnscrypt-proxy 2>/dev/null || true
     systemctl start dnscrypt-proxy 2>/dev/null || true
     
-    if [[ ! -f /etc/resolv.conf.anon.bak ]]; then
-        cp /etc/resolv.conf /etc/resolv.conf.anon.bak
+    # Backup resolv.conf handling symlinks safely into BACKUPDIR
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if [[ -L /etc/resolv.conf ]]; then
+        cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.doh.symlink.bak"
+        rm -f /etc/resolv.conf
+    elif [[ -f /etc/resolv.conf ]]; then
+        cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.doh.bak"
     fi
     
-    # dnscrypt-proxy default port
+    # dnscrypt-proxy default local resolver endpoints
     cat > /etc/resolv.conf <<EOF
 # DoH Shield (DNSCrypt) managed by Anon
 nameserver 127.0.2.1
@@ -31,12 +59,21 @@ EOF
 }
 
 stop_doh_shield() {
+    source "${BASE_DIR}/assets/sources/config"
     info "Stopping DNS-over-HTTPS (DoH) Shield..."
     systemctl stop dnscrypt-proxy 2>/dev/null || true
     
-    if [[ -f /etc/resolv.conf.anon.bak ]]; then
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if [[ -f "$BACKUPDIR/resolv.conf.doh.symlink.bak" ]]; then
+        rm -f /etc/resolv.conf
+        mv "$BACKUPDIR/resolv.conf.doh.symlink.bak" /etc/resolv.conf
+    elif [[ -f "$BACKUPDIR/resolv.conf.doh.bak" ]]; then
+        cat "$BACKUPDIR/resolv.conf.doh.bak" > /etc/resolv.conf
+    elif [[ -f /etc/resolv.conf.anon.bak ]]; then
         cat /etc/resolv.conf.anon.bak > /etc/resolv.conf
+        rm -f /etc/resolv.conf.anon.bak
     fi
+    rm -f "$BACKUPDIR/resolv.conf.doh.bak" "$BACKUPDIR/resolv.conf.doh.symlink.bak"
     
     sed -i 's/doh_shield_status="Enable"/doh_shield_status="Disable"/g' "$SRCDIR/sources/config"
     msg "DoH Shield deactivated."
