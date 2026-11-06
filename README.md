@@ -22,7 +22,7 @@
 
 ## 🚀 Overview
 
-**ANON** is a rigorous, open-source anonymity and Operations Security (OPSEC) framework designed for researchers, developers, and privacy advocates. Moving beyond basic proxy scripts, ANON provides a deeply integrated, 17-module architecture that enforces strict network isolation, randomizes system fingerprints, and applies active anti-forensics measures.
+**ANON** is a rigorous, open-source anonymity and Operations Security (OPSEC) framework designed for researchers, developers, and privacy advocates. Moving beyond basic proxy scripts, ANON provides a deeply integrated, 21-module architecture that enforces strict network isolation, randomizes system fingerprints, and applies active anti-forensics measures.
 
 By utilizing Linux kernel namespaces (`netns`), traffic control (`tc`), and dynamic `iptables` configurations, ANON transforms a standard Debian-based installation into a highly restricted environment. It ensures that all outbound traffic is strictly routed through the Tor network while mitigating common timing attacks and local network threats.
 
@@ -32,13 +32,13 @@ By utilizing Linux kernel namespaces (`netns`), traffic control (`tc`), and dyna
 
 ANON is built around the concept of "Defense in Depth." It assumes that adversaries may exist at multiple points in your communication chain. The framework attempts to mitigate the following specific vectors:
 
-1. **Traffic Analysis & ISP Monitoring:** Mitigated by forcing all TCP and DNS traffic through Tor, while utilizing `obfs4` bridges and active traffic obfuscation (dummy packets and jitter) to disrupt Website Fingerprinting (WFP).
+1. **Traffic Analysis & ISP Monitoring:** Mitigated by forcing all TCP and DNS traffic through Tor, while utilizing `obfs4` bridges, Snowflake WebRTC camouflage, and active traffic obfuscation (dummy packets and jitter) to disrupt Website Fingerprinting (WFP).
 2. **Local Area Network (LAN) Attacks:** Mitigated via MAC address randomization, ARP spoofing detection, hostname spoofing, and strict isolation from the physical host interfaces.
-3. **Endpoint Vulnerabilities & Forensics:** Mitigated through the use of isolated kernel network namespaces (`anon_jail`), temporary RAM-based filesystems for browsers, and cryptographic memory wiping (`sdmem`) to counter cold-boot data extraction.
+3. **Endpoint Vulnerabilities & Forensics:** Mitigated through the use of isolated kernel network namespaces (`anon_jail`), temporary RAM-based filesystems for browsers and system logs (`volatile_logging`), process masquerading (`execution_stealth`), and cryptographic memory wiping (`sdmem`) to counter cold-boot data extraction.
 
 ---
 
-## ⚙️ The 17 Modules (Detailed Breakdown)
+## ⚙️ The 21 Modules (Detailed Breakdown)
 
 ANON is highly modular. You can toggle individual features on or off based on your specific operational requirements using the interactive Terminal User Interface (TUI).
 
@@ -48,13 +48,13 @@ ANON is highly modular. You can toggle individual features on or off based on yo
 Standard Tor traffic is easily detectable via Deep Packet Inspection (DPI) by ISPs and firewalls. This module configures the Tor daemon to utilize `obfs4` bridges. By doing so, it encrypts the Tor handshake and alters the traffic signature, making it indistinguishable from random noise, which is essential for bypassing strict censorship.
 
 **[02] IP Changer (Tor TransPort)**
-Relying solely on SOCKS5 proxies can lead to fatal data leaks if an application is misconfigured. This module leverages strict `iptables` `REDIRECT` rules at the kernel level. It captures all outbound TCP traffic originating from your machine and physically forces it into Tor's transparent proxy port (9040), ensuring absolute compliance regardless of application settings.
+Relying solely on SOCKS5 proxies can lead to fatal data leaks if an application is misconfigured. This module leverages strict `iptables` `REDIRECT` rules at the kernel level. It captures all outbound TCP traffic originating from your machine and physically forces it into Tor's transparent proxy port (9040), ensuring absolute compliance regardless of application settings. Outbound DNS requests are automatically redirected to Tor's DNSPort (5353).
 
-**[03] DNS Changer (Tor DNSPort)**
-DNS requests (resolving domains to IPs) often leak outside of proxy tunnels. This module captures all UDP/TCP port 53 traffic and redirects it to Tor's secure DNSPort (5353). This guarantees that your local ISP cannot build a history of the websites you visit.
+**[03] DNS Changer (Privacy DNS Fallback)**
+For scenarios where Tor transparent proxying is inactive, this module configures privacy-hardened, non-logging DNS resolvers (uncensored DNS servers) directly into system resolution, disabling ISP-based DNS hijacking.
 
 **[04] MAC Changer**
-Before a network connection is fully established, this module alters the Media Access Control (MAC) address of your Network Interface Card (NIC) to a completely randomized value. This breaks historical tracking by routers, public Wi-Fi hotspots, and local network administrators.
+Before a network connection is fully established, this module alters the Media Access Control (MAC) address of your Network Interface Card (NIC) to an authentic vendor-spoofed OUI value. This breaks historical tracking by routers, public Wi-Fi hotspots, and local network administrators.
 
 **[05] Proxychains Integration**
 Automatically configures and aligns `proxychains4` with your active Tor circuits. This allows you to effortlessly tunnel specific terminal commands, scripts, or external tools (such as `curl`, `wget`, or custom python scripts) through the Tor network without manual configuration tweaking.
@@ -65,49 +65,64 @@ Provides an alternative routing mechanism. For tasks that require interaction wi
 **[07] Traffic Obfuscation (Timing Attack Defense)**
 Low-latency networks like Tor remain susceptible to end-to-end timing correlation and Website Fingerprinting (WFP). This advanced module utilizes the Linux Traffic Control utility (`tc`) to inject randomized latency (jitter) into your outbound packets. Furthermore, it generates continuous, randomized background Tor traffic (chaffing) to obscure your actual data volume, heavily complicating packet-size and timing analysis.
 
+**[08] DPI Spoofing (Snowflake WebRTC Camouflage)**
+Bypasses advanced Deep Packet Inspection by encapsulating Tor traffic inside ephemeral WebRTC connections via Tor Snowflake, disguising Tor traffic as ordinary peer-to-peer video/audio conference streams.
+
+**[09] DoH Shield (DNS-over-HTTPS via DNSCrypt)**
+Enforces encrypted DNS queries over HTTPS/DNSCrypt using a local `dnscrypt-proxy` daemon, ensuring cryptographic authenticity and confidentiality for DNS lookups when Tor DNSPort is not in use.
+
 ### 🧩 System Obfuscation & Isolation
 
-**[08] Timezone Changer**
+**[10] Timezone Changer**
 Modern web tracking often correlates your system's local timezone (leaked via JavaScript or system headers) with your IP address. This module temporarily spoofs your system timezone to random global coordinates (e.g., UTC or Asia/Tokyo), disrupting correlation algorithms.
 
-**[09] Hostname Changer**
-Your computer's hostname (e.g., `user-laptop`) is frequently broadcasted across local networks via DHCP requests. This module randomizes the hostname to generic, non-identifiable strings to blend into crowded networks seamlessly.
+**[11] Hostname Changer**
+Your computer's hostname (e.g., `user-laptop`) is frequently broadcasted across local networks via DHCP requests. This module randomizes the hostname to generic OEM/Windows-style identifiers to blend into crowded networks seamlessly.
 
-**[10] Browser Anonymization (Disposable RAM Profile)**
-Rather than launching a standard browser profile that saves history, cookies, and cache to your hard drive, ANON creates a highly hardened Firefox configuration (`anon.js`) that disables WebRTC, WebGL, and Canvas fingerprinting. It mounts this profile entirely in a volatile memory filesystem (`/dev/shm`). Once the browser process terminates, the profile is instantly annihilated, leaving zero forensic trace on permanent storage.
+**[12] Browser Anonymization (Hardened Configuration)**
+Installs hardened privacy preferences (`anon.js`) across system-wide browser configuration directories (`/etc/firefox`, `/etc/firefox-esr`), strictly disabling WebRTC, WebGL, Canvas fingerprinting, telemetry, and disk caching.
 
-**[11] OS Obfuscation (TTL Spoofing)**
-Passive network scanners (such as `p0f` or `nmap`) can guess your Operating System by analyzing the default Time-To-Live (TTL) values of your network packets (Linux typically uses 64, Windows 128). This module intercepts outbound packets and rewrites their TTL values to mimic different operating systems, frustrating OS fingerprinting attempts.
+**[13] Disposable Browser (RAM-based Ephemeral Session)**
+Provisions a hardened Firefox profile mounted entirely in volatile memory (`/dev/shm`). SOCKS5 proxying with remote DNS is strictly enforced. The instant the browser window closes, the memory profile is cryptographically wiped (`shred`), leaving zero forensic artifacts on disk.
 
-**[12] Process Obfuscation**
-Executes techniques to hide ANON's background scripts and OPSEC processes from standard user-space monitoring tools (like `ps` or `top`). This acts as a secondary layer of defense against non-privileged malicious scripts trying to profile the machine's defensive capabilities.
+**[14] OS Obfuscation (TTL & TCP Window Spoofing)**
+Passive network scanners (such as `p0f` or `nmap`) guess your OS by analyzing default TTL values and TCP window parameters. This module intercepts outbound packets and rewrites TTL to 128 (Windows 10/11 emulation), disables TCP timestamps and window scaling, and adjusts ephemeral port ranges.
 
-**[13] Sandbox Isolation (Kernel netns)**
-Mimicking advanced isolation architectures, this module creates an isolated Kernel Network Namespace (`anon_jail`). It provisions a virtual ethernet pair (`veth`), routing all traffic from within the namespace explicitly through the host's Tor TransPort. Applications launched inside this sandbox (such as the Disposable Browser) have absolutely zero visibility into the host's real network interfaces, real IP, or MAC address. It integrates with Firejail/AppArmor for robust process isolation, containing potential 0-day browser exploits.
+**[15] Process Obfuscation (hidepid=2 Kernel Isolation)**
+Remounts `/proc` with `hidepid=2` so unprivileged users and malware cannot inspect running processes or background daemons. Creates RAM-based stealth execution wrappers for sensitive tools.
+
+**[16] Sandbox Isolation (Kernel netns anon_jail)**
+Creates an isolated Kernel Network Namespace (`anon_jail`) wired via a virtual ethernet pair (`veth-anon`/`veth-jail`). Outbound traffic is physically redirected into the host's Tor TransPort (9040) and DNSPort (5353). Integrates with AppArmor and Firejail for full containerized containment.
+
+**[17] Execution Stealth (Fileless RAM Masquerading)**
+Runs the entire framework and its tools inside ephemeral RAM storage (`/dev/shm`), while masquerading processes under innocent kernel worker names (`[kworker/u4:2]`). Ephemeral runtime state is shredded on exit while persistent configs and backups are preserved.
 
 ### 🔥 Active Defense & Anti-Forensics
 
-**[14] Network Kill Switch**
-If the Tor daemon crashes, unexpected reboots occur, or bridges fail, operating systems usually default to routing traffic over the clear web. The Kill Switch deploys draconian `iptables` rules that explicitly `DROP` all packets that are not destined for the loopback interface (`lo`) or established Tor ports. If Tor goes down, the entire internet connection goes down. There are no exceptions and no leaks.
+**[18] Network Kill Switch (Atomic iptables-restore)**
+Deploys strict firewall rules loaded atomically via `iptables-restore` and `ip6tables-restore`, preventing microsecond packet leaks. Only loopback and established Tor traffic are accepted; all clear web leaks are instantly dropped.
 
-**[15] Anti-MITM (ARP Spoofing Protection)**
-Continuously monitors the local Address Resolution Protocol (ARP) tables. If an attacker on the same local network attempts to intercept traffic via an ARP Spoofing/Poisoning attack, this module detects the MAC address anomaly, instantly alerts the user, and severs the connection to prevent data interception.
+**[19] Anti-MITM (ARP Spoofing Protection)**
+Continuously monitors gateway MAC addresses in the kernel ARP table. If an ARP cache poisoning attempt is detected, the network interface is immediately severed (`DOWN`) and the attacker's MAC is blocked.
 
-**[16] Anti-Cold Boot (sdmem)**
-During physical device seizure, adversaries can extract encryption keys and sensitive session tokens by freezing RAM modules (Cold-Boot Attack). When enabled, exiting the ANON framework triggers `sdmem` (Secure Delete Memory), which cryptographically overwrites all free RAM and Swap space with random data before the system shuts down.
+**[20] Anti-Cold Boot (sdmem & Swap Lock)**
+Disables swap, locks memory core dumps, and executes `sdmem` (Secure Delete Memory) to cryptographically wipe free RAM and swap space, neutralizing cold-boot attacks against memory keys.
 
-**[17] Bluetooth Disabler**
-Bluetooth radios broadcast unique hardware identifiers and are historically vulnerable to proximity-based exploits (such as Blueborne). This module interfaces with `rfkill` to implement a strict hardware-level block on all Bluetooth controllers.
+**[21] Bluetooth Disabler (rfkill Hardware Block)**
+Interfaces with Linux `rfkill` to enforce a hardware-level block on all Bluetooth controllers, eliminating proximity-based attacks and hardware beacon tracking.
+
+**[Bonus] Volatile Logging (Tails OS RAM Overlay)**
+Mounts an in-memory `tmpfs` disk over `/var/log` and journal directories during the session. All logs are written to volatile RAM; upon stopping, historical logs reappear with only a clean time gap and zero suspicious deletion traces.
 
 ---
 
 ## 🖥️ Interactive Terminal User Interface (TUI)
 
-ANON completely replaces clunky command-line arguments with an elegant, responsive TUI built entirely in Bash.
+ANON replaces clunky command-line arguments with an elegant, responsive TUI built entirely in Bash.
 
-* **Dynamic Aesthetic Rendering:** The TUI features beautifully formatted, centered ASCII banners that change dynamically on launch, providing a clean, distraction-free environment.
-* **Live Dashboard:** An integrated dashboard allows you to monitor your Tor exit IP, active circuit status, network configuration, and active OPSEC modules in real-time.
-* **Operations Hub:** Execute DNS/IP leak tests, request a new Tor identity (`SIGHUP` circuit rebuild), or launch the sandboxed disposable browser directly from the interface using your arrow keys.
+* **Dynamic Aesthetic Rendering:** Centered ASCII banners that change dynamically on launch, providing a clean, distraction-free environment.
+* **Live Dashboard:** Monitor your Tor exit IP, network status, traffic throughput, and active OPSEC modules in real-time without clear web leaks.
+* **Operations Hub:** Execute DNS/IP leak tests, request a new Tor identity (`SIGHUP` circuit rebuild), launch the sandboxed disposable browser, or trigger Emergency Panic Lockdown directly from the interface.
 
 ---
 
@@ -117,7 +132,7 @@ ANON is heavily integrated with the Linux networking stack. It requires:
 
 - **Operating System:** Kali Linux, Parrot Security OS, Debian, Ubuntu, or WSL2 (Custom Kernel recommended for netns support).
 - **Permissions:** Root privileges (`sudo`) are required to manipulate `iptables`, kernel namespaces, and network interfaces.
-- **Dependencies (Automatically installed):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`.
+- **Dependencies (Automatically installed):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`, `iptables`, `i2pd`.
 
 ---
 
@@ -139,8 +154,6 @@ sudo chmod +x setup.sh
 sudo ./setup.sh
 ```
 
-*The setup script will update your package manager, install all required dependencies, place the `anon` executable in your `/usr/bin/` path, and create necessary backup directories.*
-
 ---
 
 ## 🚀 Usage & Commands
@@ -155,9 +168,9 @@ For users who prefer automation or scripting, ANON supports direct command-line 
 
 | Command | Description |
 | :--- | :--- |
-| `sudo anon --start` | Silently starts the framework in the background using the last saved module configuration. |
+| `sudo anon --start` | Starts the framework non-interactively using the last saved module configuration (or default Tor + Kill Switch). |
 | `sudo anon --stop` | Immediately disables all active modules, flushes iptables, and restores the original network state. |
-| `sudo anon --status` | Prints a comprehensive visual report of all active and inactive OPSEC modules. |
+| `sudo anon --status` | Prints a comprehensive visual report of all 21 active and inactive OPSEC modules. |
 | `sudo anon --dashboard` | Opens the live monitoring dashboard (auto-refreshes every 3 seconds). |
 | `sudo anon --browser` | Directly launches the RAM-based disposable browser inside the isolated network namespace. |
 | `sudo anon --panic` | Emergency Duress Protocol: immediately cuts all network interfaces, drops all firewall traffic, terminates processes, and sanitizes RAM. |
@@ -188,9 +201,6 @@ A: Proxychains intercepts standard library calls (like `connect()`) to route app
 
 **Q: What happens if the script crashes or my computer loses power abruptly?**
 A: Upon installation, ANON backs up your original `iptables`, `resolv.conf`, and `NetworkManager` states. If the system reboots unexpectedly, simply run `sudo anon --fix` to instantly restore all network settings to their default factory state.
-
-**Q: Will this hide me from the NSA or state-level adversaries?**
-A: No software provides absolute immunity. ANON mitigates specific technical vectors (DPI, DNS leaks, OS fingerprinting, local forensics). However, a state-level adversary relies heavily on global traffic correlation, zero-day endpoint exploits, and physical surveillance. Use ANON as one layer in a comprehensive operational security strategy.
 
 ---
 
