@@ -22,7 +22,7 @@ start_hostname_changer(){
         [[ -z "$suffix" ]] && suffix="7K9A2BC"
         local new_hostname="${pfx}${suffix}"
 
-        echo "$new_hostname" > /etc/hostname
+        echo "$new_hostname" > /etc/hostname 2>/dev/null || true
         hostname "$new_hostname" 2>/dev/null || true
         if command -v hostnamectl &>/dev/null; then
             hostnamectl set-hostname "$new_hostname" 2>/dev/null || true
@@ -45,7 +45,7 @@ stop_hostname_changer(){
     if [[ -f "$BACKUPDIR/hostname.bak" ]]; then
         local orig_host
         orig_host="$(cat "$BACKUPDIR/hostname.bak" 2>/dev/null || echo "localhost")"
-        echo "$orig_host" > /etc/hostname
+        echo "$orig_host" > /etc/hostname 2>/dev/null || true
         hostname "$orig_host" 2>/dev/null || true
         if command -v hostnamectl &>/dev/null; then
             hostnamectl set-hostname "$orig_host" 2>/dev/null || true

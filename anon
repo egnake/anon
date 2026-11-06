@@ -92,8 +92,11 @@ dep_check() {
         echo -ne "
  ${CYAN}ℹ INFO:${RESET} Some required dependencies are missing: ${BOLD}${missing_pkgs[*]}${RESET}
 "
-        echo -ne " ${YELLOW}➤ Do you want Anon to automatically install them for you? (Y/n): ${RESET}"
-        read -r choice
+        local choice="Y"
+        if [ -t 0 ]; then
+            echo -ne " ${YELLOW}➤ Do you want Anon to automatically install them for you? (Y/n): ${RESET}"
+            read -r choice
+        fi
         case "$choice" in 
           y|Y|"" ) 
             echo -e "
@@ -829,6 +832,56 @@ else
 fi
 }
 
+cli_start() {
+    dep_check tar tor curl sdmem obfs4proxy macchanger proxychains4 rfkill i2pd
+    if [[ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]]; then
+        get_backups
+    fi
+
+    source "$SRCDIR/sources/config"
+    local enabled_count=0
+    enabled_count=$(grep -c 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null || echo "0")
+
+    if [[ "$enabled_count" -gt 0 ]]; then
+        info "Starting Anon with saved module configuration..."
+        local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7)
+        local raw_names=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "anti_cold_boot" "tor_bridges" "kill_switch" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing" "doh_shield" "execution_stealth")
+
+        start_anti_mitm(){
+            "${BASE_DIR}/assets/scripts/anti_mitm" &
+            local antimitmpid="$!"
+            sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' "$SRCDIR/sources/config"
+            info "Anti mitm successfully enabled"
+        }
+        start_traffic_obfuscation(){
+            "${BASE_DIR}/assets/scripts/traffic_obfuscation" start
+        }
+        start_sandbox_isolation(){
+            "${BASE_DIR}/assets/scripts/sandbox_isolation" start
+        }
+
+        for idx in "${exec_order[@]}"; do
+            source "$SRCDIR/sources/config"
+            local mod_name="${raw_names[$idx]}"
+            local mod_stat="${mod_name}_status"
+            if [[ "${!mod_stat}" == "Enable" ]]; then
+                sed -i "s/${mod_name}_status=\"Enable\"/${mod_name}_status=\"Disable\"/g" "$SRCDIR/sources/config"
+                if declare -F "start_${mod_name}" >/dev/null 2>&1; then
+                    "start_${mod_name}"
+                fi
+            fi
+        done
+    else
+        info "No active modules found in saved config. Activating default security profile (Tor + Kill Switch)..."
+        start_ip_changer
+        start_kill_switch
+    fi
+
+    msg "Anon started successfully in non-interactive mode."
+    status
+    exit 0
+}
+
 update() {
     info "Starting Anon Self-Update..."
     if ! command -v unzip &> /dev/null; then
@@ -885,7 +938,7 @@ fi
 
     case "$1" in
     --[sS][tT][aA][rR][tT]|-[sS][tT])
-        start   
+        cli_start   
         ;;
     --[sS][tT][oO][pP]|-[sS][pP])
         stop    
