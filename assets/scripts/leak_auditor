@@ -1,0 +1,114 @@
+#!/bin/bash
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════════
+# Background Leak Auditor — Continuous IP, DNS & Socket Sentry
+# Periodically inspects active network egress, DNS resolvers, and
+# Tor circuits. Triggers instant kill-switch lockdown upon any leak.
+# ═══════════════════════════════════════════════════════════════════
+
+POLL_INTERVAL="${ANON_AUDIT_INTERVAL:-15}"
+
+# Resolve configuration
+CFG_FILE=""
+if [[ -f "/usr/share/anon/sources/config" ]]; then
+    CFG_FILE="/usr/share/anon/sources/config"
+elif [[ -f "${BASH_SOURCE[0]%/*}/../sources/config" ]]; then
+    CFG_FILE="${BASH_SOURCE[0]%/*}/../sources/config"
+fi
+
+if [[ -n "$CFG_FILE" && -f "$CFG_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$CFG_FILE" 2>/dev/null || true
+fi
+
+_trigger_lockdown() {
+    local reason="$1"
+    echo -e "\e[1;31m[ANON LEAK AUDITOR] *** CRITICAL LEAK DETECTED ***\e[0m" >&2
+    echo -e "\e[1;31m[ANON LEAK AUDITOR] Reason: ${reason}\e[0m" >&2
+    echo -e "\e[1;33m[ANON LEAK AUDITOR] Enforcing immediate network lockdown...\e[0m" >&2
+
+    # Send high-priority desktop notification
+    if declare -F notify >/dev/null 2>&1; then
+        notify "ANON - CRITICAL LEAK AUDIT" "Leak detected: ${reason}! Activating kill switch." "critical"
+    fi
+
+    # Atomic emergency iptables lockdown
+    if command -v iptables &>/dev/null; then
+        iptables -P OUTPUT DROP 2>/dev/null || true
+        iptables -P INPUT DROP 2>/dev/null || true
+        iptables -P FORWARD DROP 2>/dev/null || true
+    fi
+
+    # Trigger script kill switch if available
+    local ks_script="${BASH_SOURCE[0]%/*}/kill_switch"
+    if [[ -f "$ks_script" ]]; then
+        # shellcheck disable=SC1090
+        source "$ks_script" 2>/dev/null || true
+        if declare -F start_kill_switch >/dev/null 2>&1; then
+            start_kill_switch 2>/dev/null || true
+        fi
+    fi
+
+    echo -e "\e[1;31m[ANON LEAK AUDITOR] Network lockdown enforced. Terminating auditor.\e[0m" >&2
+    exit 2
+}
+
+check_dns_leak() {
+    # If Tor or DoH is supposed to be active, resolv.conf must not point to a public ISP/router DNS directly
+    if [[ "${ip_changer_status:-Disable}" == "Enable" || "${doh_shield_status:-Disable}" == "Enable" ]]; then
+        if [[ -f /etc/resolv.conf ]]; then
+            local nameservers
+            nameservers=$(grep -E '^\s*nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' || true)
+            for ns in $nameservers; do
+                if [[ "$ns" != "127.0.0.1" && "$ns" != "::1" && "$ns" != "10.200.200.1" ]]; then
+                    # Non-loopback DNS resolver detected while anonymization is active
+                    _trigger_lockdown "DNS resolver leak ($ns found in /etc/resolv.conf)"
+                    return 1
+                fi
+            done
+        fi
+    fi
+    return 0
+}
+
+check_ip_leak() {
+    if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
+        local check_res
+        check_res=$(curl -s --max-time 10 https://check.torproject.org/api/ip 2>/dev/null || true)
+        if [[ -n "$check_res" ]]; then
+            if echo "$check_res" | grep -q '"IsTor":false'; then
+                _trigger_lockdown "Direct clearnet egress detected (IsTor: false returned from Tor check)"
+                return 1
+            elif ! echo "$check_res" | grep -q '"IsTor":true'; then
+                # Malformed or unexpected response, could indicate ISP interception
+                echo "[ANON LEAK AUDITOR] WARNING: Tor check returned unverified payload." >&2
+            fi
+        fi
+    fi
+    return 0
+}
+
+check_once() {
+    echo -e "\e[1;36m[*] ANON Leak Auditor: Running one-shot audit...\e[0m"
+    check_dns_leak
+    check_ip_leak
+    echo -e "\e[1;32m[✔] Audit complete: No leaks detected.\e[0m"
+    return 0
+}
+
+main() {
+    if [[ "${1:-}" == "--check-once" || "${1:-}" == "-c" ]]; then
+        check_once
+        exit 0
+    fi
+
+    echo "[ANON LEAK AUDITOR] Daemon started (poll interval: ${POLL_INTERVAL}s)"
+    while true; do
+        sleep "$POLL_INTERVAL"
+        check_dns_leak
+        check_ip_leak
+    done
+}
+
+main "$@"

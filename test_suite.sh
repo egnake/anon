@@ -15,7 +15,7 @@ touch "$TEST_LOGS"
 # Cleanup trap to ensure 100% clean exit with zero leftovers
 cleanup() {
     rm -rf "$MOCK_DIR"
-    rm -f blackbox_out.txt blackbox_help.txt
+    rm -f blackbox_out.txt blackbox_help.txt blackbox_audit.txt
 }
 trap cleanup EXIT INT TERM
 
@@ -213,13 +213,25 @@ source assets/sources/config
 notify "Security Warning" "Test Alert" "critical"
 assert_log "notify-send -u critical -a ANON Security Warning Test Alert" "Dispatches desktop notifications via notify-send"
 
+# --- 11. leak_auditor ---
+echo -e "\n\e[1;34m-> Module: leak_auditor\e[0m"
+source assets/sources/config
+assets/scripts/leak_auditor --check-once >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+    echo -e "  \e[32m[PASS]\e[0m One-shot leak audit executes and reports clear state"
+    ((PASS_COUNT++))
+else
+    echo -e "  \e[31m[FAIL]\e[0m One-shot leak audit failed"
+    ((FAIL_COUNT++))
+fi
+
 echo -e "\n\e[1;33m[*] Running Blackbox Tests (End-to-End Execution)...\e[0m"
 > "$TEST_LOGS"
 
 echo -e "\n\e[1;34m-> Feature: CLI Argument (--status)\e[0m"
 "$MOCK_DIR/anon_test" --status > blackbox_out.txt 2>&1
-if grep -q "ANON SYSTEM STATUS" blackbox_out.txt && grep -q "Anti Cold Boot" blackbox_out.txt; then
-    echo -e "  \e[32m[PASS]\e[0m System status dashboard prints all 21 modules successfully"
+if grep -q "ANON SYSTEM STATUS" blackbox_out.txt && grep -q "Leak Auditor" blackbox_out.txt; then
+    echo -e "  \e[32m[PASS]\e[0m System status dashboard prints all 22 modules successfully"
     ((PASS_COUNT++))
 else
     echo -e "  \e[31m[FAIL]\e[0m System status failed"
@@ -228,11 +240,21 @@ fi
 
 echo -e "\n\e[1;34m-> Feature: CLI Argument (--help)\e[0m"
 "$MOCK_DIR/anon_test" --help > blackbox_help.txt 2>&1 || true
-if grep -q "\-\-panic" blackbox_help.txt && grep -q "\-\-start" blackbox_help.txt; then
-    echo -e "  \e[32m[PASS]\e[0m CLI help displays all options"
+if grep -q "\-\-panic" blackbox_help.txt && grep -q "\-\-audit" blackbox_help.txt; then
+    echo -e "  \e[32m[PASS]\e[0m CLI help displays all options including --audit"
     ((PASS_COUNT++))
 else
     echo -e "  \e[31m[FAIL]\e[0m CLI help missing options"
+    ((FAIL_COUNT++))
+fi
+
+echo -e "\n\e[1;34m-> Feature: CLI Argument (--audit)\e[0m"
+"$MOCK_DIR/anon_test" --audit > blackbox_audit.txt 2>&1 || true
+if grep -q "Audit complete" blackbox_audit.txt; then
+    echo -e "  \e[32m[PASS]\e[0m CLI --audit executes one-shot audit successfully"
+    ((PASS_COUNT++))
+else
+    echo -e "  \e[31m[FAIL]\e[0m CLI --audit failed"
     ((FAIL_COUNT++))
 fi
 

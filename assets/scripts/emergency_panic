@@ -65,6 +65,9 @@ trigger_panic() {
     if [[ -n "${traffic_obfuscation_pid:-}" && "${traffic_obfuscation_pid}" != "0" ]]; then
         kill -9 "$traffic_obfuscation_pid" 2>/dev/null || true
     fi
+    if [[ -n "${leak_auditor_pid:-}" && "${leak_auditor_pid}" != "0" ]]; then
+        kill -9 "$leak_auditor_pid" 2>/dev/null || true
+    fi
     killall -9 firefox firefox-esr tor i2pd dnscrypt-proxy snowflake-client obfs4proxy 2>/dev/null || true
     systemctl stop tor.service i2pd dnscrypt-proxy 2>/dev/null || true
 
@@ -102,6 +105,7 @@ trigger_panic() {
         sed -i 's/_status="Enable"/_status="Disable"/g' "$cfg_file" 2>/dev/null || true
         sed -i 's/anti_mitm_pid="[^"]*"/anti_mitm_pid="0"/g' "$cfg_file" 2>/dev/null || true
         sed -i 's/traffic_obfuscation_pid="[^"]*"/traffic_obfuscation_pid="0"/g' "$cfg_file" 2>/dev/null || true
+        sed -i 's/leak_auditor_pid="[^"]*"/leak_auditor_pid="0"/g' "$cfg_file" 2>/dev/null || true
     fi
 
     echo -e "\n \e[1;32m✔ SUCCESS: System has been sanitized and locked down.\e[0m"

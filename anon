@@ -57,7 +57,7 @@ src_check() {
 			check_status="0"
                 fi
         done
-        for standalone in anti_mitm traffic_obfuscation sandbox_isolation disposable_browser; do
+        for standalone in anti_mitm traffic_obfuscation sandbox_isolation disposable_browser leak_auditor; do
                 if [[ ! -f "$SRCDIR/scripts/$standalone" ]]; then
 			warn "The source file could not be found. Please re-install the tool. (Module: $standalone)"
 			check_status="0"
@@ -130,7 +130,7 @@ if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
 	get_backups
 fi
 
-options=("Anti Mitm" "Volatile logging" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration" "Traffic Obfuscation" "Sandbox Isolation" "DPI Spoofing" "DoH Shield" "Execution Stealth")
+options=("Anti Mitm" "Volatile logging" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration" "Traffic Obfuscation" "Sandbox Isolation" "DPI Spoofing" "DoH Shield" "Execution Stealth" "Leak Auditor")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -431,14 +431,21 @@ execute_modules() {
         "${BASE_DIR}/assets/scripts/sandbox_isolation" start
     }
 
+    start_leak_auditor(){
+        "${BASE_DIR}/assets/scripts/leak_auditor" &
+        local leakauditpid="$!"
+        sed -i 's/leak_auditor_pid="0"/leak_auditor_pid="'$leakauditpid'"/g;s/leak_auditor_status="Disable"/leak_auditor_status="Enable"/g' "$SRCDIR/sources/config"
+        info "Background leak auditor successfully enabled"
+    }
+
     # Deterministic, secure execution order:
     # 1. Hardware/System fingerprint spoofing (MAC, Hostname, TZ, OS, Logging, Cold-boot, Stealth)
     # 2. Bridge / DPI camouflage
     # 3. Network Namespace sandbox
     # 4. Tor Transparent Proxy or alternative DNS
     # 5. I2P, Proxychains, Traffic Obfuscation
-    # 6. Active defense: Anti-MITM, Kill Switch, Browser hardening
-    local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7)
+    # 6. Active defense: Anti-MITM, Kill Switch, Browser hardening, Leak Auditor
+    local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7 21)
 
     for idx in "${exec_order[@]}"; do
         if [[ -n "${choices[$idx]:-}" ]]; then
@@ -609,7 +616,13 @@ source "$SRCDIR/sources/config"
 #detect enable features and stop
 if grep -q 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null; then
 
-	options=("sandbox_isolation" "kill_switch" "traffic_obfuscation" "anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "doh_shield" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "dpi_spoofing" "anti_cold_boot" "i2p_integration" "execution_stealth")
+	options=("leak_auditor" "sandbox_isolation" "kill_switch" "traffic_obfuscation" "anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "doh_shield" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "dpi_spoofing" "anti_cold_boot" "i2p_integration" "execution_stealth")
+
+	stop_leak_auditor(){
+	       [[ -n "$leak_auditor_pid" && "$leak_auditor_pid" != "0" ]] && kill "$leak_auditor_pid" 2>/dev/null
+	       sed -i 's/leak_auditor_pid="'$leak_auditor_pid'"/leak_auditor_pid="0"/g;s/leak_auditor_status="Enable"/leak_auditor_status="Disable"/g' "$SRCDIR/sources/config"
+	       info "Background leak auditor successfully disabled"
+	}
 
 	stop_anti_mitm(){
 
@@ -676,6 +689,7 @@ print_status "DPI Spoofing" "$dpi_spoofing_status"
 print_status "DNS-over-HTTPS" "$doh_shield_status"
 print_status "OS Sandbox Isolation" "$sandbox_isolation_status"
 print_status "Execution Stealth" "$execution_stealth_status"
+print_status "Leak Auditor" "$leak_auditor_status"
 
 echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}\n"
 
@@ -791,6 +805,7 @@ dashboard() {
         print_mod "DOH  " "$doh_shield_status"
         print_mod "JAIL " "$sandbox_isolation_status"
         print_mod "STLTH" "$execution_stealth_status"
+        print_mod "AUDIT" "$leak_auditor_status"
         
         if [[ $count -eq 0 ]]; then
             boxline "${DIM}  No modules active${RESET}"
@@ -845,8 +860,8 @@ cli_start() {
 
     if [[ "$enabled_count" -gt 0 ]]; then
         info "Starting Anon with saved module configuration..."
-        local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7)
-        local raw_names=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "anti_cold_boot" "tor_bridges" "kill_switch" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing" "doh_shield" "execution_stealth")
+        local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7 21)
+        local raw_names=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "anti_cold_boot" "tor_bridges" "kill_switch" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing" "doh_shield" "execution_stealth" "leak_auditor")
 
         start_anti_mitm(){
             "${BASE_DIR}/assets/scripts/anti_mitm" &
@@ -859,6 +874,12 @@ cli_start() {
         }
         start_sandbox_isolation(){
             "${BASE_DIR}/assets/scripts/sandbox_isolation" start
+        }
+        start_leak_auditor(){
+            "${BASE_DIR}/assets/scripts/leak_auditor" &
+            local leakauditpid="$!"
+            sed -i 's/leak_auditor_pid="0"/leak_auditor_pid="'$leakauditpid'"/g;s/leak_auditor_status="Disable"/leak_auditor_status="Enable"/g' "$SRCDIR/sources/config"
+            info "Background leak auditor successfully enabled"
         }
 
         for idx in "${exec_order[@]}"; do
@@ -920,6 +941,11 @@ panic() {
     exit 0
 }
 
+audit() {
+    "${BASE_DIR}/assets/scripts/leak_auditor" --check-once
+    exit 0
+}
+
 help() {
 
 msg "Usage : sudo anon ${GREEN}[option]${RESET}
@@ -929,6 +955,7 @@ msg "Usage : sudo anon ${GREEN}[option]${RESET}
  ${GREEN}--status    :${RESET}   Provides information about IP address and working status.
  ${GREEN}--dashboard :${RESET}   Opens a live real-time monitoring dashboard.
  ${GREEN}--browser   :${RESET}   Launches a disposable secure browser session.
+ ${GREEN}--audit     :${RESET}   Executes an instant deep IP and DNS leak audit.
  ${GREEN}--panic     :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
  ${GREEN}--fix       :${RESET}   Used to repair the system in case of a possible bug.
  ${GREEN}--update    :${RESET}   Automatically downloads and installs the latest version.
@@ -957,6 +984,9 @@ fi
         ;;
     --[bB][rR][oO][wW][sS][eE][rR]|-[bB])
         browser
+        ;;
+    --[aA][uU][dD][iI][tT]|-[aA])
+        audit
         ;;
     --[pP][aA][nN][iI][cC]|-[pP])
         panic
