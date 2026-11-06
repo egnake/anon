@@ -51,6 +51,12 @@ src_check() {
 			check_status="0"
                 fi
         done
+        for standalone in anti_mitm traffic_obfuscation sandbox_isolation disposable_browser; do
+                if [[ ! -f "$SRCDIR/scripts/$standalone" ]]; then
+			warn "The source file could not be found. Please re-install the tool. (Module: $standalone)"
+			check_status="0"
+                fi
+        done
         if [ "${check_status}" = "0" ] ; then
                 err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
         fi
@@ -591,15 +597,16 @@ done
 
 stop(){
 
+source "$SRCDIR/sources/config"
 #detect enable features and stop
-if grep -q "Enable" "$SRCDIR/sources/config" 2>/dev/null; then
+if grep -q 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null; then
 
-	options=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "anti_cold_boot" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing" "doh_shield" "execution_stealth")
+	options=("sandbox_isolation" "kill_switch" "traffic_obfuscation" "anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "doh_shield" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "dpi_spoofing" "anti_cold_boot" "i2p_integration" "execution_stealth")
 
 	stop_anti_mitm(){
 
 	       [[ -n "$anti_mitm_pid" && "$anti_mitm_pid" != "0" ]] && kill "$anti_mitm_pid" 2>/dev/null
-	       sed -i 's/anti_mitm_pid="'$anti_mitm_pid'"/anti_mitm_pid="0"/g;s/anti_mitm_status="Enable"/anti_mitm_status="Disable"/g' $SRCDIR/sources/config
+	       sed -i 's/anti_mitm_pid="'$anti_mitm_pid'"/anti_mitm_pid="0"/g;s/anti_mitm_status="Enable"/anti_mitm_status="Disable"/g' "$SRCDIR/sources/config"
 	       info "Anti mitm successfully disabled"
 	}
 
@@ -612,8 +619,9 @@ if grep -q "Enable" "$SRCDIR/sources/config" 2>/dev/null; then
 	}
 
 	for st in "${!options[@]}"; do
-	  status="${options[st]}_status"
-	  if [[ "${!status}" == "Enable" ]]; then
+	  source "$SRCDIR/sources/config"
+	  local mod_var="${options[st]}_status"
+	  if [[ "${!mod_var}" == "Enable" ]]; then
 		"stop_${options[st]}"
 	  fi
 	done
@@ -625,6 +633,7 @@ fi
 
 status(){
 
+source "$SRCDIR/sources/config"
 echo -e " ${BOLD}${MAGENTA}ANON SYSTEM STATUS${RESET}"
 echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
 
@@ -650,6 +659,7 @@ print_status "OS Obfuscation" "$os_obfuscation_status"
 print_status "Bluetooth disabler" "$bluetooth_disabler_status"
 print_status "Process obfuscation" "$process_obfuscation_status"
 print_status "Proxychains integration" "$proxychains_integration_status"
+print_status "Anti Cold Boot" "$anti_cold_boot_status"
 print_status "Tor bridges" "$tor_bridges_status"
 print_status "Network Kill Switch" "$kill_switch_status"
 print_status "I2P Integration" "$i2p_integration_status"
@@ -766,6 +776,7 @@ dashboard() {
         print_mod "BT   " "$bluetooth_disabler_status"
         print_mod "PROC " "$process_obfuscation_status"
         print_mod "PRXY " "$proxychains_integration_status"
+        print_mod "COLD " "$anti_cold_boot_status"
         print_mod "TOR  " "$tor_bridges_status"
         print_mod "KILL " "$kill_switch_status"
         print_mod "I2P  " "$i2p_integration_status"
