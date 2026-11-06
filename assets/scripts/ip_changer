@@ -177,6 +177,9 @@ EOF
                 info "Leak test attempt $i/$retries..."
                 if curl -s --max-time 15 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
                     msg "No IP leaks detected! You are successfully routed through Tor."
+                    if declare -F notify >/dev/null 2>&1; then
+                        notify "ANON - Tor Connected" "Transparent proxy active. No leaks detected." "normal"
+                    fi
                     success=1
                     break
                 else
@@ -207,6 +210,9 @@ EOF
                         info "Fallback test attempt $j/$retries..."
                         if curl -s --max-time 15 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
                             msg "Auto-Fallback successful! Connected via Tor Bridges."
+                            if declare -F notify >/dev/null 2>&1; then
+                                notify "ANON - Bridges Active" "Connected to Tor via obfuscated bridges." "normal"
+                            fi
                             fallback_success=1
                             break
                         else
@@ -217,12 +223,18 @@ EOF
 
                     if [[ "$fallback_success" -eq 0 ]]; then
                         warn "CRITICAL: Auto-Fallback failed. Tor is completely blocked! Triggering Kill Switch..."
+                        if declare -F notify >/dev/null 2>&1; then
+                            notify "ANON - CRITICAL ALERT" "Tor bridges blocked! Kill switch engaged." "critical"
+                        fi
                         source "$SRCDIR/scripts/kill_switch"
                         start_kill_switch
                         err "Network locked down. Check your network or update your bridges."
                     fi
                 else
                     warn "CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety..."
+                    if declare -F notify >/dev/null 2>&1; then
+                        notify "ANON - CRITICAL ALERT" "IP Leak detected! Kill switch engaged." "critical"
+                    fi
                     source "$SRCDIR/scripts/kill_switch"
                     start_kill_switch
                     err "Network locked down to prevent leaks. Please check your Tor connection and restart."

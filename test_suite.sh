@@ -73,6 +73,7 @@ mock_cmd tc
 mock_cmd chattr
 mock_cmd dnscrypt-proxy
 mock_cmd mount
+mock_cmd notify-send
 mock_cmd umount
 mock_cmd mountpoint
 mock_cmd swapoff
@@ -205,6 +206,12 @@ start_sandbox_isolation >/dev/null 2>&1 || true
 assert_log "ip netns add anon_jail" "Creates isolated kernel namespace"
 stop_sandbox_isolation >/dev/null 2>&1 || true
 assert_log "ip netns del anon_jail" "Tears down kernel namespace cleanly"
+
+# --- 10. notify-send (Desktop Alerts) ---
+echo -e "\n\e[1;34m-> Feature: Desktop Notifications (notify)\e[0m"
+source assets/sources/config
+notify "Security Warning" "Test Alert" "critical"
+assert_log "notify-send -u critical -a ANON Security Warning Test Alert" "Dispatches desktop notifications via notify-send"
 
 echo -e "\n\e[1;33m[*] Running Blackbox Tests (End-to-End Execution)...\e[0m"
 > "$TEST_LOGS"

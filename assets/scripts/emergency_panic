@@ -18,6 +18,9 @@ trigger_panic() {
     fi
 
     echo -e " \e[33m[1/6]\e[0m Severing all network physical, wireless, and virtual interfaces..."
+    if declare -F notify >/dev/null 2>&1; then
+        notify "ANON - EMERGENCY PANIC" "Panic protocol activated: interfaces severed and memory wiped." "critical"
+    fi
     local ifaces
     ifaces=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d'@' -f1)
     for iface in $ifaces; do

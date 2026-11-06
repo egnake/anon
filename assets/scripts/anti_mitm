@@ -30,6 +30,11 @@ _lockdown() {
     echo "[ANON ANTI-MITM] Gateway ${gw_ip} MAC changed to ${spoofed_mac}" >&2
     echo "[ANON ANTI-MITM] Initiating network lockdown on ${iface}..." >&2
 
+    # Desktop notification alert if GUI session is active
+    if declare -F notify >/dev/null 2>&1; then
+        notify "ANON - CRITICAL SECURITY ALERT" "ARP Spoofing detected on ${iface}! Gateway MAC changed to ${spoofed_mac}. Network severed." "critical"
+    fi
+
     # Bring the interface down to sever all connectivity immediately
     ip link set dev "$iface" down 2>/dev/null || true
 

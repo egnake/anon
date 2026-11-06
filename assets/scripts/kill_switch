@@ -101,6 +101,9 @@ KILLSWITCH_RULES
     if [[ $? -eq 0 ]]; then
         sed -i 's/kill_switch_status="Disable"/kill_switch_status="Enable"/g' "$SRCDIR/sources/config"
         info "Network Kill Switch enabled (atomic IPv4+IPv6 iptables-restore). All non-Tor traffic blocked."
+        if declare -F notify >/dev/null 2>&1; then
+            notify "ANON Kill Switch" "Network Kill Switch active. All non-Tor traffic is blocked." "normal"
+        fi
     else
         warn "Failed to apply Kill Switch rules. Restoring previous state..."
         if [[ -f "$BACKUPDIR/iptables_killswitch.bak" ]]; then

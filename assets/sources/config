@@ -72,6 +72,31 @@ info() {
     echo -e " ${CYAN}ℹ INFO:${RESET} ${@}"
 }
 
+notify() {
+    local title="$1"
+    local message="$2"
+    local urgency="${3:-normal}" # low, normal, critical
+
+    if command -v notify-send &>/dev/null; then
+        local user_disp="${DISPLAY:-:0}"
+        local active_user="${SUDO_USER:-root}"
+        local user_xauth="${XAUTHORITY:-/home/$active_user/.Xauthority}"
+        if [[ "$active_user" == "root" ]]; then
+            user_xauth="/root/.Xauthority"
+        fi
+        
+        if [[ -n "$user_disp" ]]; then
+            if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
+                sudo -u "$SUDO_USER" DISPLAY="$user_disp" XAUTHORITY="$user_xauth" \
+                    notify-send -u "$urgency" -a "ANON" "$title" "$message" 2>/dev/null || true
+            else
+                DISPLAY="$user_disp" XAUTHORITY="$user_xauth" \
+                    notify-send -u "$urgency" -a "ANON" "$title" "$message" 2>/dev/null || true
+            fi
+        fi
+    fi
+}
+
 input() {
   echo -ne "
    ${YELLOW}➤ Select a module number to toggle its status.${RESET}
