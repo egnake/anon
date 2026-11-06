@@ -40,8 +40,8 @@ start_ip_changer(){
             # Backup current state
             cat "$torrc_path" > "$BACKUPDIR/torrc.bak" 2>/dev/null || touch "$BACKUPDIR/torrc.bak"
             if [[ -L /etc/resolv.conf ]]; then
-                cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.symlink.bak"
-                rm -f /etc/resolv.conf
+                cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.symlink.bak" 2>/dev/null || true
+                rm -f /etc/resolv.conf 2>/dev/null || true
             else
                 cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.bak" 2>/dev/null || true
             fi
@@ -149,7 +149,7 @@ EOF
 
             # Set loopback DNS and lock with immutable attribute if possible
             chattr -i /etc/resolv.conf 2>/dev/null || true
-            cat >"/etc/resolv.conf" <<EOF
+            cat >"/etc/resolv.conf" 2>/dev/null <<EOF || true
 # This file was edited by anon. Do not change manually!
 nameserver 127.0.0.1
 EOF

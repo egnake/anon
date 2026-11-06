@@ -839,8 +839,9 @@ cli_start() {
     fi
 
     source "$SRCDIR/sources/config"
-    local enabled_count=0
-    enabled_count=$(grep -c 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null || echo "0")
+    local enabled_count
+    enabled_count=$(grep -o 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null | wc -l | tr -d '[:space:]')
+    enabled_count="${enabled_count:-0}"
 
     if [[ "$enabled_count" -gt 0 ]]; then
         info "Starting Anon with saved module configuration..."
@@ -968,7 +969,7 @@ fi
         ;;
     --[hH][eE][lL][pP]|-[hH])
         help
-        exit 1
+        exit 0
         ;;
     *)
           warn "Anon: Invalid option ${RED}'$1'${RESET}"
