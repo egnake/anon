@@ -39,7 +39,7 @@ reinstall:
 
 lint:
 	bash -n anon setup.sh test_suite.sh assets/sources/config assets/sources/helpers assets/scripts/*
-	shellcheck -S warning -e SC1090,SC1091,SC2034,SC2086 \
+	shellcheck -S warning -e SC1090,SC1091,SC2034 \
 		anon setup.sh test_suite.sh assets/sources/config assets/sources/helpers assets/scripts/*
 
 test:
