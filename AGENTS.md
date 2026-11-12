@@ -136,7 +136,7 @@ shellcheck -S warning -e SC1090,SC1091,SC2034 \
   anon assets/scripts/* setup.sh test_suite.sh assets/sources/config assets/sources/helpers
 ```
 
-### Run Isolated Test Suite (62 Assertions)
+### Run Isolated Test Suite (63 Assertions)
 ```bash
 chmod +x test_suite.sh
 ./test_suite.sh

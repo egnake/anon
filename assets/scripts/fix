@@ -99,6 +99,10 @@ restore_system(){
         cat "$BACKUPDIR/hosts.bak" > /etc/hosts 2>/dev/null || true
     fi
 
+    if [[ -s "$BACKUPDIR/dhclient.conf.bak" && -d /etc/dhcp ]]; then
+        cat "$BACKUPDIR/dhclient.conf.bak" > /etc/dhcp/dhclient.conf 2>/dev/null || true
+    fi
+
     if [[ -f "$BACKUPDIR/torrc.bak" && -n "${TORRC:-}" ]]; then
         cat "$BACKUPDIR/torrc.bak" > "$TORRC" 2>/dev/null || true
     fi
@@ -160,7 +164,10 @@ restore_system(){
     # Remove hardened browser pref drop-ins if present
     local pref_file
     for pref_file in /etc/firefox/anon.js /etc/firefox-esr/anon.js /etc/librewolf/anon.js \
-                     /etc/firefox/pref/anon.js /etc/firefox-esr/pref/anon.js; do
+                     /etc/firefox/pref/anon.js /etc/firefox-esr/pref/anon.js \
+                     /usr/lib/firefox-esr/defaults/pref/anon.js \
+                     /usr/lib/firefox/defaults/pref/anon.js \
+                     /usr/lib/librewolf/defaults/pref/anon.js; do
         rm -f "$pref_file" 2>/dev/null || true
     done
 
@@ -226,7 +233,19 @@ restore_system(){
 
     # Reset all 22 module statuses & all daemon PIDs
     reset_all_module_states
-    rm -rf /tmp/anon* /dev/shm/.anon* /dev/shm/.systemd_kworker_* 2>/dev/null || true
+    if [[ -f "$BACKUPDIR/process_obfuscation_ramdir.bak" ]]; then
+        local proc_ramdir
+        proc_ramdir="$(cat "$BACKUPDIR/process_obfuscation_ramdir.bak" 2>/dev/null || true)"
+        if [[ -n "$proc_ramdir" && -d "$proc_ramdir" && "$proc_ramdir" == /dev/shm/.* ]]; then
+            if command -v shred &>/dev/null; then
+                find "$proc_ramdir" -type f -exec shred -fzu {} + 2>/dev/null || true
+            fi
+            rm -rf "$proc_ramdir" 2>/dev/null || true
+        fi
+        rm -f "$BACKUPDIR/process_obfuscation_ramdir.bak" 2>/dev/null || true
+    fi
+    rm -f "$BACKUPDIR/traffic_obfuscation.iface" "$BACKUPDIR/bluetooth_was_on" 2>/dev/null || true
+    rm -rf /tmp/anon* /dev/shm/.anon* /dev/shm/anon_browser_* /dev/shm/.systemd_kworker_* 2>/dev/null || true
 
     if command -v shred &>/dev/null; then
         find "$BACKUPDIR" -maxdepth 1 -name "*.bak" -exec shred -u {} + 2>/dev/null || true

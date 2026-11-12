@@ -29,7 +29,8 @@ jobs:
           Version: ${VERSION}
           Architecture: all
           Maintainer: egnake <egcaem000@gmail.com>
-          Depends: bash, tar, iptables, tor, obfs4proxy, macchanger, proxychains4, secure-delete, rfkill, firejail, iproute2, curl, i2pd, dnscrypt-proxy, snowflake-client, mat2, libimage-exiftool-perl, psmisc, unzip, ca-certificates
+          Depends: bash, tar, iptables, tor, obfs4proxy, macchanger, proxychains4, secure-delete, rfkill, firejail, iproute2, curl, i2pd, dnscrypt-proxy, snowflake-client, mat2, libimage-exiftool-perl, psmisc, unzip, apparmor-utils, dmidecode, iputils-ping, ca-certificates
+          Recommends: libnotify-bin
           Description: Advanced OPSEC & Anonymity Framework
            A comprehensive, modular anonymity and anti-forensics toolkit for Linux environments.
           EOF

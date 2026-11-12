@@ -412,12 +412,13 @@ fi
 
 echo -e "\n\e[1;34m-> Feature: CLI Arguments (--start, --stop, --fix, --panic, invalid --profile)\e[0m"
 mock_cmd sleep
+: > "$TEST_LOGS"
 set_module_status "hostname_changer" "Enable"
 START_OUT=$("$MOCK_DIR/anon" --start < /dev/null 2>&1 || true)
-if echo "$START_OUT" | grep -q "Anon started successfully in non-interactive mode"; then
-    pass "Headless --start executes without interactive prompt"
+if echo "$START_OUT" | grep -q "Anon started successfully in non-interactive mode" && grep -q "Hostname changer successfully enabled" <<< "$START_OUT"; then
+    pass "Headless --start executes saved enabled modules without false skip"
 else
-    fail "Headless --start failed"
+    fail "Headless --start failed or skipped saved enabled module"
 fi
 
 STOP_OUT=$("$MOCK_DIR/anon" --stop < /dev/null 2>&1 || true)
@@ -425,6 +426,16 @@ if echo "$STOP_OUT" | grep -q "Hostname changer successfully disabled"; then
     pass "CLI --stop deactivates active modules cleanly"
 else
     fail "CLI --stop failed"
+fi
+
+set_module_status "kill_switch" "Enable"
+PROF_OUT=$("$MOCK_DIR/anon" --profile quick < /dev/null 2>&1 || true)
+if echo "$PROF_OUT" | grep -q "Profile 'quick' applied successfully" && \
+   echo "$PROF_OUT" | grep -q "Network Kill Switch disabled" && \
+   echo "$PROF_OUT" | grep -q "Ip changer successfully enabled"; then
+    pass "CLI --profile stops excluded modules and starts target profile modules"
+else
+    fail "CLI --profile execution failed"
 fi
 
 FIX_OUT=$("$MOCK_DIR/anon" --fix < /dev/null 2>&1 || true)

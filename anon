@@ -52,7 +52,30 @@ trap _anon_global_cleanup EXIT INT TERM
 
 ANON_VERSION="3.0.0"
 
-if [[ "${1:-}" != "--version" && "${1:-}" != "-v" && " $* " != *" --json "* ]]; then
+help() {
+    msg "Usage : sudo anon ${GREEN}[option]${RESET}
+
+ ${GREEN}--start          :${RESET}   It will make backups and start the program.
+ ${GREEN}--stop           :${RESET}   Closes the program using a backup.
+ ${GREEN}--profile <name> :${RESET}   Apply profile headlessly (paranoia|quick|pentest|darknet|lockdown|ghost).
+ ${GREEN}--status [--json]:${RESET}   Provides system module & network status (optional JSON output).
+ ${GREEN}--dashboard      :${RESET}   Opens a live real-time monitoring dashboard.
+ ${GREEN}--browser        :${RESET}   Launches a disposable secure browser session.
+ ${GREEN}--audit  [--json]:${RESET}   Executes an instant deep IP and DNS leak audit (optional JSON).
+ ${GREEN}--clean-meta     :${RESET}   Sanitizes metadata from files/folders (EXIF/GPS/tags) via MAT2/ExifTool.
+ ${GREEN}--panic          :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
+ ${GREEN}--fix            :${RESET}   Used to repair the system in case of a possible bug.
+ ${GREEN}--update         :${RESET}   Automatically downloads and installs the latest version.
+ ${GREEN}--version        :${RESET}   Prints installed ANON version.
+ ${GREEN}--help           :${RESET}   This shows the menu."
+}
+
+case "${1:-}" in
+    --[vV][eE][rR][sS][iI][oO][nN]|-[vV]) echo "ANON v${ANON_VERSION}"; exit 0 ;;
+    --[hH][eE][lL][pP]|-[hH]) banner; help; exit 0 ;;
+esac
+
+if [[ " $* " != *" --json "* ]]; then
     banner
 fi
 # Run with root privilege (keep exact [[ "$EUID" -ne 0 ]] pattern for test harness compatibility)
@@ -170,6 +193,10 @@ _is_module_live() {
         os_obfuscation) [[ -f "$BACKUPDIR/ip_default_ttl.bak" ]] ;;
         anti_cold_boot) [[ -f "$BACKUPDIR/min_free_kbytes.bak" ]] ;;
         proxychains_integration) [[ -f "$BACKUPDIR/proxychains4.conf.bak" ]] ;;
+        process_obfuscation) [[ -f "$BACKUPDIR/proc_mount_opts.bak" ]] ;;
+        bluetooth_disabler) [[ -f "$BACKUPDIR/bluetooth_was_on" ]] ;;
+        volatile_logging) mountpoint -q /var/log 2>/dev/null ;;
+        i2p_integration) service_ctrl is-active i2pd ;;
         sandbox_isolation) ip netns list 2>/dev/null | grep -qw "anon_jail" ;;
         *) return 1 ;;
     esac
@@ -1026,7 +1053,8 @@ cli_start() {
                     info "$mod_name is already active; skipping duplicate start."
                     continue
                 fi
-                printf -v "$mod_stat" '%s' "Disable"
+                # Reset persisted state before invoking module so source config doesn't short-circuit
+                set_module_status "$mod_name" "Disable"
                 _start_module "$mod_name"
             fi
         done
@@ -1059,35 +1087,37 @@ cli_profile() {
     local -a selected_idxs=()
     read -r -a selected_idxs <<< "$prof_idxs_str"
 
-    # Persist profile selection cleanly using EXEC_ORDER
-    local idx mod_name mod_stat is_sel sel_i
-    for idx in "${!MOD_NAMES[@]}"; do
-        mod_name="${MOD_NAMES[$idx]}"
-        is_sel=0
-        for sel_i in "${selected_idxs[@]}"; do
-            if [[ "$idx" -eq "$sel_i" ]]; then
-                is_sel=1
-                break
-            fi
+    _idx_in_selected() {
+        local needle="$1" s
+        for s in "${selected_idxs[@]}"; do
+            [[ "$needle" -eq "$s" ]] && return 0
         done
-        if [[ $is_sel -eq 1 ]]; then
-            set_module_status "$mod_name" "Enable"
-        else
+        return 1
+    }
+
+    # 1. Stop any currently active modules NOT included in the target profile (in STOP_ORDER)
+    local idx mod_name mod_stat
+    for idx in "${STOP_ORDER[@]}"; do
+        if ! _idx_in_selected "$idx"; then
             reload_state
+            mod_name="${MOD_NAMES[$idx]}"
             mod_stat="${mod_name}_status"
-            if [[ "${!mod_stat:-Disable}" == "Enable" ]]; then
+            if [[ "${!mod_stat:-Disable}" == "Enable" ]] || _is_module_live "$mod_name"; then
                 _stop_module "$mod_name"
             fi
         fi
     done
 
+    # 2. Start profile modules in deterministic EXEC_ORDER (without pre-marking stale Enable)
     for idx in "${EXEC_ORDER[@]}"; do
-        reload_state
-        mod_name="${MOD_NAMES[$idx]}"
-        mod_stat="${mod_name}_status"
-        if [[ "${!mod_stat:-Disable}" == "Enable" ]] && ! _is_module_live "$mod_name"; then
-            printf -v "$mod_stat" '%s' "Disable"
-            _start_module "$mod_name"
+        if _idx_in_selected "$idx"; then
+            mod_name="${MOD_NAMES[$idx]}"
+            if _is_module_live "$mod_name"; then
+                set_module_status "$mod_name" "Enable"
+            else
+                set_module_status "$mod_name" "Disable"
+                _start_module "$mod_name"
+            fi
         fi
     done
 
@@ -1133,8 +1163,12 @@ update() {
             if ( cd "$tmp_dir" && grep -F "$(basename "$tarball_url")" SHA256SUMS | sha256sum -c - ); then
                 info "SHA256 checksum verified."
                 tar -xzf "$archive_file" -C "$tmp_dir"
-                local ext_dir
-                ext_dir="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+                local ext_dir=""
+                if [[ -f "$tmp_dir/Makefile" ]]; then
+                    ext_dir="$tmp_dir"
+                else
+                    ext_dir="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d -exec test -f "{}/Makefile" \; -print -quit || true)"
+                fi
                 if [[ -n "$ext_dir" && -f "$ext_dir/Makefile" ]]; then
                     cd "$ext_dir" || exit 1
                     make reinstall
@@ -1204,24 +1238,6 @@ clean_meta() {
         err "No target path specified for metadata cleaning."
     fi
     exit 0
-}
-
-help() {
-    msg "Usage : sudo anon ${GREEN}[option]${RESET}
-
- ${GREEN}--start          :${RESET}   It will make backups and start the program.
- ${GREEN}--stop           :${RESET}   Closes the program using a backup.
- ${GREEN}--profile <name> :${RESET}   Apply profile headlessly (paranoia|quick|pentest|darknet|lockdown|ghost).
- ${GREEN}--status [--json]:${RESET}   Provides system module & network status (optional JSON output).
- ${GREEN}--dashboard      :${RESET}   Opens a live real-time monitoring dashboard.
- ${GREEN}--browser        :${RESET}   Launches a disposable secure browser session.
- ${GREEN}--audit  [--json]:${RESET}   Executes an instant deep IP and DNS leak audit (optional JSON).
- ${GREEN}--clean-meta     :${RESET}   Sanitizes metadata from files/folders (EXIF/GPS/tags) via MAT2/ExifTool.
- ${GREEN}--panic          :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
- ${GREEN}--fix            :${RESET}   Used to repair the system in case of a possible bug.
- ${GREEN}--update         :${RESET}   Automatically downloads and installs the latest version.
- ${GREEN}--version        :${RESET}   Prints installed ANON version.
- ${GREEN}--help           :${RESET}   This shows the menu."
 }
 
 main() {

@@ -6,6 +6,18 @@
 # Never enable set -e at top level because test suites and helpers
 # may source this file directly.
 
+if [[ -z "${BASE_DIR:-}" ]]; then
+    _si_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "${_si_dir}/../sources/config" ]]; then
+        BASE_DIR="$(cd "${_si_dir}/../.." && pwd)"
+    elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+        BASE_DIR="/usr/share/anon"
+    else
+        BASE_DIR="$(cd "${_si_dir}/../.." && pwd)"
+    fi
+    unset _si_dir
+    export BASE_DIR
+fi
 source "${BASE_DIR}/assets/sources/config"
 
 APPARMOR_TOR_PROFILE="${APPARMOR_TOR_PROFILE:-/etc/apparmor.d/usr.bin.tor.anon}"
