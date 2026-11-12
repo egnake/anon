@@ -87,8 +87,9 @@ mock_cmd mat2
 mock_cmd exiftool
 
 # Isolated paths
-export BASE_DIR="$(pwd)"
-export SRCDIR="$(pwd)/assets"
+BASE_DIR="$(pwd)"
+SRCDIR="$(pwd)/assets"
+export BASE_DIR SRCDIR
 export BACKUPDIR="$MOCK_DIR/backups"
 mkdir -p "$BACKUPDIR"
 touch "$BACKUPDIR/anon_fix_backups.tar.gz"
@@ -137,8 +138,8 @@ dns_changer_status="Disable"
 doh_shield_status="Disable"
 echo "dummy" > "$TORRC"
 start_ip_changer >/dev/null 2>&1 || true
-assert_log "iptables -t nat -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports 9040" "Configures Transparent Proxy (REDIRECT)"
-assert_log "iptables -A OUTPUT -d 192.168.0.0/16 -p udp --dport 53 -j DROP" "Drops direct LAN DNS attempts to prevent leaks"
+assert_log "iptables-restore: -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports 9040" "Configures Transparent Proxy (REDIRECT)"
+assert_log "iptables-restore: -A OUTPUT -d 192.168.0.0/16 -p udp --dport 53 -j DROP" "Drops direct LAN DNS attempts to prevent leaks"
 assert_log "systemctl start tor.service" "Triggers tor.service start"
 assert_log "check.torproject.org/api/ip" "Executes automated Tor leak test"
 stop_ip_changer >/dev/null 2>&1 || true
@@ -235,7 +236,7 @@ assets/scripts/metadata_cleaner "$TEST_SAMPLE" >/dev/null 2>&1
 assert_log "mat2 --inplace $TEST_SAMPLE" "Invokes MAT2 engine for file sanitization"
 
 echo -e "\n\e[1;33m[*] Running Blackbox Tests (End-to-End Execution)...\e[0m"
-> "$TEST_LOGS"
+: > "$TEST_LOGS"
 
 echo -e "\n\e[1;34m-> Feature: CLI Argument (--status)\e[0m"
 "$MOCK_DIR/anon_test" --status > blackbox_out.txt 2>&1

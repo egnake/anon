@@ -23,7 +23,7 @@ start_doh_shield() {
     fi
 
     info "Starting DNS-over-HTTPS (DoH) Shield..."
-    
+
     if ! command -v dnscrypt-proxy &> /dev/null; then
         info "Installing dnscrypt-proxy..."
         if command -v apt-get &>/dev/null; then
@@ -31,21 +31,28 @@ start_doh_shield() {
                 warn "Failed to install dnscrypt-proxy. Please install it manually."
                 return 1
             }
+        else
+            warn "dnscrypt-proxy is missing and apt-get is unavailable."
+            return 1
         fi
     fi
-    
-    systemctl unmask dnscrypt-proxy 2>/dev/null || true
-    systemctl start dnscrypt-proxy 2>/dev/null || true
-    
-    # Backup resolv.conf handling symlinks safely into BACKUPDIR
-    chattr -i /etc/resolv.conf 2>/dev/null || true
-    if [[ -L /etc/resolv.conf ]]; then
-        cp -a /etc/resolv.conf "$BACKUPDIR/resolv.conf.doh.symlink.bak"
-        rm -f /etc/resolv.conf
-    elif [[ -f /etc/resolv.conf ]]; then
-        cat /etc/resolv.conf > "$BACKUPDIR/resolv.conf.doh.bak"
+
+    service_ctrl unmask dnscrypt-proxy || true
+    if ! service_ctrl start dnscrypt-proxy; then
+        warn "Failed to start dnscrypt-proxy daemon. Check /etc/dnscrypt-proxy/dnscrypt-proxy.toml."
+        return 1
     fi
-    
+
+    # Wait briefly and verify daemon stays active before overriding /etc/resolv.conf
+    sleep 1
+    if ! service_ctrl is-active dnscrypt-proxy; then
+        warn "dnscrypt-proxy is not active after startup; aborting resolv.conf override to prevent DNS outage."
+        return 1
+    fi
+
+    backup_resolv_conf "doh"
+    lock_nm_dns
+
     # dnscrypt-proxy default local resolver endpoints
     cat > /etc/resolv.conf <<EOF
 # DoH Shield (DNSCrypt) managed by Anon
@@ -53,28 +60,33 @@ nameserver 127.0.2.1
 nameserver 127.0.0.1
 options edns0
 EOF
-    
-    sed -i 's/doh_shield_status="Disable"/doh_shield_status="Enable"/g' "$SRCDIR/sources/config"
+    chattr +i /etc/resolv.conf 2>/dev/null || true
+
+    # Drop direct unencrypted IPv6 DNS requests
+    if command -v ip6tables &>/dev/null; then
+        ip6tables -C OUTPUT -p udp --dport 53 -j DROP 2>/dev/null \
+            || ip6tables -I OUTPUT 1 -p udp --dport 53 -j DROP 2>/dev/null || true
+        ip6tables -C OUTPUT -p tcp --dport 53 -j DROP 2>/dev/null \
+            || ip6tables -I OUTPUT 1 -p tcp --dport 53 -j DROP 2>/dev/null || true
+    fi
+
+    set_module_status "doh_shield" "Enable"
     msg "DNS-over-HTTPS (DoH) Shield activated."
 }
 
 stop_doh_shield() {
     source "${BASE_DIR}/assets/sources/config"
     info "Stopping DNS-over-HTTPS (DoH) Shield..."
-    systemctl stop dnscrypt-proxy 2>/dev/null || true
-    
-    chattr -i /etc/resolv.conf 2>/dev/null || true
-    if [[ -f "$BACKUPDIR/resolv.conf.doh.symlink.bak" ]]; then
-        rm -f /etc/resolv.conf
-        mv "$BACKUPDIR/resolv.conf.doh.symlink.bak" /etc/resolv.conf
-    elif [[ -f "$BACKUPDIR/resolv.conf.doh.bak" ]]; then
-        cat "$BACKUPDIR/resolv.conf.doh.bak" > /etc/resolv.conf
-    elif [[ -f /etc/resolv.conf.anon.bak ]]; then
-        cat /etc/resolv.conf.anon.bak > /etc/resolv.conf
-        rm -f /etc/resolv.conf.anon.bak
+    service_ctrl stop dnscrypt-proxy || true
+
+    if command -v ip6tables &>/dev/null; then
+        ip6tables -D OUTPUT -p udp --dport 53 -j DROP 2>/dev/null || true
+        ip6tables -D OUTPUT -p tcp --dport 53 -j DROP 2>/dev/null || true
     fi
-    rm -f "$BACKUPDIR/resolv.conf.doh.bak" "$BACKUPDIR/resolv.conf.doh.symlink.bak"
-    
-    sed -i 's/doh_shield_status="Enable"/doh_shield_status="Disable"/g' "$SRCDIR/sources/config"
+
+    unlock_nm_dns
+    restore_resolv_conf "doh"
+
+    set_module_status "doh_shield" "Disable"
     msg "DoH Shield deactivated."
 }

@@ -16,13 +16,15 @@ has_systemd() {
 # Unified service control: tries systemctl first (compatible with mocks & systemd),
 # falling back to sysvinit `service` or direct daemon management in containers/WSL.
 service_ctrl() {
-    local action="$1"
-    local svc="$2"
+    local action="${1:-}"
+    local svc="${2:-}"
     local base_svc="${svc%.service}"
 
     if command -v systemctl &>/dev/null; then
-        if systemctl "$action" "$svc" &>/dev/null; then
-            return 0
+        if [[ -n "$svc" ]]; then
+            systemctl "$action" "$svc" &>/dev/null && return 0
+        else
+            systemctl "$action" &>/dev/null && return 0
         fi
         # If systemd actually booted, return real systemctl failure; otherwise fall back
         if [[ -d /run/systemd/system ]]; then

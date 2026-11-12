@@ -1,38 +1,56 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════════
-# Tor Bridges — Obfs4 Bridge Configuration
+# Tor Bridges — Obfs4 / Pluggable Transport Bridge Configuration
 # ═══════════════════════════════════════════════════════════════════
+
+_is_valid_bridge_line() {
+    local line="$1"
+    [[ "$line" =~ ^(Bridge[[:space:]]+)?(obfs4|meek_lite|snowflake|webtunnel)[[:space:]]+[^[:space:]]+ ]]
+}
 
 start_tor_bridges(){
     source "${BASE_DIR}/assets/sources/config"
 
-    if [[ "$tor_bridges_status" == "Disable" ]]; then
-        # Check if obfs4proxy is installed
+    if [[ "${tor_bridges_status:-Disable}" == "Disable" ]]; then
         if ! command -v obfs4proxy &> /dev/null; then
-            err "obfs4proxy is not installed. Please run: sudo apt-get install obfs4proxy"
+            warn "obfs4proxy is not installed. Please run: sudo apt-get install obfs4proxy"
+            return 1
         fi
 
-        echo -e "\n ${CYAN}ℹ INFO:${RESET} Please paste your Tor Bridge lines (obfs4) below."
-        echo -e " ${DIM}Press [ENTER] on an empty line when you are done pasting.${RESET}\n"
+        if [[ -t 0 ]]; then
+            echo -e "\n ${CYAN}ℹ INFO:${RESET} Please paste your Tor Bridge lines (obfs4/webtunnel/snowflake) below."
+            echo -e " ${DIM}Press [ENTER] on an empty line when done (or immediately to use saved/default bridges).${RESET}\n"
 
-        local temp_bridges
-        temp_bridges=$(mktemp)
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && break
-            echo "$line" >> "$temp_bridges"
-        done
+            local temp_bridges invalid_count=0
+            temp_bridges=$(mktemp)
+            while IFS= read -r line; do
+                line="${line%$'\r'}"
+                [[ -z "$line" ]] && break
+                if _is_valid_bridge_line "$line"; then
+                    echo "$line" >> "$temp_bridges"
+                else
+                    ((invalid_count++))
+                    warn "Ignored malformed bridge line: $line"
+                fi
+            done
 
-        if [[ -s "$temp_bridges" ]]; then
-            cat "$temp_bridges" > "$SRCDIR/sources/bridges.txt"
+            if [[ -s "$temp_bridges" ]]; then
+                cat "$temp_bridges" > "$SRCDIR/sources/bridges.txt"
+            elif [[ $invalid_count -gt 0 ]]; then
+                warn "No valid bridge lines provided."
+            fi
+            rm -f "$temp_bridges"
         fi
-        rm -f "$temp_bridges"
 
-        if [[ -s "$SRCDIR/sources/bridges.txt" ]]; then
-            sed -i 's/tor_bridges_status="Disable"/tor_bridges_status="Enable"/g' "$SRCDIR/sources/config"
-            info "Tor bridges successfully configured and enabled"
+        local resolved_bridges
+        resolved_bridges="$(resolve_bridges_file)"
+        if [[ -n "$resolved_bridges" && -s "$resolved_bridges" ]]; then
+            set_module_status "tor_bridges" "Enable"
+            info "Tor bridges configured and enabled (Source: $(basename "$resolved_bridges"))"
         else
-            warn "No bridges were entered or saved. Tor bridges module was NOT enabled."
+            warn "No bridges were found or saved. Tor bridges module was NOT enabled."
+            return 1
         fi
     else
         warn "Tor bridges is already enabled"
@@ -41,6 +59,6 @@ start_tor_bridges(){
 
 stop_tor_bridges(){
     source "${BASE_DIR}/assets/sources/config"
-    sed -i 's/tor_bridges_status="Enable"/tor_bridges_status="Disable"/g' "$SRCDIR/sources/config"
+    set_module_status "tor_bridges" "Disable"
     info "Tor bridges successfully disabled (Bridges saved for next use)"
 }

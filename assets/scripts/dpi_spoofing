@@ -7,7 +7,6 @@
 start_dpi_spoofing(){
     source "${BASE_DIR}/assets/sources/config"
     if [[ "${dpi_spoofing_status:-Disable}" == "Disable" ]]; then
-        # Check if snowflake-client is installed
         if ! command -v snowflake-client &> /dev/null; then
             warn "snowflake-client is not installed. Attempting to install..."
             if command -v apt-get &>/dev/null; then
@@ -16,12 +15,12 @@ start_dpi_spoofing(){
                     return 1
                 }
             else
-                warn "snowflake-client is not installed and apt-get is unavailable. Please install snowflake-client manually."
+                warn "snowflake-client is not installed and apt-get is unavailable."
                 return 1
             fi
         fi
 
-        sed -i 's/dpi_spoofing_status="Disable"/dpi_spoofing_status="Enable"/g' "$SRCDIR/sources/config"
+        set_module_status "dpi_spoofing" "Enable"
         info "DPI Spoofing (Snowflake WebRTC Camouflage) successfully enabled."
         if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
             info "Refreshing Tor transparent proxy configuration..."
@@ -35,7 +34,7 @@ start_dpi_spoofing(){
 
 stop_dpi_spoofing(){
     source "${BASE_DIR}/assets/sources/config"
-    sed -i 's/dpi_spoofing_status="Enable"/dpi_spoofing_status="Disable"/g' "$SRCDIR/sources/config"
+    set_module_status "dpi_spoofing" "Disable"
     info "DPI Spoofing successfully disabled."
     if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
         info "Refreshing Tor transparent proxy configuration..."
