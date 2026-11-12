@@ -29,27 +29,48 @@ jobs:
           Version: ${VERSION}
           Architecture: all
           Maintainer: egnake <egcaem000@gmail.com>
-          Depends: bash, iptables, tor, obfs4proxy, macchanger, proxychains4, secure-delete, rfkill, firejail, iproute2, curl, net-tools, i2pd
+          Depends: bash, tar, iptables, tor, obfs4proxy, macchanger, proxychains4, secure-delete, rfkill, firejail, iproute2, curl, i2pd, dnscrypt-proxy, snowflake-client, mat2, libimage-exiftool-perl, psmisc, unzip, ca-certificates
           Description: Advanced OPSEC & Anonymity Framework
            A comprehensive, modular anonymity and anti-forensics toolkit for Linux environments.
           EOF
-          
+
+          cat <<'EOF' > anon_${VERSION}_all/DEBIAN/conffiles
+          /usr/share/anon/assets/sources/config
+          EOF
+
+          cat <<'EOF' > anon_${VERSION}_all/DEBIAN/prerm
+          #!/bin/bash
+          set -e
+          if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+              rm -f /etc/NetworkManager/conf.d/anon-dns-lock.conf
+              rm -f /etc/apparmor.d/usr.bin.tor.anon
+              rm -f /usr/local/bin/*.anon-sandbox
+          fi
+          EOF
+          chmod 755 anon_${VERSION}_all/DEBIAN/prerm
+
           mkdir -p anon_${VERSION}_all/usr/bin
           mkdir -p anon_${VERSION}_all/usr/share/anon/backups
           mkdir -p anon_${VERSION}_all/usr/share/applications
           mkdir -p anon_${VERSION}_all/usr/share/kali-menu/applications
-          
-          install -m 755 anon anon_${VERSION}_all/usr/bin/
-          cp -vr assets anon_${VERSION}_all/usr/share/anon/
+
+          install -m 755 anon anon_${VERSION}_all/usr/bin/anon
+          cp -a assets anon_${VERSION}_all/usr/share/anon/
+          rm -f anon_${VERSION}_all/usr/share/anon/assets/sources/bridges.txt
           chmod 755 anon_${VERSION}_all/usr/share/anon/assets/scripts/*
-          cp -vr assets/anon.desktop anon_${VERSION}_all/usr/share/applications/
-          cp -vr assets/anon.desktop anon_${VERSION}_all/usr/share/kali-menu/applications/
-          
+          chmod 644 anon_${VERSION}_all/usr/share/anon/assets/sources/config \
+              anon_${VERSION}_all/usr/share/anon/assets/sources/helpers \
+              anon_${VERSION}_all/usr/share/anon/assets/sources/anon.js \
+              anon_${VERSION}_all/usr/share/anon/assets/sources/bridges.default.txt
+          cp -f assets/anon.desktop anon_${VERSION}_all/usr/share/applications/
+          cp -f assets/anon.desktop anon_${VERSION}_all/usr/share/kali-menu/applications/
+
           fakeroot dpkg-deb --build anon_${VERSION}_all
 
-      - name: Create Tarball Source
+      - name: Create Tarball Source & Checksums
         run: |
-          tar -czvf anon_${VERSION}_source.tar.gz anon assets setup.sh setup.bat Makefile README.md README-TR.md LICENSE
+          tar --exclude='assets/sources/bridges.txt' --exclude='backups/*.tar.gz' -czvf anon_${VERSION}_source.tar.gz anon anon.bat assets setup.sh setup.bat Makefile README.md README-TR.md LICENSE
+          sha256sum anon_${VERSION}_all.deb anon_${VERSION}_source.tar.gz > SHA256SUMS
 
       - name: Release
         uses: softprops/action-gh-release@v1
@@ -57,6 +78,7 @@ jobs:
           files: |
             anon_${VERSION}_all.deb
             anon_${VERSION}_source.tar.gz
+            SHA256SUMS
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

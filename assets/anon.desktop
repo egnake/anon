@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Anon
 Comment=Advanced OPSEC & Anonymity Framework
-Exec=anon
+Exec=sh -c 'command -v pkexec >/dev/null 2>&1 && exec pkexec env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" /usr/bin/anon || exec sudo /usr/bin/anon'
 Icon=/usr/share/anon/assets/icons/anon.jpg
 Terminal=true
 Type=Application

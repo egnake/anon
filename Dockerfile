@@ -1,6 +1,6 @@
 FROM kalilinux/kali-rolling
 
-# Install required dependencies
+# Install required runtime and security dependencies
 RUN apt-get update && apt-get install -y \
     make \
     tar \
@@ -10,12 +10,19 @@ RUN apt-get update && apt-get install -y \
     iptables \
     macchanger \
     obfs4proxy \
+    snowflake-client \
+    dnscrypt-proxy \
     proxychains4 \
     rfkill \
     secure-delete \
     i2pd \
+    firejail \
     mat2 \
     libimage-exiftool-perl \
+    libnotify-bin \
+    psmisc \
+    iputils-ping \
+    ca-certificates \
     sudo \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
