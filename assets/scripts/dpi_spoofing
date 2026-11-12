@@ -1,6 +1,4 @@
 #!/bin/bash
-set -euo pipefail
-source "${BASE_DIR}/assets/sources/config"
 
 # ═══════════════════════════════════════════════════════════════════
 # DPI Spoofing — Tor Snowflake WebRTC Traffic Camouflage
@@ -8,18 +6,24 @@ source "${BASE_DIR}/assets/sources/config"
 
 start_dpi_spoofing(){
     source "${BASE_DIR}/assets/sources/config"
-    if [[ "$dpi_spoofing_status" == "Disable" ]]; then
+    if [[ "${dpi_spoofing_status:-Disable}" == "Disable" ]]; then
         # Check if snowflake-client is installed
         if ! command -v snowflake-client &> /dev/null; then
-            echo -e "\n ${YELLOW}⚠ WARNING:${RESET} snowflake-client is not installed. Attempting to install..."
-            apt-get update -y && apt-get install snowflake-client -y || {
-                err "snowflake-client installation failed. Please run: sudo apt-get install snowflake-client"
-            }
+            warn "snowflake-client is not installed. Attempting to install..."
+            if command -v apt-get &>/dev/null; then
+                apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y snowflake-client || {
+                    warn "snowflake-client installation failed. Please run: sudo apt-get install snowflake-client"
+                    return 1
+                }
+            else
+                warn "snowflake-client is not installed and apt-get is unavailable. Please install snowflake-client manually."
+                return 1
+            fi
         fi
 
         sed -i 's/dpi_spoofing_status="Disable"/dpi_spoofing_status="Enable"/g' "$SRCDIR/sources/config"
         info "DPI Spoofing (Snowflake WebRTC Camouflage) successfully enabled."
-        if [[ "$ip_changer_status" == "Enable" ]]; then
+        if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
             info "Refreshing Tor transparent proxy configuration..."
             stop_ip_changer
             start_ip_changer
@@ -33,7 +37,7 @@ stop_dpi_spoofing(){
     source "${BASE_DIR}/assets/sources/config"
     sed -i 's/dpi_spoofing_status="Enable"/dpi_spoofing_status="Disable"/g' "$SRCDIR/sources/config"
     info "DPI Spoofing successfully disabled."
-    if [[ "$ip_changer_status" == "Enable" ]]; then
+    if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
         info "Refreshing Tor transparent proxy configuration..."
         stop_ip_changer
         start_ip_changer

@@ -20,83 +20,114 @@ start_disposable_browser() {
 
     echo -e "\n ${CYAN}ℹ INFO:${RESET} Initializing true RAM-based disposable browser..."
 
-    # Create temp directory for the profile in shared memory
-    local ram_profile
-    ram_profile=$(mktemp -d -p /dev/shm -t anon_browser_XXXXXX)
-
-    # Ensure cleanup on any exit path (normal return or interruption)
-    trap 'if command -v shred &>/dev/null; then find "$ram_profile" -type f -exec shred -u {} + 2>/dev/null; fi; rm -rf "$ram_profile" 2>/dev/null' RETURN INT TERM
-
-    echo -e " ${CYAN}ℹ INFO:${RESET} Hardening profile with anon OPSEC configurations..."
-    # Inject anon.js configuration if it exists, converting pref() to user_pref() for profile user.js
-    if [[ -f "$SRCDIR/sources/anon.js" ]]; then
-        sed 's/^pref(/user_pref(/' "$SRCDIR/sources/anon.js" > "$ram_profile/user.js"
-    fi
-
-    # Enforce Tor SOCKS5 with remote DNS resolution to guarantee zero browser DNS leaks
+    # Verify Tor SOCKS5 readiness when Sandbox Isolation is active
     local socks_host="127.0.0.1"
     if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
         socks_host="10.200.200.1"
+        if [[ "${ip_changer_status:-Disable}" != "Enable" ]]; then
+            warn "Sandbox Isolation is enabled without IP Changer; ensure Tor is listening on ${socks_host}:9050."
+        fi
     fi
-    cat >> "$ram_profile/user.js" << EOF
+
+    # Resolve target unprivileged desktop user and real HOME (never use root's $HOME for XAUTHORITY)
+    local run_user="${SUDO_USER:-root}"
+    local run_home
+    run_home=$(getent passwd "$run_user" 2>/dev/null | cut -d: -f6 || true)
+    [[ -z "$run_home" ]] && run_home=$([[ "$run_user" == "root" ]] && echo "/root" || echo "/home/$run_user")
+    local run_uid
+    run_uid=$(id -u "$run_user" 2>/dev/null || echo "0")
+
+    local disp="${DISPLAY:-:0}"
+    local xauth="${XAUTHORITY:-${run_home}/.Xauthority}"
+    local wayland_disp="${WAYLAND_DISPLAY:-}"
+    local xdg_rt="${XDG_RUNTIME_DIR:-/run/user/${run_uid}}"
+
+    # Run inside an isolated subshell so local EXIT/INT/TERM traps never clobber Execution Stealth traps
+    (
+        local ram_profile
+        ram_profile=$(mktemp -d -p /dev/shm -t anon_browser_XXXXXX)
+        local xhost_added=0
+
+        _cleanup_browser() {
+            if [[ "$xhost_added" -eq 1 ]] && command -v xhost &>/dev/null; then
+                DISPLAY="$disp" XAUTHORITY="$xauth" xhost -si:localuser:"$run_user" 2>/dev/null || true
+            fi
+            if [[ -n "$ram_profile" && -d "$ram_profile" ]]; then
+                if command -v shred &>/dev/null; then
+                    find "$ram_profile" -type f -exec shred -u {} + 2>/dev/null || true
+                fi
+                rm -rf "$ram_profile" 2>/dev/null || true
+            fi
+        }
+        trap _cleanup_browser EXIT INT TERM
+
+        echo -e " ${CYAN}ℹ INFO:${RESET} Hardening profile with anon OPSEC configurations..."
+        if [[ -f "$SRCDIR/sources/anon.js" ]]; then
+            sed 's/^pref(/user_pref(/' "$SRCDIR/sources/anon.js" > "$ram_profile/user.js"
+        fi
+
+        # Enforce Tor SOCKS5 with remote DNS + disable TRR/DoH bypass, SafeBrowsing, Geo, Connectivity pings
+        cat >> "$ram_profile/user.js" << EOF
 user_pref("network.proxy.type", 1);
 user_pref("network.proxy.socks", "${socks_host}");
 user_pref("network.proxy.socks_port", 9050);
 user_pref("network.proxy.socks_version", 5);
 user_pref("network.proxy.socks_remote_dns", true);
+user_pref("network.trr.mode", 5);
 user_pref("network.dns.disablePrefetch", true);
 user_pref("network.prefetch-next", false);
+user_pref("network.connectivity-service.enabled", false);
+user_pref("browser.safebrowsing.malware.enabled", false);
+user_pref("browser.safebrowsing.phishing.enabled", false);
+user_pref("geo.enabled", false);
+user_pref("media.navigator.enabled", false);
+user_pref("dom.event.clipboardevents.enabled", false);
 user_pref("places.history.enabled", false);
 user_pref("browser.formfill.enable", false);
 user_pref("signon.rememberSignons", false);
 EOF
 
-    echo -e " ${CYAN}ℹ INFO:${RESET} Launching isolated instance. ${YELLOW}Do NOT close this terminal!${RESET}"
-    echo -e " ${CYAN}ℹ INFO:${RESET} The profile will be securely wiped the exact second you close the browser.\n"
+        echo -e " ${CYAN}ℹ INFO:${RESET} Launching isolated instance. ${YELLOW}Do NOT close this terminal!${RESET}"
+        echo -e " ${CYAN}ℹ INFO:${RESET} The profile will be securely wiped the exact second you close the browser.\n"
 
-    # Privilege drop and execution command
-    local run_user="${SUDO_USER:-root}"
-    chown -R "$run_user":"$run_user" "$ram_profile" 2>/dev/null || true
+        chown -R "$run_user":"$run_user" "$ram_profile" 2>/dev/null || true
 
-    # Preserve GUI Display environment for unprivileged user
-    export DISPLAY="${DISPLAY:-:0}"
-    export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
-    xhost +si:localuser:"$run_user" 2>/dev/null || true
+        if [[ "$run_user" != "root" ]] && command -v xhost &>/dev/null; then
+            if DISPLAY="$disp" XAUTHORITY="$xauth" xhost +si:localuser:"$run_user" 2>/dev/null; then
+                xhost_added=1
+            fi
+        fi
 
-    local -a cmd=()
+        local -a cmd=()
 
-    # 1. OS Isolation (Network Namespace)
-    if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
-        echo -e " ${GREEN}✔ SUCCESS:${RESET} Launching browser inside strictly isolated 'anon_jail' Kernel Namespace..."
-        cmd+=(ip netns exec anon_jail)
-    else
-        echo -e " ${YELLOW}⚠ WARNING:${RESET} Sandbox Isolation is disabled. Launching on host network stack..."
-    fi
+        # 1. OS Isolation (Network Namespace)
+        if [[ "${sandbox_isolation_status:-Disable}" == "Enable" ]]; then
+            echo -e " ${GREEN}✔ SUCCESS:${RESET} Launching browser inside strictly isolated 'anon_jail' Kernel Namespace..."
+            cmd+=(ip netns exec anon_jail)
+        else
+            echo -e " ${YELLOW}⚠ WARNING:${RESET} Sandbox Isolation is disabled. Launching on host network stack..."
+        fi
 
-    if [[ -n "$run_user" && "$run_user" != "root" ]]; then
-        cmd+=(sudo -u "$run_user" env "DISPLAY=$DISPLAY" "XAUTHORITY=$XAUTHORITY")
-    fi
+        if [[ -n "$run_user" && "$run_user" != "root" ]]; then
+            local -a env_args=("DISPLAY=$disp" "XAUTHORITY=$xauth" "HOME=$run_home")
+            [[ -n "$wayland_disp" ]] && env_args+=("WAYLAND_DISPLAY=$wayland_disp")
+            [[ -d "$xdg_rt" ]] && env_args+=("XDG_RUNTIME_DIR=$xdg_rt")
+            cmd+=(sudo -u "$run_user" env "${env_args[@]}")
+        fi
 
-    # 2. Process Isolation (AppArmor / Firejail)
-    if command -v firejail &> /dev/null; then
-        echo -e " ${GREEN}✔ SUCCESS:${RESET} Firejail sandbox active with strict seccomp and capability dropping..."
-        cmd+=(firejail --caps.drop=all --nonewprivs --seccomp --no3d --nosound --nodvd)
-    else
-        echo -e " ${YELLOW}⚠ WARNING:${RESET} Firejail not installed. Skipping process isolation. (Run 'apt install firejail')"
-    fi
+        # 2. Process Isolation (AppArmor / Firejail)
+        if command -v firejail &> /dev/null; then
+            echo -e " ${GREEN}✔ SUCCESS:${RESET} Firejail sandbox active with strict seccomp and capability dropping..."
+            cmd+=(firejail --caps.drop=all --nonewprivs --seccomp --private-tmp --no3d --nosound --nodvd)
+        else
+            echo -e " ${YELLOW}⚠ WARNING:${RESET} Firejail not installed. Skipping process isolation. (Run 'apt install firejail')"
+        fi
 
-    cmd+=("$ff_bin" --profile "$ram_profile" --private-window "https://check.torproject.org/" --no-remote)
+        cmd+=("$ff_bin" --profile "$ram_profile" --private-window "https://check.torproject.org/" --no-remote)
 
-    # Launch browser pointing to this profile, in private mode
-    "${cmd[@]}" &> /dev/null || true
-
-    echo -e "\n ${CYAN}ℹ INFO:${RESET} Browser closed. Initiating secure deletion of RAM profile..."
-
-    # Securely wipe the profile using shred if available
-    if command -v shred &> /dev/null; then
-        find "$ram_profile" -type f -exec shred -u {} + &> /dev/null
-    fi
-    rm -rf "$ram_profile"
+        "${cmd[@]}" &> /dev/null || true
+        echo -e "\n ${CYAN}ℹ INFO:${RESET} Browser closed. Initiating secure deletion of RAM profile..."
+    )
 
     echo -e " ${GREEN}✔ SUCCESS:${RESET} Disposable profile completely wiped. Zero traces left on disk.\n"
 }

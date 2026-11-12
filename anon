@@ -711,137 +711,154 @@ echo -e " ${DIM}─────────────────────�
 
 
 dashboard() {
-    tput civis 2>/dev/null
-    
-    local status_file="/dev/shm/anon_net_status"
-    echo "WAITING" > "$status_file"
-    
     (
-        while true; do
-            source "$SRCDIR/sources/config"
-            if [[ "$ip_changer_status" == "Enable" ]]; then
-                local tor_check
-                tor_check=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
-                if echo "$tor_check" | grep -q '"IsTor":true'; then
-                    local current_ip
-                    current_ip=$(echo "$tor_check" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
-                    echo "SECURE_TOR|$current_ip" > "$status_file"
-                else
-                    echo "SECURE_SLOW|Hidden" > "$status_file"
-                fi
-            elif [[ "$i2p_integration_status" == "Enable" ]]; then
-                echo "SECURE_I2P|Hidden" > "$status_file"
-            else
-                echo "UNSECURE|Direct (Unprotected)" > "$status_file"
-            fi
-            sleep 5
-        done
-    ) &
-    local bg_pid=$!
+        tput civis 2>/dev/null || true
 
-    while true; do
-        clear
-        banner
-        draw_line
-        emptybox
-        boxline "${BOLD}${MAGENTA}  ◈ LIVE DASHBOARD${RESET}"
-        emptybox
-        draw_sep
-        
-        source "$SRCDIR/sources/config"
-        
-        # Read async network status
-        local net_status
-        net_status=$(cat "$status_file" 2>/dev/null || echo "WAITING")
-        local net_state="${net_status%%|*}"
-        local net_ip="${net_status##*|}"
-        
-        if [[ "$net_state" == "SECURE_TOR" ]]; then
-            boxline "${GREEN}  ● Network    ${BOLD}SECURE${RESET}${GREEN} (Tor Active)${RESET}"
-            boxline "${CYAN}  ● Exit IP    ${YELLOW}${net_ip}${RESET}"
-        elif [[ "$net_state" == "SECURE_SLOW" ]]; then
-            boxline "${YELLOW}  ● Network    ${BOLD}SECURE${RESET}${YELLOW} (Routing / High Latency)${RESET}"
-            boxline "${CYAN}  ● Exit IP    ${YELLOW}Hidden (Tor Encrypted)${RESET}"
-        elif [[ "$net_state" == "SECURE_I2P" ]]; then
-            boxline "${GREEN}  ● Network    ${BOLD}SECURE${RESET}${GREEN} (I2P Router Active)${RESET}"
-            boxline "${CYAN}  ● Exit IP    ${YELLOW}Hidden (I2P)${RESET}"
-        elif [[ "$net_state" == "WAITING" ]]; then
-            boxline "${CYAN}  ● Network    ${BOLD}SCANNING...${RESET}"
-            boxline "${CYAN}  ● Exit IP    ${YELLOW}Detecting...${RESET}"
-        else
-            boxline "${RED}  ○ Network    ${BOLD}UNSECURE${RESET}${RED} (Direct)${RESET}"
-            boxline "${CYAN}  ● IP         ${YELLOW}${net_ip}${RESET}"
-        fi
-        
-        # Traffic stats
-        local iface
-        iface=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1)
-        if [[ -n "$iface" ]] && [[ -f "/sys/class/net/$iface/statistics/rx_bytes" ]]; then
-            local rx=$(cat /sys/class/net/$iface/statistics/rx_bytes)
-            local tx=$(cat /sys/class/net/$iface/statistics/tx_bytes)
-            local rx_mb=$(awk "BEGIN {printf \"%.1f\", $rx/1048576}")
-            local tx_mb=$(awk "BEGIN {printf \"%.1f\", $tx/1048576}")
-            boxline "${CYAN}  ● Traffic    ${GREEN}↑${tx_mb}MB ${CYAN}↓${rx_mb}MB${RESET}${DIM} on ${iface}${RESET}"
-        fi
-        
-        draw_sep
-        boxline "${BOLD}${WHITE}  ACTIVE MODULES:${RESET}"
-        emptybox
-        
-        local mod_line=""
-        local count=0
-        
-        print_mod() {
-            if [[ "$2" == "Enable" ]]; then
-                mod_line+="${GREEN}■${RESET}$1  "
-                ((count++))
-            fi
-        }
-        
-        print_mod "MITM " "$anti_mitm_status"
-        print_mod "VLOG " "$volatile_logging_status"
-        print_mod "IP   " "$ip_changer_status"
-        print_mod "DNS  " "$dns_changer_status"
-        print_mod "MAC  " "$mac_changer_status"
-        print_mod "TZ   " "$timezone_changer_status"
-        print_mod "HOST " "$hostname_changer_status"
-        print_mod "BRWS " "$browser_anonymization_status"
-        print_mod "OS   " "$os_obfuscation_status"
-        print_mod "BT   " "$bluetooth_disabler_status"
-        print_mod "PROC " "$process_obfuscation_status"
-        print_mod "PRXY " "$proxychains_integration_status"
-        print_mod "COLD " "$anti_cold_boot_status"
-        print_mod "TOR  " "$tor_bridges_status"
-        print_mod "KILL " "$kill_switch_status"
-        print_mod "I2P  " "$i2p_integration_status"
-        print_mod "TRAFF" "$traffic_obfuscation_status"
-        print_mod "DPI  " "$dpi_spoofing_status"
-        print_mod "DOH  " "$doh_shield_status"
-        print_mod "JAIL " "$sandbox_isolation_status"
-        print_mod "STLTH" "$execution_stealth_status"
-        print_mod "AUDIT" "$leak_auditor_status"
-        
-        if [[ $count -eq 0 ]]; then
-            boxline "${DIM}  No modules active${RESET}"
-        else
-            boxline "  ${mod_line}"
-        fi
-        
-        emptybox
-        draw_sep
-        emptybox
-        boxline "${DIM}  Press ${BOLD}q${RESET}${DIM} to return to menu  ·  Refreshes every 3s${RESET}"
-        emptybox
-        draw_end
-        
-        read -t 3 -rsn1 key
-        if [[ "$key" == "q" || "$key" == "Q" ]]; then
+        local status_file
+        status_file=$(mktemp -p /dev/shm .anon_net_XXXXXX)
+        echo "WAITING" > "$status_file"
+
+        (
+            while true; do
+                source "$SRCDIR/sources/config"
+                if [[ "$ip_changer_status" == "Enable" ]]; then
+                    local tor_check
+                    tor_check=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
+                    if echo "$tor_check" | grep -q '"IsTor":true'; then
+                        local current_ip
+                        current_ip=$(echo "$tor_check" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
+                        echo "SECURE_TOR|$current_ip" > "$status_file"
+                    else
+                        echo "SECURE_SLOW|Hidden" > "$status_file"
+                    fi
+                elif [[ "$i2p_integration_status" == "Enable" ]]; then
+                    echo "SECURE_I2P|Hidden" > "$status_file"
+                else
+                    echo "UNSECURE|Direct (Unprotected)" > "$status_file"
+                fi
+                sleep 5
+            done
+        ) &
+        local bg_pid=$!
+
+        _cleanup_dash() {
             kill "$bg_pid" 2>/dev/null || true
+            wait "$bg_pid" 2>/dev/null || true
             rm -f "$status_file"
-            break
-        fi
-    done
-    tput cnorm 2>/dev/null
+            tput cnorm 2>/dev/null || true
+        }
+        trap _cleanup_dash EXIT INT TERM
+
+        while true; do
+            clear
+            banner
+            draw_line
+            emptybox
+            boxline "${BOLD}${MAGENTA}  ◈ LIVE DASHBOARD${RESET}"
+            emptybox
+            draw_sep
+
+            source "$SRCDIR/sources/config"
+
+            # Read async network status
+            local net_status
+            net_status=$(cat "$status_file" 2>/dev/null || echo "WAITING")
+            local net_state="${net_status%%|*}"
+            local net_ip="${net_status##*|}"
+
+            if [[ "$net_state" == "SECURE_TOR" ]]; then
+                boxline "${GREEN}  ● Network    ${BOLD}SECURE${RESET}${GREEN} (Tor Active)${RESET}"
+                boxline "${CYAN}  ● Exit IP    ${YELLOW}${net_ip}${RESET}"
+            elif [[ "$net_state" == "SECURE_SLOW" ]]; then
+                boxline "${YELLOW}  ● Network    ${BOLD}SECURE${RESET}${YELLOW} (Routing / High Latency)${RESET}"
+                boxline "${CYAN}  ● Exit IP    ${YELLOW}Hidden (Tor Encrypted)${RESET}"
+            elif [[ "$net_state" == "SECURE_I2P" ]]; then
+                boxline "${GREEN}  ● Network    ${BOLD}SECURE${RESET}${GREEN} (I2P Router Active)${RESET}"
+                boxline "${CYAN}  ● Exit IP    ${YELLOW}Hidden (I2P)${RESET}"
+            elif [[ "$net_state" == "WAITING" ]]; then
+                boxline "${CYAN}  ● Network    ${BOLD}SCANNING...${RESET}"
+                boxline "${CYAN}  ● Exit IP    ${YELLOW}Detecting...${RESET}"
+            else
+                boxline "${RED}  ○ Network    ${BOLD}UNSECURE${RESET}${RED} (Direct)${RESET}"
+                boxline "${CYAN}  ● IP         ${YELLOW}${net_ip}${RESET}"
+            fi
+
+            # Traffic stats
+            local iface
+            iface=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1)
+            if [[ -n "$iface" ]] && [[ -f "/sys/class/net/$iface/statistics/rx_bytes" ]]; then
+                local rx tx rx_mb tx_mb
+                rx=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
+                tx=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+                rx_mb=$(awk "BEGIN {printf \"%.1f\", $rx/1048576}")
+                tx_mb=$(awk "BEGIN {printf \"%.1f\", $tx/1048576}")
+                boxline "${CYAN}  ● Traffic    ${GREEN}↑${tx_mb}MB ${CYAN}↓${rx_mb}MB${RESET}${DIM} on ${iface}${RESET}"
+            fi
+
+            draw_sep
+            boxline "${BOLD}${WHITE}  ACTIVE MODULES:${RESET}"
+            emptybox
+
+            local mod_line=""
+            local count=0
+            local line_items=0
+
+            print_mod() {
+                if [[ "$2" == "Enable" ]]; then
+                    mod_line+="${GREEN}■${RESET}$1  "
+                    ((count++))
+                    ((line_items++))
+                    if [[ $line_items -ge 7 ]]; then
+                        boxline "  ${mod_line}"
+                        mod_line=""
+                        line_items=0
+                    fi
+                fi
+            }
+
+            print_mod "MITM " "$anti_mitm_status"
+            print_mod "VLOG " "$volatile_logging_status"
+            print_mod "IP   " "$ip_changer_status"
+            print_mod "DNS  " "$dns_changer_status"
+            print_mod "MAC  " "$mac_changer_status"
+            print_mod "TZ   " "$timezone_changer_status"
+            print_mod "HOST " "$hostname_changer_status"
+            print_mod "BRWS " "$browser_anonymization_status"
+            print_mod "OS   " "$os_obfuscation_status"
+            print_mod "BT   " "$bluetooth_disabler_status"
+            print_mod "PROC " "$process_obfuscation_status"
+            print_mod "PRXY " "$proxychains_integration_status"
+            print_mod "COLD " "$anti_cold_boot_status"
+            print_mod "TOR  " "$tor_bridges_status"
+            print_mod "KILL " "$kill_switch_status"
+            print_mod "I2P  " "$i2p_integration_status"
+            print_mod "TRAFF" "$traffic_obfuscation_status"
+            print_mod "DPI  " "$dpi_spoofing_status"
+            print_mod "DOH  " "$doh_shield_status"
+            print_mod "JAIL " "$sandbox_isolation_status"
+            print_mod "STLTH" "$execution_stealth_status"
+            print_mod "AUDIT" "$leak_auditor_status"
+
+            if [[ $count -eq 0 ]]; then
+                boxline "${DIM}  No modules active${RESET}"
+            elif [[ -n "$mod_line" ]]; then
+                boxline "  ${mod_line}"
+            fi
+
+            emptybox
+            draw_sep
+            emptybox
+            boxline "${DIM}  Press ${BOLD}q${RESET}${DIM} to return to menu  ·  Refreshes every 3s${RESET}"
+            emptybox
+            draw_end
+
+            local key=""
+            read -t 3 -rsn1 key || true
+            if [[ "$key" == "q" || "$key" == "Q" ]]; then
+                break
+            fi
+        done
+    )
 }
 
 
@@ -927,25 +944,27 @@ update() {
         fi
     fi
     
-    local tmp_dir
-    tmp_dir=$(mktemp -d)
-    trap 'rm -rf "$tmp_dir"' EXIT
-    info "Downloading latest release from GitHub..."
-    if curl -fsSL https://github.com/egnake/anon/archive/refs/heads/main.zip -o "$tmp_dir/anon.zip" && unzip -tq "$tmp_dir/anon.zip" &>/dev/null; then
-        info "Extracting..."
-        unzip -q "$tmp_dir/anon.zip" -d "$tmp_dir"
-        if [[ -d "$tmp_dir/anon-main" ]]; then
-            cd "$tmp_dir/anon-main"
-            info "Running make reinstall..."
-            make reinstall
-            msg "Anon has been successfully updated to the latest version!"
-            info "Please restart Anon by typing 'sudo anon'"
+    (
+        local tmp_dir
+        tmp_dir=$(mktemp -d)
+        trap 'rm -rf "$tmp_dir"' EXIT INT TERM
+        info "Downloading latest release from GitHub..."
+        if curl -fsSL https://github.com/egnake/anon/archive/refs/heads/main.zip -o "$tmp_dir/anon.zip" && unzip -tq "$tmp_dir/anon.zip" &>/dev/null; then
+            info "Extracting..."
+            unzip -q "$tmp_dir/anon.zip" -d "$tmp_dir"
+            if [[ -d "$tmp_dir/anon-main" ]]; then
+                cd "$tmp_dir/anon-main" || exit 1
+                info "Running make reinstall..."
+                make reinstall
+                msg "Anon has been successfully updated to the latest version!"
+                info "Please restart Anon by typing 'sudo anon'"
+            else
+                err "Corrupted update archive: anon-main directory not found."
+            fi
         else
-            err "Corrupted update archive: anon-main directory not found."
+            err "Failed to download or verify the update archive."
         fi
-    else
-        err "Failed to download or verify the update archive."
-    fi
+    ) || exit 1
     exit 0
 }
 

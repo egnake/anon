@@ -3,24 +3,43 @@ set -euo pipefail
 
 # ═══════════════════════════════════════════════════════════════════
 # Background Leak Auditor — Continuous IP, DNS & Socket Sentry
-# Periodically inspects active network egress, DNS resolvers, and
-# Tor circuits. Triggers instant kill-switch lockdown upon any leak.
+# Periodically inspects active network egress, DNS resolvers, IPv6
+# exposure, and Tor circuits. Triggers lockdown upon any leak.
 # ═══════════════════════════════════════════════════════════════════
 
 POLL_INTERVAL="${ANON_AUDIT_INTERVAL:-15}"
 
-# Resolve configuration
+# Resolve BASE_DIR and configuration reliably (supports repo, /usr/share/anon, and stealth RAM dir)
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${BASE_DIR:-}" ]]; then
+    if [[ -f "${_SCRIPT_DIR}/../sources/config" ]]; then
+        BASE_DIR="$(cd "${_SCRIPT_DIR}/../.." && pwd)"
+    elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+        BASE_DIR="/usr/share/anon"
+    else
+        BASE_DIR="$(cd "${_SCRIPT_DIR}/../.." && pwd)"
+    fi
+fi
+export BASE_DIR
+
 CFG_FILE=""
-if [[ -f "/usr/share/anon/sources/config" ]]; then
-    CFG_FILE="/usr/share/anon/sources/config"
-elif [[ -f "${BASH_SOURCE[0]%/*}/../sources/config" ]]; then
-    CFG_FILE="${BASH_SOURCE[0]%/*}/../sources/config"
+if [[ -f "${BASE_DIR}/assets/sources/config" ]]; then
+    CFG_FILE="${BASE_DIR}/assets/sources/config"
+elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+    CFG_FILE="/usr/share/anon/assets/sources/config"
 fi
 
 if [[ -n "$CFG_FILE" && -f "$CFG_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$CFG_FILE" 2>/dev/null || true
 fi
+
+_reload_config() {
+    if [[ -n "$CFG_FILE" && -f "$CFG_FILE" ]]; then
+        # shellcheck disable=SC1090
+        source "$CFG_FILE" 2>/dev/null || true
+    fi
+}
 
 _trigger_lockdown() {
     local reason="$1"
@@ -33,15 +52,20 @@ _trigger_lockdown() {
         notify "ANON - CRITICAL LEAK AUDIT" "Leak detected: ${reason}! Activating kill switch." "critical"
     fi
 
-    # Atomic emergency iptables lockdown
+    # Atomic emergency iptables + ip6tables lockdown
     if command -v iptables &>/dev/null; then
         iptables -P OUTPUT DROP 2>/dev/null || true
         iptables -P INPUT DROP 2>/dev/null || true
         iptables -P FORWARD DROP 2>/dev/null || true
     fi
+    if command -v ip6tables &>/dev/null; then
+        ip6tables -P OUTPUT DROP 2>/dev/null || true
+        ip6tables -P INPUT DROP 2>/dev/null || true
+        ip6tables -P FORWARD DROP 2>/dev/null || true
+    fi
 
     # Trigger script kill switch if available
-    local ks_script="${BASH_SOURCE[0]%/*}/kill_switch"
+    local ks_script="${_SCRIPT_DIR}/kill_switch"
     if [[ -f "$ks_script" ]]; then
         # shellcheck disable=SC1090
         source "$ks_script" 2>/dev/null || true
@@ -50,21 +74,33 @@ _trigger_lockdown() {
         fi
     fi
 
+    if [[ -n "$CFG_FILE" && -f "$CFG_FILE" ]]; then
+        sed -i 's/leak_auditor_pid="[^"]*"/leak_auditor_pid="0"/g;s/leak_auditor_status="Enable"/leak_auditor_status="Disable"/g' "$CFG_FILE" 2>/dev/null || true
+    fi
+
     echo -e "\e[1;31m[ANON LEAK AUDITOR] Network lockdown enforced. Terminating auditor.\e[0m" >&2
     exit 2
 }
 
 check_dns_leak() {
-    # If Tor or DoH is supposed to be active, resolv.conf must not point to a public ISP/router DNS directly
+    # If Tor or DoH is active, resolv.conf must point only to approved local loopback/sandbox resolvers
     if [[ "${ip_changer_status:-Disable}" == "Enable" || "${doh_shield_status:-Disable}" == "Enable" ]]; then
         if [[ -f /etc/resolv.conf ]]; then
             local nameservers
             nameservers=$(grep -E '^\s*nameserver' /etc/resolv.conf 2>/dev/null | awk '{print $2}' || true)
             for ns in $nameservers; do
-                if [[ "$ns" != "127.0.0.1" && "$ns" != "::1" && "$ns" != "10.200.200.1" ]]; then
-                    # Non-loopback DNS resolver detected while anonymization is active
-                    _trigger_lockdown "DNS resolver leak ($ns found in /etc/resolv.conf)"
-                    return 1
+                if [[ "$ip_changer_status" == "Enable" ]]; then
+                    # Under Tor TransPort, only Tor DNSPort (127.0.0.1 / ::1) or sandbox (10.200.200.1) is valid
+                    if [[ "$ns" != "127.0.0.1" && "$ns" != "::1" && "$ns" != "10.200.200.1" ]]; then
+                        _trigger_lockdown "DNS resolver leak ($ns found in /etc/resolv.conf while Tor active)"
+                        return 1
+                    fi
+                elif [[ "${doh_shield_status:-Disable}" == "Enable" ]]; then
+                    # Under DoH Shield (dnscrypt-proxy), 127.0.2.1 and 127.0.0.1 / ::1 are valid; 127.0.0.53 (systemd-resolved) is NOT
+                    if [[ "$ns" != "127.0.2.1" && "$ns" != "127.0.0.1" && "$ns" != "::1" ]]; then
+                        _trigger_lockdown "DNS resolver leak ($ns found in /etc/resolv.conf while DoH Shield active)"
+                        return 1
+                    fi
                 fi
             done
         fi
@@ -81,8 +117,20 @@ check_ip_leak() {
                 _trigger_lockdown "Direct clearnet egress detected (IsTor: false returned from Tor check)"
                 return 1
             elif ! echo "$check_res" | grep -q '"IsTor":true'; then
-                # Malformed or unexpected response, could indicate ISP interception
                 echo "[ANON LEAK AUDITOR] WARNING: Tor check returned unverified payload." >&2
+            fi
+        fi
+
+        # Verify IPv6 global routes are not leaking outside Tor when ip_changer is active
+        if ! grep -qi microsoft /proc/version 2>/dev/null && command -v ip &>/dev/null; then
+            local v6_default
+            v6_default=$(ip -6 route show default 2>/dev/null || true)
+            if [[ -n "$v6_default" ]]; then
+                local v6_disabled
+                v6_disabled=$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo "0")
+                if [[ "$v6_disabled" != "1" ]]; then
+                    echo "[ANON LEAK AUDITOR] WARNING: Active IPv6 default route detected while Tor is enabled." >&2
+                fi
             fi
         fi
     fi
@@ -91,6 +139,7 @@ check_ip_leak() {
 
 check_once() {
     echo -e "\e[1;36m[*] ANON Leak Auditor: Running one-shot audit...\e[0m"
+    _reload_config
     check_dns_leak
     check_ip_leak
     echo -e "\e[1;32m[✔] Audit complete: No leaks detected.\e[0m"
@@ -106,6 +155,7 @@ main() {
     echo "[ANON LEAK AUDITOR] Daemon started (poll interval: ${POLL_INTERVAL}s)"
     while true; do
         sleep "$POLL_INTERVAL"
+        _reload_config
         check_dns_leak
         check_ip_leak
     done
