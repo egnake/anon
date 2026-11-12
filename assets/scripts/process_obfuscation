@@ -30,7 +30,6 @@ start_process_obfuscation(){
 
     mkdir -p /usr/local/bin 2>/dev/null || true
 
-    # Wrap nmap only if installed; back up any existing /usr/local/bin/nmap first
     if [[ -x /usr/bin/nmap ]]; then
         if [[ -e /usr/local/bin/nmap ]] && ! grep -q "ANON_PROC_WRAPPER" /usr/local/bin/nmap 2>/dev/null; then
             cp -a /usr/local/bin/nmap "$BACKUPDIR/local_bin_nmap.bak" 2>/dev/null || true
@@ -45,7 +44,6 @@ WRAPPER
         chmod +x /usr/local/bin/nmap
     fi
 
-    # Wrap sqlmap safely (Python/script tools cannot be relocated out of /usr/bin without breaking imports)
     if [[ -x /usr/bin/sqlmap ]]; then
         if [[ -e /usr/local/bin/sqlmap ]] && ! grep -q "ANON_PROC_WRAPPER" /usr/local/bin/sqlmap 2>/dev/null; then
             cp -a /usr/local/bin/sqlmap "$BACKUPDIR/local_bin_sqlmap.bak" 2>/dev/null || true
@@ -68,14 +66,13 @@ WRAPPER
         chmod +x /usr/local/bin/sqlmap
     fi
 
-    sed -i 's/process_obfuscation_status="Disable"/process_obfuscation_status="Enable"/g' "$SRCDIR/sources/config"
+    set_module_status "process_obfuscation" "Enable"
     info "Process obfuscation enabled (hidepid=2 + RAM-based stealth execution)"
 }
 
 stop_process_obfuscation(){
     source "${BASE_DIR}/assets/sources/config"
 
-    # ── Restore /proc mount options ──────────────────────────────
     local restore_opts="rw,hidepid=0"
     if [[ -f "$BACKUPDIR/proc_mount_opts.bak" ]]; then
         local saved_opts
@@ -94,7 +91,6 @@ stop_process_obfuscation(){
         info "/proc mount options restored (${restore_opts})" || \
         warn "Could not restore /proc mount options"
 
-    # ── Remove or restore wrapper scripts (only if ours) ─────────
     if grep -qE "ANON_PROC_WRAPPER|systemd-kworker" /usr/local/bin/nmap 2>/dev/null; then
         rm -f /usr/local/bin/nmap
         if [[ -e "$BACKUPDIR/local_bin_nmap.bak" ]]; then
@@ -109,8 +105,7 @@ stop_process_obfuscation(){
     fi
     rm -f "$BACKUPDIR/local_bin_nmap.bak" "$BACKUPDIR/local_bin_sqlmap.bak"
 
-    # ── Securely wipe the RAM-based spoofed binaries ─────────────
-    local ramdir=""
+    local ramdir="" candidate
     if [[ -f "$BACKUPDIR/process_obfuscation_ramdir.bak" ]]; then
         ramdir=$(cat "$BACKUPDIR/process_obfuscation_ramdir.bak" 2>/dev/null || true)
         rm -f "$BACKUPDIR/process_obfuscation_ramdir.bak"
@@ -124,6 +119,6 @@ stop_process_obfuscation(){
         fi
     done
 
-    sed -i 's/process_obfuscation_status="Enable"/process_obfuscation_status="Disable"/g' "$SRCDIR/sources/config"
+    set_module_status "process_obfuscation" "Disable"
     info "Process obfuscation disabled"
 }

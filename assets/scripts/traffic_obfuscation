@@ -1,66 +1,84 @@
 #!/bin/bash
-set -euo pipefail
-source "${BASE_DIR}/assets/sources/config"
 
 # ═══════════════════════════════════════════════════════════════════
 # Traffic Obfuscation — Timing Attack Defense
 # ═══════════════════════════════════════════════════════════════════
+# Never enable set -e at top level because test suites may source
+# this module directly.
+
+source "${BASE_DIR}/assets/sources/config"
 
 start_traffic_obfuscation() {
+    source "${BASE_DIR}/assets/sources/config"
+
     if ! command -v tc &> /dev/null; then
-        echo -e "\n ${RED}✖ ERROR:${RESET} 'tc' (iproute2) command not found."
-        exit 1
+        err "'tc' (iproute2) command not found."
+        return 1
     fi
 
     local iface
-    iface=$(ip route 2>/dev/null | awk '/^default/{print $5; exit}')
-
+    iface="$(get_default_iface)"
     if [[ -z "$iface" ]]; then
-        echo -e "\n ${RED}✖ ERROR:${RESET} Could not determine default network interface."
-        exit 1
+        err "Could not determine default network interface."
+        return 1
     fi
 
-    echo -e "\n ${CYAN}ℹ INFO:${RESET} Injecting latency and jitter to interface ${YELLOW}${iface}${RESET}..."
-    tc qdisc del dev "$iface" root 2>/dev/null || true
-    tc qdisc add dev "$iface" root netem delay 30ms 15ms distribution normal 2>/dev/null
+    echo "$iface" > "$BACKUPDIR/traffic_obfuscation.iface" 2>/dev/null || true
 
-    echo -e " ${CYAN}ℹ INFO:${RESET} Starting background dummy traffic generation..."
+    info "Injecting latency and jitter to interface ${YELLOW}${iface}${RESET}..."
+    tc qdisc del dev "$iface" root 2>/dev/null || true
+    if ! tc qdisc add dev "$iface" root netem delay 30ms 15ms distribution normal 2>/dev/null; then
+        warn "Kernel netem qdisc unsupported or failed on ${iface}; continuing with background chaffing."
+    fi
+
+    info "Starting background dummy traffic generation..."
+    local chaff_url="${ANON_TRAFFIC_CHAFF_URL:-https://check.torproject.org/api/ip}"
 
     (
         trap 'exit 0' TERM INT
         while true; do
             if command -v curl &> /dev/null; then
-                curl -s --max-time 5 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip > /dev/null 2>&1
+                curl -s --max-time 5 --socks5-hostname 127.0.0.1:9050 "$chaff_url" > /dev/null 2>&1 || true
             fi
-            sleep $(( (RANDOM % 7) + 2 ))
+            sleep $(( (RANDOM % 9) + 2 ))
         done
     ) &
     local bg_pid=$!
 
-    sed -i "s/traffic_obfuscation_pid=\"[^\"]*\"/traffic_obfuscation_pid=\"$bg_pid\"/g; s/traffic_obfuscation_status=\"Disable\"/traffic_obfuscation_status=\"Enable\"/g" "$SRCDIR/sources/config"
-
-    echo -e " ${GREEN}✔ SUCCESS:${RESET} Traffic Obfuscation (Timing Attack Defense) initialized.\n"
+    set_module_pid "traffic_obfuscation" "$bg_pid"
+    set_module_status "traffic_obfuscation" "Enable"
+    msg "Traffic Obfuscation (Timing Attack Defense) initialized."
 }
 
 stop_traffic_obfuscation() {
-    local iface
-    iface=$(ip route 2>/dev/null | awk '/^default/{print $5; exit}')
+    source "${BASE_DIR}/assets/sources/config"
+
+    local iface=""
+    if [[ -f "$BACKUPDIR/traffic_obfuscation.iface" ]]; then
+        iface="$(cat "$BACKUPDIR/traffic_obfuscation.iface" 2>/dev/null || true)"
+        rm -f "$BACKUPDIR/traffic_obfuscation.iface"
+    fi
+    [[ -z "$iface" ]] && iface="$(get_default_iface)"
 
     if [[ -n "$iface" ]]; then
         tc qdisc del dev "$iface" root 2>/dev/null || true
     fi
 
-    if [[ -n "${traffic_obfuscation_pid:-}" ]] && [[ "$traffic_obfuscation_pid" != "0" ]]; then
+    if [[ -n "${traffic_obfuscation_pid:-}" && "${traffic_obfuscation_pid}" != "0" ]]; then
+        pkill -P "$traffic_obfuscation_pid" 2>/dev/null || true
         kill "$traffic_obfuscation_pid" 2>/dev/null || true
     fi
 
-    sed -i 's/traffic_obfuscation_pid="[^"]*"/traffic_obfuscation_pid="0"/g; s/traffic_obfuscation_status="Enable"/traffic_obfuscation_status="Disable"/g' "$SRCDIR/sources/config"
-
-    echo -e "\n ${CYAN}ℹ INFO:${RESET} Traffic Obfuscation disabled.\n"
+    set_module_pid "traffic_obfuscation" "0"
+    set_module_status "traffic_obfuscation" "Disable"
+    info "Traffic Obfuscation disabled."
 }
 
-if [[ "${1:-}" == "start" ]]; then
-    start_traffic_obfuscation
-elif [[ "${1:-}" == "stop" ]]; then
-    stop_traffic_obfuscation
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    set -euo pipefail
+    if [[ "${1:-}" == "start" ]]; then
+        start_traffic_obfuscation
+    elif [[ "${1:-}" == "stop" ]]; then
+        stop_traffic_obfuscation
+    fi
 fi

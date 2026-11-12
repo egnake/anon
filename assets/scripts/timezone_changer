@@ -4,11 +4,45 @@
 # Timezone Changer — Random Timezone Spoofing
 # ═══════════════════════════════════════════════════════════════════
 
+_detect_current_timezone() {
+    local tz=""
+    if command -v timedatectl &>/dev/null; then
+        tz="$(timedatectl show --property=Timezone --value 2>/dev/null || true)"
+    fi
+    if [[ -z "$tz" && -f /etc/timezone ]]; then
+        tz="$(cat /etc/timezone 2>/dev/null | tr -d '[:space:]' || true)"
+    fi
+    if [[ -z "$tz" && -L /etc/localtime ]]; then
+        tz="$(readlink -f /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||' || true)"
+    fi
+    echo "${tz:-UTC}"
+}
+
+_apply_timezone() {
+    local target_tz="$1"
+    local applied=0
+
+    if command -v timedatectl &>/dev/null; then
+        if timedatectl set-timezone "$target_tz" &>/dev/null; then
+            applied=1
+        fi
+    fi
+
+    if [[ -f "/usr/share/zoneinfo/$target_tz" ]]; then
+        if ln -sf "/usr/share/zoneinfo/$target_tz" /etc/localtime 2>/dev/null; then
+            echo "$target_tz" > /etc/timezone 2>/dev/null || true
+            applied=1
+        fi
+    fi
+
+    [[ $applied -eq 1 ]]
+}
+
 start_timezone_changer(){
     source "${BASE_DIR}/assets/sources/config"
 
-    if [[ "$timezone_changer_status" == "Disable" ]]; then
-        timedatectl show | grep Timezone | sed 's/Timezone=//g' > "$BACKUPDIR/timezone.bak"
+    if [[ "${timezone_changer_status:-Disable}" == "Disable" ]]; then
+        _detect_current_timezone > "$BACKUPDIR/timezone.bak" 2>/dev/null || echo "UTC" > "$BACKUPDIR/timezone.bak"
 
         local -a timezones=(
             "America/New_York" "Asia/Tokyo" "Europe/London"
@@ -18,9 +52,13 @@ start_timezone_changer(){
         local rand=$((RANDOM % ${#timezones[@]}))
         local selected_tz="${timezones[$rand]}"
 
-        timedatectl set-timezone "$selected_tz" &> /dev/null
-        sed -i 's/timezone_changer_status="Disable"/timezone_changer_status="Enable"/g' "$SRCDIR/sources/config"
-        info "Timezone changer successfully enabled (Spoofed to: $selected_tz)"
+        if _apply_timezone "$selected_tz"; then
+            set_module_status "timezone_changer" "Enable"
+            info "Timezone changer successfully enabled (Spoofed to: $selected_tz)"
+        else
+            warn "Failed to apply spoofed timezone ($selected_tz); timedatectl or zoneinfo unavailable."
+            rm -f "$BACKUPDIR/timezone.bak"
+        fi
     else
         warn "Timezone changer is already running"
     fi
@@ -30,10 +68,10 @@ stop_timezone_changer(){
     source "${BASE_DIR}/assets/sources/config"
     if [[ -f "$BACKUPDIR/timezone.bak" ]]; then
         local restore_timezone
-        restore_timezone="$(cat "$BACKUPDIR/timezone.bak")"
-        timedatectl set-timezone "$restore_timezone" &> /dev/null
+        restore_timezone="$(cat "$BACKUPDIR/timezone.bak" 2>/dev/null || echo "UTC")"
+        _apply_timezone "$restore_timezone" || true
         rm -f "$BACKUPDIR/timezone.bak"
     fi
-    sed -i 's/timezone_changer_status="Enable"/timezone_changer_status="Disable"/g' "$SRCDIR/sources/config"
+    set_module_status "timezone_changer" "Disable"
     info "Timezone changer successfully disabled"
 }

@@ -7,15 +7,16 @@
 start_hostname_changer(){
     source "${BASE_DIR}/assets/sources/config"
 
-    if [[ "$hostname_changer_status" == "Disable" ]]; then
-        # Backup hostname & hosts
-        cat /etc/hostname > "$BACKUPDIR/hostname.bak" 2>/dev/null || hostname > "$BACKUPDIR/hostname.bak"
+    if [[ "${hostname_changer_status:-Disable}" == "Disable" ]]; then
+        cat /etc/hostname > "$BACKUPDIR/hostname.bak" 2>/dev/null || hostname > "$BACKUPDIR/hostname.bak" 2>/dev/null || true
         if [[ -f /etc/hosts ]]; then
-            cat /etc/hosts > "$BACKUPDIR/hosts.bak"
+            cat /etc/hosts > "$BACKUPDIR/hosts.bak" 2>/dev/null || true
+        fi
+        if [[ -f /etc/dhcp/dhclient.conf ]]; then
+            cat /etc/dhcp/dhclient.conf > "$BACKUPDIR/dhclient.conf.bak" 2>/dev/null || true
         fi
 
-        # Generate authentic Windows / OEM format hostname (e.g. DESKTOP-7R9BK2L)
-        local prefixes=("DESKTOP-" "LAPTOP-" "MSI-" "PC-" "WIN-")
+        local -a prefixes=("DESKTOP-" "LAPTOP-" "MSI-" "PC-" "WIN-")
         local pfx="${prefixes[$((RANDOM % ${#prefixes[@]}))]}"
         local suffix
         suffix="$(tr -dc 'A-Z0-9' </dev/urandom 2>/dev/null | head -c 7 || echo "4K9A2BC")"
@@ -28,12 +29,24 @@ start_hostname_changer(){
             hostnamectl set-hostname "$new_hostname" 2>/dev/null || true
         fi
 
-        # Update /etc/hosts so sudo and local resolution don't lag or complain
+        # Ensure 127.0.1.1 resolves to the new hostname so sudo/local lookup never stalls
         if [[ -f /etc/hosts ]]; then
-            sed -i "s/127.0.1.1.*/127.0.1.1\t${new_hostname}/g" /etc/hosts 2>/dev/null || true
+            if grep -qE '^[[:space:]]*127\.0\.1\.1[[:space:]]' /etc/hosts 2>/dev/null; then
+                sed -i -E "s/^[[:space:]]*127\.0\.1\.1.*/127.0.1.1\t${new_hostname}/g" /etc/hosts 2>/dev/null || true
+            else
+                printf '127.0.1.1\t%s\n' "$new_hostname" >> /etc/hosts 2>/dev/null || true
+            fi
         fi
 
-        sed -i 's/hostname_changer_status="Disable"/hostname_changer_status="Enable"/g' "$SRCDIR/sources/config"
+        if [[ -f /etc/dhcp/dhclient.conf ]]; then
+            if grep -qE '^[[:space:]]*send[[:space:]]+host-name' /etc/dhcp/dhclient.conf 2>/dev/null; then
+                sed -i -E "s/^[[:space:]]*send[[:space:]]+host-name.*/send host-name \"${new_hostname}\";/g" /etc/dhcp/dhclient.conf 2>/dev/null || true
+            else
+                printf 'send host-name "%s";\n' "$new_hostname" >> /etc/dhcp/dhclient.conf 2>/dev/null || true
+            fi
+        fi
+
+        set_module_status "hostname_changer" "Enable"
         info "Hostname changer successfully enabled (Spoofed to: ${new_hostname})"
     else
         warn "Hostname changer is already running"
@@ -53,9 +66,13 @@ stop_hostname_changer(){
         rm -f "$BACKUPDIR/hostname.bak"
     fi
     if [[ -f "$BACKUPDIR/hosts.bak" ]]; then
-        cat "$BACKUPDIR/hosts.bak" > /etc/hosts
+        cat "$BACKUPDIR/hosts.bak" > /etc/hosts 2>/dev/null || true
         rm -f "$BACKUPDIR/hosts.bak"
     fi
-    sed -i 's/hostname_changer_status="Enable"/hostname_changer_status="Disable"/g' "$SRCDIR/sources/config"
+    if [[ -f "$BACKUPDIR/dhclient.conf.bak" ]]; then
+        cat "$BACKUPDIR/dhclient.conf.bak" > /etc/dhcp/dhclient.conf 2>/dev/null || true
+        rm -f "$BACKUPDIR/dhclient.conf.bak"
+    fi
+    set_module_status "hostname_changer" "Disable"
     info "Hostname changer successfully disabled"
 }

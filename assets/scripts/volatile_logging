@@ -3,55 +3,49 @@
 # ═══════════════════════════════════════════════════════════════════
 # Volatile Logging — Tails OS Paradigm
 # ═══════════════════════════════════════════════════════════════════
-# Instead of deleting logs (which is a forensic red flag), we mount
-# a tmpfs RAM disk over /var/log.  All writes go to RAM.  On unmount
-# the original, pre-session logs reappear intact — leaving only an
-# explainable time gap, not a suspicious deletion event.
-# ═══════════════════════════════════════════════════════════════════
 
 start_volatile_logging(){
     source "${BASE_DIR}/assets/sources/config"
 
-    if [[ "$volatile_logging_status" == "Enable" ]]; then
+    if [[ "${volatile_logging_status:-Disable}" == "Enable" ]]; then
         warn "Volatile logging is already active"
         return 0
     fi
 
-    info "Initializing volatile logging (Tails OS paradigm)..."
+    local log_size="${ANON_VOLATILE_LOG_SIZE:-100M}"
+    info "Initializing volatile logging (Tails OS paradigm, size: ${log_size})..."
 
-    # ── 1. Mount tmpfs over /var/log ─────────────────────────────
     if mountpoint -q /var/log 2>/dev/null; then
         warn "/var/log is already a mountpoint; skipping tmpfs overlay"
     else
-        mount -t tmpfs -o size=50M,mode=0755 tmpfs /var/log || {
+        mount -t tmpfs -o "size=${log_size},mode=0755" tmpfs /var/log || {
             warn "Failed to mount tmpfs on /var/log"
             return 1
         }
-        info "Mounted tmpfs (50 MB) over /var/log"
+        info "Mounted tmpfs (${log_size}) over /var/log"
     fi
 
-    # ── 2. Mount tmpfs over systemd journal persistent dir ───────
-    if [[ -d /var/log/journal ]]; then
-        mkdir -p /var/log/journal
-    fi
-    # Ensure the journal directory exists on the tmpfs
-    mkdir -p /var/log/journal 2>/dev/null
+    mkdir -p /var/log/{tor,i2pd,dnscrypt-proxy,apt,cups,samba,journal,private} 2>/dev/null || true
+    chmod 0700 /var/log/private 2>/dev/null || true
 
-    # ── 3. Restart logging daemons so they write into RAM ────────
-    if command -v systemctl &>/dev/null; then
-        systemctl restart systemd-journald 2>/dev/null || true
-        info "Restarted systemd-journald → writing to RAM"
-    fi
+    # Restore expected ownership so daemons can write logs immediately into tmpfs
+    local tor_user i2p_user doh_user
+    tor_user="$(id -un debian-tor 2>/dev/null || id -un _tor 2>/dev/null || true)"
+    [[ -n "$tor_user" ]] && chown "${tor_user}:adm" /var/log/tor 2>/dev/null || true
+    i2p_user="$(id -un _i2pd 2>/dev/null || id -un i2pd 2>/dev/null || true)"
+    [[ -n "$i2p_user" ]] && chown "${i2p_user}:${i2p_user}" /var/log/i2pd 2>/dev/null || true
+    doh_user="$(id -un _dnscrypt-proxy 2>/dev/null || id -un dnscrypt-proxy 2>/dev/null || true)"
+    [[ -n "$doh_user" ]] && chown "${doh_user}" /var/log/dnscrypt-proxy 2>/dev/null || true
+
+    service_ctrl restart systemd-journald || true
+    service_ctrl is-active tor.service && service_ctrl restart tor.service || true
+    service_ctrl is-active i2pd && service_ctrl restart i2pd || true
     if pidof rsyslogd &>/dev/null; then
         kill -HUP "$(pidof rsyslogd)" 2>/dev/null || true
         info "Sent SIGHUP to rsyslog → writing to RAM"
     fi
 
-    # ── 4. Create minimal directory structure for daemons ────────
-    mkdir -p /var/log/{apt,cups,samba,journal,private} 2>/dev/null
-    chmod 0700 /var/log/private 2>/dev/null
-
-    sed -i 's/volatile_logging_status="Disable"/volatile_logging_status="Enable"/g' "$SRCDIR/sources/config"
+    set_module_status "volatile_logging" "Enable"
     info "Volatile logging enabled — all logs now write to volatile RAM"
 }
 
@@ -60,10 +54,8 @@ stop_volatile_logging(){
 
     info "Restoring persistent logging..."
 
-    # ── 1. Unmount the tmpfs — original logs reappear ────────────
     if mountpoint -q /var/log 2>/dev/null; then
-        # Sync first so daemons flush
-        sync
+        sync 2>/dev/null || true
         umount -l /var/log 2>/dev/null || umount /var/log 2>/dev/null || {
             warn "Could not unmount /var/log — it may still be in use"
         }
@@ -72,13 +64,11 @@ stop_volatile_logging(){
         info "/var/log is not a tmpfs mountpoint; nothing to unmount"
     fi
 
-    # ── 2. Restart logging daemons back to disk ──────────────────
-    if command -v systemctl &>/dev/null; then
-        systemctl restart systemd-journald 2>/dev/null || true
-        systemctl restart rsyslog 2>/dev/null || true
-        info "Logging daemons restarted — writing to persistent disk"
-    fi
+    service_ctrl restart systemd-journald || true
+    service_ctrl restart rsyslog || true
+    service_ctrl is-active tor.service && service_ctrl restart tor.service || true
+    service_ctrl is-active i2pd && service_ctrl restart i2pd || true
 
-    sed -i 's/volatile_logging_status="Enable"/volatile_logging_status="Disable"/g' "$SRCDIR/sources/config"
+    set_module_status "volatile_logging" "Disable"
     info "Volatile logging disabled"
 }

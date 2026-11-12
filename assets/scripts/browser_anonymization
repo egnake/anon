@@ -1,33 +1,35 @@
 #!/bin/bash
 
 # ═══════════════════════════════════════════════════════════════════
-# Browser Anonymization — System-wide Firefox Hardening
+# Browser Anonymization — System-wide Firefox/LibreWolf Hardening
 # ═══════════════════════════════════════════════════════════════════
+
+_ANON_BROWSER_PREF_DIRS=(
+    "/etc/firefox-esr"
+    "/etc/firefox"
+    "/etc/firefox/pref"
+    "/etc/librewolf"
+    "/usr/lib/firefox-esr/defaults/pref"
+    "/usr/lib/firefox/defaults/pref"
+    "/usr/lib/librewolf/defaults/pref"
+)
 
 start_browser_anonymization(){
     source "${BASE_DIR}/assets/sources/config"
 
-    if [[ "$browser_anonymization_status" == "Disable" ]]; then
-        local target_dirs=(
-            "/etc/firefox-esr"
-            "/etc/firefox"
-            "/etc/firefox/pref"
-            "/usr/lib/firefox-esr/defaults/pref"
-            "/usr/lib/firefox/defaults/pref"
-        )
-        local installed=0
-        for dir in "${target_dirs[@]}"; do
+    if [[ "${browser_anonymization_status:-Disable}" == "Disable" ]]; then
+        local installed=0 dir
+        for dir in "${_ANON_BROWSER_PREF_DIRS[@]}"; do
             if [[ -d "$dir" ]]; then
-                cp "$SRCDIR/sources/anon.js" "$dir/anon.js"
-                installed=1
+                cp "$SRCDIR/sources/anon.js" "$dir/anon.js" 2>/dev/null && installed=1
             fi
         done
 
         if [[ $installed -eq 1 ]]; then
-            sed -i 's/browser_anonymization_status="Disable"/browser_anonymization_status="Enable"/g' "$SRCDIR/sources/config"
+            set_module_status "browser_anonymization" "Enable"
             info "Browser anonymization successfully enabled"
         else
-            warn "No supported Firefox directory found (checked /etc/firefox-esr, /etc/firefox, etc.)"
+            warn "No supported Firefox/LibreWolf directory found (checked /etc/firefox-esr, /etc/firefox, /etc/librewolf, etc.)"
         fi
     else
         warn "Browser anonymization is already running"
@@ -36,11 +38,10 @@ start_browser_anonymization(){
 
 stop_browser_anonymization(){
     source "${BASE_DIR}/assets/sources/config"
-    rm -f /etc/firefox-esr/anon.js \
-          /etc/firefox/anon.js \
-          /etc/firefox/pref/anon.js \
-          /usr/lib/firefox-esr/defaults/pref/anon.js \
-          /usr/lib/firefox/defaults/pref/anon.js
-    sed -i 's/browser_anonymization_status="Enable"/browser_anonymization_status="Disable"/g' "$SRCDIR/sources/config"
+    local dir
+    for dir in "${_ANON_BROWSER_PREF_DIRS[@]}"; do
+        rm -f "${dir}/anon.js" 2>/dev/null || true
+    done
+    set_module_status "browser_anonymization" "Disable"
     info "Browser anonymization successfully disabled"
 }

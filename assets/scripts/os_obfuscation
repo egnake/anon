@@ -3,67 +3,42 @@
 # ═══════════════════════════════════════════════════════════════════
 # OS Obfuscation — Endpoint Fingerprint Masking
 # ═══════════════════════════════════════════════════════════════════
-# Defeats active/passive OS fingerprinting by p0f, nmap, and similar
-# tools.  Uses both sysctl tunables AND iptables mangle rules to
-# ensure every outbound packet carries Windows-like characteristics.
-# ═══════════════════════════════════════════════════════════════════
 
 start_os_obfuscation(){
     source "${BASE_DIR}/assets/sources/config"
 
-    if [[ "$os_obfuscation_status" == "Enable" ]]; then
+    if [[ "${os_obfuscation_status:-Disable}" == "Enable" ]]; then
         warn "OS Obfuscation is already running"
         return 0
     fi
 
-    # ── Backup original sysctl values ────────────────────────────
-    sysctl -n net.ipv4.ip_default_ttl > "$BACKUPDIR/ip_default_ttl.bak" 2>/dev/null
-    sysctl -n net.ipv4.tcp_timestamps > "$BACKUPDIR/tcp_timestamps.bak" 2>/dev/null
-    sysctl -n net.ipv4.ip_local_port_range > "$BACKUPDIR/ip_local_port_range.bak" 2>/dev/null
-    sysctl -n net.ipv4.tcp_window_scaling > "$BACKUPDIR/tcp_window_scaling.bak" 2>/dev/null
-    sysctl -n net.ipv4.icmp_echo_ignore_broadcasts > "$BACKUPDIR/icmp_echo_ignore_broadcasts.bak" 2>/dev/null
-    sysctl -n net.ipv4.tcp_sack > "$BACKUPDIR/tcp_sack.bak" 2>/dev/null
+    sysctl -n net.ipv4.ip_default_ttl > "$BACKUPDIR/ip_default_ttl.bak" 2>/dev/null || true
+    sysctl -n net.ipv4.tcp_timestamps > "$BACKUPDIR/tcp_timestamps.bak" 2>/dev/null || true
+    sysctl -n net.ipv4.ip_local_port_range > "$BACKUPDIR/ip_local_port_range.bak" 2>/dev/null || true
+    sysctl -n net.ipv4.tcp_window_scaling > "$BACKUPDIR/tcp_window_scaling.bak" 2>/dev/null || true
+    sysctl -n net.ipv4.icmp_echo_ignore_broadcasts > "$BACKUPDIR/icmp_echo_ignore_broadcasts.bak" 2>/dev/null || true
+    sysctl -n net.ipv4.tcp_sack > "$BACKUPDIR/tcp_sack.bak" 2>/dev/null || true
 
-    # ── 1. TTL: Windows 10/11 uses 128 (Linux default is 64) ────
-    sysctl -w net.ipv4.ip_default_ttl=128 &> /dev/null
+    sysctl -w net.ipv4.ip_default_ttl=128 &> /dev/null || true
+    iptables -t mangle -C POSTROUTING -j TTL --ttl-set 128 2>/dev/null \
+        || iptables -t mangle -A POSTROUTING -j TTL --ttl-set 128 2>/dev/null || true
 
-    # ── 2. iptables mangle: Force TTL=128 on ALL outbound packets
-    #    This catches packets that bypass sysctl (raw sockets, etc.)
-    iptables -t mangle -A POSTROUTING -j TTL --ttl-set 128 2>/dev/null
+    sysctl -w net.ipv4.tcp_timestamps=0 &> /dev/null || true
+    sysctl -w net.ipv4.ip_local_port_range="49152 65535" &> /dev/null || true
+    sysctl -w net.ipv4.tcp_window_scaling=0 &> /dev/null || true
+    sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1 &> /dev/null || true
+    sysctl -w net.ipv4.tcp_sack=0 &> /dev/null || true
 
-    # ── 3. TCP Timestamps: Windows 10 typically disables them.
-    #    Major fingerprinting vector for p0f / nmap OS detection.
-    sysctl -w net.ipv4.tcp_timestamps=0 &> /dev/null
+    iptables -t mangle -C POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1460 2>/dev/null \
+        || iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1460 2>/dev/null || true
 
-    # ── 4. Ephemeral Port Range: Windows 10 uses 49152-65535.
-    #    Linux default is 32768-60999.
-    sysctl -w net.ipv4.ip_local_port_range="49152 65535" &> /dev/null
-
-    # ── 5. TCP Window Scaling: Disable to match Windows baseline.
-    sysctl -w net.ipv4.tcp_window_scaling=0 &> /dev/null
-
-    # ── 6. ICMP Echo Ignore Broadcasts: Prevent smurf attacks and
-    #    stealth ping sweeps.
-    sysctl -w net.ipv4.icmp_echo_ignore_broadcasts=1 &> /dev/null
-
-    # ── 7. TCP SACK: Windows default behaviour differs from Linux.
-    #    Disabling removes another OS classification vector.
-    sysctl -w net.ipv4.tcp_sack=0 &> /dev/null
-
-    # ── 8. TCP Window Size manipulation via iptables ─────────────
-    #    Clamp MSS to a value consistent with Windows defaults to
-    #    defeat advanced TCP window-based OS fingerprinting.
-    iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN \
-        -j TCPMSS --set-mss 1460 2>/dev/null
-
-    sed -i 's/os_obfuscation_status="Disable"/os_obfuscation_status="Enable"/g' "$SRCDIR/sources/config"
+    set_module_status "os_obfuscation" "Enable"
     info "OS Obfuscation enabled (Windows 10/11 fingerprint emulation)"
 }
 
 stop_os_obfuscation(){
     source "${BASE_DIR}/assets/sources/config"
 
-    # ── Restore original sysctl values ───────────────────────────
     local orig_ttl orig_ts orig_pr orig_ws orig_ib orig_sack
     orig_ttl=$(cat "$BACKUPDIR/ip_default_ttl.bak" 2>/dev/null || echo "64")
     orig_ts=$(cat "$BACKUPDIR/tcp_timestamps.bak" 2>/dev/null || echo "1")
@@ -72,19 +47,17 @@ stop_os_obfuscation(){
     orig_ib=$(cat "$BACKUPDIR/icmp_echo_ignore_broadcasts.bak" 2>/dev/null || echo "1")
     orig_sack=$(cat "$BACKUPDIR/tcp_sack.bak" 2>/dev/null || echo "1")
 
-    sysctl -w net.ipv4.ip_default_ttl="$orig_ttl" &> /dev/null
-    sysctl -w net.ipv4.tcp_timestamps="$orig_ts" &> /dev/null
-    sysctl -w net.ipv4.ip_local_port_range="$orig_pr" &> /dev/null
-    sysctl -w net.ipv4.tcp_window_scaling="$orig_ws" &> /dev/null
-    sysctl -w net.ipv4.icmp_echo_ignore_broadcasts="$orig_ib" &> /dev/null
-    sysctl -w net.ipv4.tcp_sack="$orig_sack" &> /dev/null
+    sysctl -w net.ipv4.ip_default_ttl="$orig_ttl" &> /dev/null || true
+    sysctl -w net.ipv4.tcp_timestamps="$orig_ts" &> /dev/null || true
+    sysctl -w net.ipv4.ip_local_port_range="$orig_pr" &> /dev/null || true
+    sysctl -w net.ipv4.tcp_window_scaling="$orig_ws" &> /dev/null || true
+    sysctl -w net.ipv4.icmp_echo_ignore_broadcasts="$orig_ib" &> /dev/null || true
+    sysctl -w net.ipv4.tcp_sack="$orig_sack" &> /dev/null || true
 
-    # ── Remove iptables mangle rules ─────────────────────────────
     iptables -t mangle -D POSTROUTING -j TTL --ttl-set 128 2>/dev/null || true
     iptables -t mangle -D POSTROUTING -p tcp --tcp-flags SYN,RST SYN \
         -j TCPMSS --set-mss 1460 2>/dev/null || true
 
-    # ── Cleanup backup files ─────────────────────────────────────
     rm -f "$BACKUPDIR/ip_default_ttl.bak" \
           "$BACKUPDIR/tcp_timestamps.bak" \
           "$BACKUPDIR/ip_local_port_range.bak" \
@@ -92,6 +65,6 @@ stop_os_obfuscation(){
           "$BACKUPDIR/icmp_echo_ignore_broadcasts.bak" \
           "$BACKUPDIR/tcp_sack.bak"
 
-    sed -i 's/os_obfuscation_status="Enable"/os_obfuscation_status="Disable"/g' "$SRCDIR/sources/config"
+    set_module_status "os_obfuscation" "Disable"
     info "OS Obfuscation disabled — original TCP/IP fingerprint restored"
 }
