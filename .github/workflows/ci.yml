@@ -27,6 +27,8 @@ jobs:
 
       - name: Rust Check, Unit Tests & Release Build
         run: |
+          rustc --version
+          cargo --version
           RUSTFLAGS="-D warnings" cargo test
           RUSTFLAGS="-D warnings" cargo build --release
 

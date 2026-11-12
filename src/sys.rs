@@ -75,8 +75,8 @@ extern "C" {
     fn poll(fds: *mut PollFd, nfds: usize, timeout: i32) -> i32;
     fn socket(domain: i32, ty: i32, protocol: i32) -> i32;
     fn bind(sockfd: i32, addr: *const SockAddrNl, addrlen: u32) -> i32;
-    fn recv(sockfd: i32, buf: *mut u8, len: usize, flags: i32) -> isize;
-    fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
+    fn recv(sockfd: i32, buf: *mut core::ffi::c_void, len: usize, flags: i32) -> isize;
+    fn read(fd: i32, buf: *mut core::ffi::c_void, count: usize) -> isize;
     fn close(fd: i32) -> i32;
     fn inotify_init1(flags: i32) -> i32;
     fn inotify_add_watch(fd: i32, pathname: *const core::ffi::c_char, mask: u32) -> i32;
@@ -236,7 +236,7 @@ pub fn poll_fd(fd: i32, timeout_ms: i32) -> bool {
 
 pub fn read_fd_byte(fd: i32) -> Option<u8> {
     let mut b = 0u8;
-    let n = unsafe { read(fd, &mut b as *mut u8, 1) };
+    let n = unsafe { read(fd, (&mut b as *mut u8).cast::<core::ffi::c_void>(), 1) };
     if n == 1 {
         Some(b)
     } else {
@@ -290,7 +290,7 @@ impl NetlinkWatcher {
         }
         let mut buf = [0u8; 4096];
         loop {
-            let n = unsafe { recv(self.fd, buf.as_mut_ptr(), buf.len(), 0) };
+            let n = unsafe { recv(self.fd, buf.as_mut_ptr().cast::<core::ffi::c_void>(), buf.len(), 0) };
             if n <= 0 {
                 break;
             }
@@ -345,7 +345,7 @@ impl InotifyWatcher {
         }
         let mut buf = [0u8; 1024];
         loop {
-            let n = unsafe { read(self.fd, buf.as_mut_ptr(), buf.len()) };
+            let n = unsafe { read(self.fd, buf.as_mut_ptr().cast::<core::ffi::c_void>(), buf.len()) };
             if n <= 0 {
                 break;
             }
