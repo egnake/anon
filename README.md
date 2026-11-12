@@ -22,7 +22,7 @@
 
 ## 🚀 Overview
 
-**ANON** is a rigorous, open-source anonymity and Operations Security (OPSEC) framework designed for researchers, developers, and privacy advocates. Moving beyond basic proxy scripts, ANON provides a deeply integrated, 21-module architecture that enforces strict network isolation, randomizes system fingerprints, and applies active anti-forensics measures.
+**ANON** is a rigorous, open-source anonymity and Operations Security (OPSEC) framework designed for researchers, developers, and privacy advocates. Moving beyond basic proxy scripts, ANON provides a deeply integrated, 22-module architecture (backed by 26 modular scripts including integrated safety and browser utilities) that enforces strict network isolation, randomizes system fingerprints, and applies active anti-forensics measures.
 
 By utilizing Linux kernel namespaces (`netns`), traffic control (`tc`), and dynamic `iptables` configurations, ANON transforms a standard Debian-based installation into a highly restricted environment. It ensures that all outbound traffic is strictly routed through the Tor network while mitigating common timing attacks and local network threats.
 
@@ -38,9 +38,9 @@ ANON is built around the concept of "Defense in Depth." It assumes that adversar
 
 ---
 
-## ⚙️ The 21 Modules (Detailed Breakdown)
+## ⚙️ The 22 OPSEC Modules & Utilities (Detailed Breakdown)
 
-ANON is highly modular. You can toggle individual features on or off based on your specific operational requirements using the interactive Terminal User Interface (TUI).
+ANON is highly modular. You can toggle all 22 stateful modules individually via the interactive Terminal User Interface (TUI) or preset security profiles, alongside built-in disposable browser, metadata cleaning, emergency panic, and system recovery utilities.
 
 ### 🌐 Network & Routing Subsystem
 
@@ -131,7 +131,7 @@ ANON replaces clunky command-line arguments with an elegant, responsive TUI buil
 
 * **Dynamic Aesthetic Rendering:** Centered ASCII banners that change dynamically on launch, providing a clean, distraction-free environment.
 * **Live Dashboard:** Monitor your Tor exit IP, network status, traffic throughput, and active OPSEC modules in real-time without clear web leaks.
-* **Operations Hub:** Execute DNS/IP leak tests, request a new Tor identity (`SIGHUP` circuit rebuild), launch the sandboxed disposable browser, or trigger Emergency Panic Lockdown directly from the interface.
+* **Operations Hub:** Execute DNS/IP leak tests, request a new Tor identity (ControlPort `SIGNAL NEWNYM` with `SIGHUP` fallback), launch the sandboxed disposable browser, or trigger Emergency Panic Lockdown directly from the interface.
 
 ---
 
@@ -139,9 +139,10 @@ ANON replaces clunky command-line arguments with an elegant, responsive TUI buil
 
 ANON is heavily integrated with the Linux networking stack. It requires:
 
-- **Operating System:** Kali Linux, Parrot Security OS, Debian, Ubuntu, or WSL2 (Custom Kernel recommended for netns support).
+- **Operating System:** Kali Linux, Parrot Security OS, Debian, Ubuntu, or Windows 10/11 via WSL2 (`systemd=true` in `/etc/wsl.conf` recommended; Docker supported with `--cap-add=NET_ADMIN --cap-add=SYS_ADMIN`).
 - **Permissions:** Root privileges (`sudo`) are required to manipulate `iptables`, kernel namespaces, and network interfaces.
-- **Dependencies (Automatically installed):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`.
+- **Dependencies (Automatically installed via `setup.sh`):** `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
+- **Windows (WSL2) & Docker:** Run `setup.bat` on Windows to install/configure WSL2 and add `anon.bat` to your user `PATH` (supports Windows-to-WSL path translation for `--clean-meta`). In Docker, build with `docker build -t anon .` and run with `docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon`.
 
 ---
 
@@ -178,15 +179,18 @@ For users who prefer automation or scripting, ANON supports direct command-line 
 | Command | Description |
 | :--- | :--- |
 | `sudo anon --start` | Starts the framework non-interactively using the last saved module configuration (or default Tor + Kill Switch). |
+| `sudo anon --profile <name>` | Applies and starts a preset security profile (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`) non-interactively. |
 | `sudo anon --stop` | Immediately disables all active modules, flushes iptables, and restores the original network state. |
 | `sudo anon --status` | Prints a comprehensive visual report of all active and inactive OPSEC modules. |
+| `sudo anon --status --json` | Outputs current version, stealth state, and all 22 module statuses in machine-readable JSON. |
 | `sudo anon --dashboard` | Opens the live monitoring dashboard (auto-refreshes every 3 seconds). |
 | `sudo anon --browser` | Directly launches the RAM-based disposable browser inside the isolated network namespace. |
-| `sudo anon --audit` | Performs an instant deep IP, DNS, and socket leak audit. |
+| `sudo anon --audit` | Performs an instant deep IP, DNS, and socket leak audit (append `--json` for machine-readable output). |
 | `sudo anon --clean-meta <path>` | Sanitizes forensic metadata (EXIF/GPS/tags) from files or directories via MAT2/ExifTool. |
 | `sudo anon --panic` | Emergency Duress Protocol: immediately cuts all network interfaces, drops all firewall traffic, terminates processes, and sanitizes RAM. |
 | `sudo anon --fix` | Restores default system network configurations from backup in the event of a crash or abrupt shutdown. |
-| `sudo anon --update` | Fetches the latest source code from GitHub and reinstalls the framework automatically. |
+| `sudo anon --update` | Fetches the latest release tarball (routed via Tor when active), verifies `SHA256SUMS`, and reinstalls the framework. |
+| `anon --version` | Displays the installed ANON version (`ANON v3.0.0`) without modifying system state. |
 
 ---
 

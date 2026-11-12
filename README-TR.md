@@ -22,7 +22,7 @@
 
 ## 🚀 Genel Bakış
 
-**ANON**, siber güvenlik araştırmacıları, geliştiriciler ve gizlilik savunucuları için tasarlanmış titiz, açık kaynaklı bir anonimlik ve Operasyonel Güvenlik (OPSEC) çerçevesidir. Temel proxy betiklerinin çok ötesine geçen ANON; sıkı ağ izolasyonu uygulayan, sistem parmak izlerini rastgele değiştiren ve aktif anti-adli bilişim (anti-forensics) tedbirleri alan derinlemesine entegre edilmiş 21 modüllü bir mimari sunar.
+**ANON**, siber güvenlik araştırmacıları, geliştiriciler ve gizlilik savunucuları için tasarlanmış titiz, açık kaynaklı bir anonimlik ve Operasyonel Güvenlik (OPSEC) çerçevesidir. Temel proxy betiklerinin çok ötesine geçen ANON; sıkı ağ izolasyonu uygulayan, sistem parmak izlerini rastgele değiştiren ve aktif anti-adli bilişim (anti-forensics) tedbirleri alan derinlemesine entegre edilmiş 22 durumlu OPSEC modülü (entegre yardımcı ve kurtarma araçlarıyla birlikte 26 modüler betik) sunar.
 
 ANON; Linux çekirdek ağ alanlarını (`netns`), trafik kontrolünü (`tc`) ve dinamik `iptables` yapılandırmalarını kullanarak standart bir Debian kurulumunu son derece kısıtlanmış ve güvenli bir ortama dönüştürür. Çıkan tüm trafiğin kesinlikle Tor ağı üzerinden yönlendirilmesini sağlarken, yaygın zamanlama saldırılarını ve yerel ağ tehditlerini hafifletir.
 
@@ -38,9 +38,9 @@ ANON, "Derinlemesine Savunma" (Defense in Depth) kavramı etrafında inşa edilm
 
 ---
 
-## ⚙️ 21 Modül (Detaylı İnceleme)
+## ⚙️ 22 OPSEC Modülü ve Yardımcı Araçlar (Detaylı İnceleme)
 
-ANON son derece modülerdir. Etkileşimli Terminal Kullanıcı Arayüzünü (TUI) kullanarak bireysel özellikleri belirli operasyonel gereksinimlerinize göre açıp kapatabilirsiniz.
+ANON son derece modülerdir. Etkileşimli Terminal Kullanıcı Arayüzünü (TUI) veya hazır güvenlik profillerini kullanarak 22 durumlu modülü ayrı ayrı açıp kapatabilir, ayrıca yerleşik tek kullanımlık tarayıcı, metaveri temizleyici, acil durum panik ve kurtarma araçlarından yararlanabilirsiniz.
 
 ### 🌐 Ağ ve Yönlendirme Alt Sistemi
 
@@ -131,7 +131,7 @@ ANON, hantal komut satırı parametrelerini tamamen Bash ile yazılmış zarif, 
 
 * **Dinamik Estetik Oluşturma:** TUI, her başlatıldığında dinamik olarak değişen, güzel biçimlendirilmiş, ortalanmış ASCII banner'lara sahiptir.
 * **Canlı Kontrol Paneli (Live Dashboard):** Çıkış IP'nizi, aktif devre durumunuzu, anlık ağ trafiğini ve çalışan OPSEC modüllerini sızıntı olmadan gerçek zamanlı izleyin.
-* **Operasyon Merkezi:** Yön tuşlarınızı kullanarak doğrudan DNS/IP sızıntı testi yapın, yeni bir Tor kimliği (`SIGHUP`) talep edin veya tek kullanımlık tarayıcıyı başlatın.
+* **Operasyon Merkezi:** Yön tuşlarınızı kullanarak doğrudan DNS/IP sızıntı testi yapın, Tor ControlPort (`SIGNAL NEWNYM` ve `SIGHUP` yedeği) üzerinden yeni bir Tor kimliği talep edin veya tek kullanımlık tarayıcıyı başlatın.
 
 ---
 
@@ -139,9 +139,10 @@ ANON, hantal komut satırı parametrelerini tamamen Bash ile yazılmış zarif, 
 
 ANON, Linux ağ yığınına derinden entegredir. Gereksinimleri:
 
-- **İşletim Sistemi:** Kali Linux, Parrot Security OS, Debian, Ubuntu veya WSL2 (netns desteği için özel Kernel önerilir).
+- **İşletim Sistemi:** Kali Linux, Parrot Security OS, Debian, Ubuntu veya Windows 10/11 üzerinde WSL2 (`/etc/wsl.conf` içinde `systemd=true` önerilir; Docker üzerinde `--cap-add=NET_ADMIN --cap-add=SYS_ADMIN` ile desteklenir).
 - **İzinler:** `iptables`, kernel ağ alanlarını (namespaces) ve ağ arayüzlerini manipüle etmek için Root ayrıcalıkları (`sudo`) gereklidir.
-- **Bağımlılıklar (Otomatik kurulur):** `tor`, `obfs4proxy`, `macchanger`, `proxychains4`, `secure-delete` (sdmem), `rfkill`, `firejail`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`.
+- **Bağımlılıklar (`setup.sh` ile otomatik kurulur):** `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
+- **Windows (WSL2) ve Docker:** Windows'ta WSL2 kurulumu ve kullanıcı `PATH` ayarı için `setup.bat` dosyasını çalıştırın (`anon.bat`, `--clean-meta` için Windows yollarını `wslpath` ile çevirir). Docker imajını `docker build -t anon .` ile derleyip `docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon` komutuyla başlatabilirsiniz.
 
 ---
 
@@ -178,15 +179,18 @@ Otomasyon veya komut dosyası oluşturmayı tercih eden kullanıcılar için ANO
 | Komut | Açıklama |
 | :--- | :--- |
 | `sudo anon --start` | Aracı, en son kaydedilen modül yapılandırmasını (veya varsayılan Tor + Kill Switch) kullanarak doğrudan başlatır. |
+| `sudo anon --profile <isim>` | Hazır güvenlik profillerinden birini (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`) etkileşimsiz uygular ve başlatır. |
 | `sudo anon --stop` | Tüm aktif modülleri anında devre dışı bırakır, iptables'ı temizler ve orijinal ağ durumunu geri yükler. |
 | `sudo anon --status` | Tüm aktif ve pasif OPSEC modülünün kapsamlı bir görsel raporunu yazdırır. |
+| `sudo anon --status --json` | Sürüm bilgisini, gizlilik durumunu ve tüm 22 modülün durumunu makine tarafından okunabilir JSON olarak döndürür. |
 | `sudo anon --dashboard` | Canlı izleme panelini açar (her 3 saniyede bir otomatik yenilenir). |
 | `sudo anon --browser` | RAM tabanlı tek kullanımlık tarayıcıyı doğrudan izole edilmiş ağ alanı (namespace) içinde başlatır. |
-| `sudo anon --audit` | Anlık derinlemesine IP, DNS ve soket sızıntı denetimi yürütür. |
+| `sudo anon --audit` | Anlık derinlemesine IP, DNS ve soket sızıntı denetimi yürütür (makine okunabilir çıktı için `--json` eklenebilir). |
 | `sudo anon --clean-meta <hedef>` | Dosya veya klasörlerdeki adli metaverileri (EXIF/GPS/etiketler) MAT2 veya ExifTool ile temizler. |
 | `sudo anon --panic` | Acil Durum / Panik Protokolü: Tüm ağ arayüzlerini anında kapatır, güvenlik duvarını kilitler, süreçleri sonlandırır ve RAM'i temizler. |
 | `sudo anon --fix` | Çökme veya ani kapanma durumunda varsayılan sistem ağ yapılandırmalarını yedeklerden geri yükler. |
-| `sudo anon --update` | En son kaynak kodunu GitHub'dan getirir ve çerçeveyi otomatik olarak yeniden yükler. |
+| `sudo anon --update` | En son sürüm paketini GitHub'dan indirir (Tor aktifse Tor üzerinden), `SHA256SUMS` ile doğrular ve yeniden kurar. |
+| `anon --version` | Sistem durumunu değiştirmeden kurulu ANON sürümünü (`ANON v3.0.0`) gösterir. |
 
 ---
 
