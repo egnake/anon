@@ -22,23 +22,23 @@ jobs:
             bash \
             shellcheck \
             iproute2 \
-            iptables
+            iptables \
+            fakeroot
+
+      - name: Rust Check, Unit Tests & Release Build
+        run: |
+          RUSTFLAGS="-D warnings" cargo test
+          RUSTFLAGS="-D warnings" cargo build --release
 
       - name: Syntax Check (bash -n)
         run: |
-          bash -n anon
           bash -n setup.sh
           bash -n test_suite.sh
-          bash -n assets/sources/config
-          bash -n assets/sources/helpers
-          for script in assets/scripts/*; do
-            bash -n "$script"
-          done
 
       - name: ShellCheck Lint
         run: |
           shellcheck -S warning -e SC1090,SC1091,SC2034 \
-            anon setup.sh test_suite.sh assets/sources/config assets/sources/helpers assets/scripts/*
+            setup.sh test_suite.sh
 
       - name: Run Test Suite
         run: |

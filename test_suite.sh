@@ -1,506 +1,356 @@
 #!/bin/bash
+# ==============================================================================
+# ANON Framework — Automated Rust + Blackbox CLI Test Suite (Isolated Mock Env)
+# ==============================================================================
 set -u
 
-echo -e "\e[1;36m=================================================\e[0m"
-echo -e "\e[1;36m      Anon - Complete & Isolated Test Suite      \e[0m"
-echo -e "\e[1;36m=================================================\e[0m\n"
-
-# --- Setup 100% Isolated Mock Environment (Never mutates repo files) ---
-export MOCK_DIR
-MOCK_DIR=$(mktemp -d)
-export PATH="$MOCK_DIR:$PATH"
-export TEST_LOGS="$MOCK_DIR/test.log"
-touch "$TEST_LOGS"
-
-cleanup() {
-    rm -rf "$MOCK_DIR"
-    rm -f blackbox_out.txt blackbox_help.txt blackbox_audit.txt blackbox_meta.txt
-}
-trap cleanup EXIT INT TERM
-
-mock_cmd() {
-    local cmd="$1"
-    cat > "$MOCK_DIR/$cmd" << EOF
-#!/bin/bash
-echo "$cmd \$*" >> "$TEST_LOGS"
-if [ "$cmd" = "curl" ]; then
-    echo '{"IsTor":true}'
-elif [ "$cmd" = "ip" ]; then
-    if [[ "\$*" == *"route"* ]]; then
-        echo "default via 192.168.1.1 dev eth0"
-    elif [[ "\$*" == *"-o link show"* ]]; then
-        echo '1: lo: <LOOPBACK>'
-        echo '2: eth0: <BROADCAST,MULTICAST>'
-        echo '3: wlan0: <BROADCAST,MULTICAST>'
-    elif [[ "\$*" == *"neigh show"* ]]; then
-        echo '192.168.1.1 dev eth0 lladdr aa:bb:cc:dd:ee:ff router REACHABLE'
-    fi
-elif [ "$cmd" = "dmidecode" ]; then
-    echo 'Mocked Manufacturer'
-elif [ "$cmd" = "nmcli" ]; then
-    echo 'wlan0 wifi'
-elif [ "$cmd" = "rfkill" ]; then
-    if [[ "\$*" == *"list bluetooth"* ]]; then
-        echo '0: hci0: Bluetooth'
-        echo '	Soft blocked: no'
-    fi
-elif [ "$cmd" = "timedatectl" ]; then
-    if [[ "\$*" == *"show"* ]]; then
-        echo 'UTC'
-    fi
-elif [ "$cmd" = "mount" ]; then
-    touch "$MOCK_DIR/var_log_mounted"
-elif [ "$cmd" = "umount" ]; then
-    rm -f "$MOCK_DIR/var_log_mounted"
-elif [ "$cmd" = "mountpoint" ]; then
-    [ -f "$MOCK_DIR/var_log_mounted" ] && exit 0 || exit 1
-elif [ "$cmd" = "iptables-save" ] || [ "$cmd" = "ip6tables-save" ]; then
-    echo '*filter'
-    echo 'COMMIT'
-elif [ "$cmd" = "iptables-restore" ] || [ "$cmd" = "ip6tables-restore" ]; then
-    while IFS= read -r line; do
-        echo "$cmd: \$line" >> "$TEST_LOGS"
-    done
-fi
-exit 0
-EOF
-    chmod +x "$MOCK_DIR/$cmd"
-}
-
-for cmd in iptables ip6tables iptables-save ip6tables-save iptables-restore ip6tables-restore \
-           sysctl systemctl curl timedatectl dmidecode nmcli macchanger obfs4proxy shred ip \
-           hostname hostnamectl killall rfkill tc chattr dnscrypt-proxy mount notify-send \
-           umount mountpoint swapoff swapon tar tor proxychains4 sdmem i2pd mat2 exiftool \
-           pkill pgrep snowflake-client arping; do
-    mock_cmd "$cmd"
-done
-
-# Copy runtime tree into isolated sandbox
-cp -a "$(pwd)/assets" "$MOCK_DIR/assets"
-export BASE_DIR="$MOCK_DIR"
-export SRCDIR="$MOCK_DIR/assets"
-export BACKUPDIR="$MOCK_DIR/backups"
-export ANON_STATE_FILE="$MOCK_DIR/anon.state"
-export ANON_TOR_BOOTSTRAP_TIMEOUT=1
-export ANON_HOSTS_FILE="$MOCK_DIR/hosts"
-touch "$ANON_HOSTS_FILE"
-mkdir -p "$BACKUPDIR"
-touch "$BACKUPDIR/anon_fix_backups.tar.gz"
-
-mkdir -p "$MOCK_DIR/etc_tor"
-export TORRC="$MOCK_DIR/etc_tor/torrc"
-touch "$TORRC"
-
-sed 's/\[\[ "$EUID" -ne 0 \]\]/[[ "0" -ne 0 ]]/g' anon > "$MOCK_DIR/anon"
-chmod +x "$MOCK_DIR/anon"
-
-# shellcheck disable=SC1091
-source "$SRCDIR/sources/config"
-
-echo -e "\e[1;33m[*] Running Whitebox Tests (Internal Logic Verification)...\e[0m"
-FAIL_COUNT=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASS_COUNT=0
+FAIL_COUNT=0
+
+GREEN='\033[1;32m'
+RED='\033[1;31m'
+CYAN='\033[1;36m'
+YELLOW='\033[1;33m'
+RESET='\033[0m'
 
 pass() {
-    echo -e "  \e[32m[PASS]\e[0m $1"
-    ((PASS_COUNT++))
+    echo -e "  ${GREEN}[PASS]${RESET} $1"
+    PASS_COUNT=$((PASS_COUNT + 1))
 }
 
 fail() {
-    echo -e "  \e[31m[FAIL]\e[0m $1"
-    ((FAIL_COUNT++))
+    echo -e "  ${RED}[FAIL]${RESET} $1"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
 }
 
-assert_log() {
-    if grep -q "$1" "$TEST_LOGS"; then
-        pass "$2"
+assert_eq() {
+    local actual="$1"
+    local expected="$2"
+    local label="$3"
+    if [[ "$actual" == "$expected" ]]; then
+        pass "$label"
     else
-        fail "$2 (Expected: '$1')"
+        fail "$label (expected: '$expected', got: '$actual')"
     fi
 }
 
-# --- 1. Registry & Config Integrity ---
-echo -e "\n\e[1;34m-> Architecture: Declarative Module Registry & State\e[0m"
-reg_check=$(sed -n '/^MOD_NAMES=/,/^_is_pid_alive/p' "$MOCK_DIR/anon" | grep -v '_is_pid_alive')
-if eval "$reg_check" && \
-   [[ ${#MOD_NAMES[@]} -eq 22 && ${#MOD_LABELS[@]} -eq 22 && ${#MOD_TAGS[@]} -eq 22 && \
-      $(( ${#NET_CAT_INDICES[@]} + ${#OBF_CAT_INDICES[@]} + ${#DEF_CAT_INDICES[@]} )) -eq 22 && \
-      ${#EXEC_ORDER[@]} -eq 22 && ${#STOP_ORDER[@]} -eq 22 ]]; then
-    pass "Declarative module registry covers all 22 modules consistently"
+assert_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local label="$3"
+    if [[ "$haystack" == *"$needle"* ]]; then
+        pass "$label"
+    else
+        fail "$label (missing: '$needle')"
+    fi
+}
+
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    local label="$3"
+    if [[ "$haystack" != *"$needle"* ]]; then
+        pass "$label"
+    else
+        fail "$label (unexpectedly contained: '$needle')"
+    fi
+}
+
+echo -e "${CYAN}=== 1. Cargo Unit Tests & Release Build ===${RESET}"
+if command -v cargo >/dev/null 2>&1; then
+    if RUSTFLAGS="-D warnings" cargo test --manifest-path "$SCRIPT_DIR/Cargo.toml" --quiet; then
+        pass "Cargo unit tests pass with -D warnings"
+    else
+        fail "Cargo unit tests failed"
+    fi
+
+    if [[ ! -x "$SCRIPT_DIR/target/release/anon" ]] || [[ "${ANON_FORCE_BUILD:-0}" == "1" ]]; then
+        if RUSTFLAGS="-D warnings" cargo build --release --manifest-path "$SCRIPT_DIR/Cargo.toml" --quiet; then
+            pass "Cargo release binary compiled cleanly"
+        else
+            fail "Cargo release build failed"
+        fi
+    else
+        pass "Using compiled release binary target/release/anon"
+    fi
 else
-    fail "Module registry array count mismatch"
+    fail "cargo not found in PATH"
 fi
 
-set_module_status "ip_changer" "Enable"
-set_module_status "kill_switch" "Enable"
-if [[ "$(count_active_modules)" -eq 2 ]]; then
-    pass "Atomic locked state management accurately tracks active modules"
-else
-    fail "Atomic state management count mismatch"
-fi
-reset_all_module_states
-
-# --- 2. os_obfuscation ---
-echo -e "\n\e[1;34m-> Module: os_obfuscation (start & stop)\e[0m"
-source "$SRCDIR/scripts/os_obfuscation"
-os_obfuscation_status="Disable"
-start_os_obfuscation >/dev/null
-assert_log "sysctl -w net.ipv4.ip_default_ttl=128" "Sets TTL to 128 (Windows fingerprint)"
-assert_log "sysctl -w net.ipv4.tcp_window_scaling=0" "Disables TCP window scaling"
-stop_os_obfuscation >/dev/null
-assert_log "sysctl -w net.ipv4.ip_default_ttl=" "Restores default TTL"
-
-# --- 3. ip_changer ---
-echo -e "\n\e[1;34m-> Module: ip_changer (start & stop)\e[0m"
-source "$SRCDIR/scripts/ip_changer"
-ip_changer_status="Disable"
-dns_changer_status="Disable"
-doh_shield_status="Disable"
-echo "dummy" > "$TORRC"
-start_ip_changer >/dev/null 2>&1 || true
-assert_log "iptables-restore: -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -j REDIRECT --to-ports 9040" "Configures Transparent Proxy (REDIRECT)"
-assert_log "iptables-restore: -A OUTPUT -d 192.168.0.0/16 -p udp --dport 53 -j DROP" "Drops direct LAN DNS attempts to prevent leaks"
-assert_log "systemctl start tor.service" "Triggers tor.service start"
-assert_log "check.torproject.org/api/ip" "Executes automated Tor leak test"
-stop_ip_changer >/dev/null 2>&1 || true
-assert_log "systemctl stop tor.service" "Stops tor.service on teardown"
-
-# Snowflake pre-bootstrap DNS pinning + CDN77 torrc generation + unpin on stop
-cat > "$MOCK_DIR/getent" << 'EOF'
-#!/bin/bash
-echo "198.51.100.10  STREAM $2"
-EOF
-chmod +x "$MOCK_DIR/getent"
-ip_changer_status="Disable"
-set_module_status "dpi_spoofing" "Enable"
-start_ip_changer >/dev/null 2>&1 || true
-if grep -q "ANON_PT_PIN" "$ANON_HOSTS_FILE" && grep -q "1098762253.rsc.cdn77.org" "$TORRC"; then
-    pass "ip_changer pins Snowflake rendezvous hosts and writes CDN77 bridge config"
-else
-    fail "ip_changer Snowflake pinning or CDN77 config missing"
-fi
-stop_ip_changer >/dev/null 2>&1 || true
-if ! grep -q "ANON_PT_PIN" "$ANON_HOSTS_FILE"; then
-    pass "stop_ip_changer unpins Snowflake hosts cleanly"
-else
-    fail "stop_ip_changer left ANON_PT_PIN entries in hosts file"
-fi
-stop_kill_switch >/dev/null 2>&1 || true
-reset_all_module_states
-dpi_spoofing_status="Disable"
-
-# --- 4. mac_changer ---
-echo -e "\n\e[1;34m-> Module: mac_changer (start & stop)\e[0m"
-source "$SRCDIR/scripts/mac_changer"
-mac_changer_status="Disable"
-start_mac_changer >/dev/null 2>&1 || true
-assert_log "ip link set wlan0 down" "Takes network interface down safely"
-assert_log "ip link set wlan0 address" "Assigns new authentic vendor-spoofed MAC address"
-stop_mac_changer >/dev/null 2>&1 || true
-assert_log "ip link set .* up" "Restores interface state on stop"
-
-# --- 5. kill_switch ---
-echo -e "\n\e[1;34m-> Module: kill_switch (start & stop)\e[0m"
-source "$SRCDIR/scripts/kill_switch"
-kill_switch_status="Disable"
-start_kill_switch >/dev/null 2>&1 || true
-assert_log "iptables-restore: :OUTPUT DROP" "Sets default OUTPUT policy to DROP atomically"
-assert_log "iptables-restore: -A OUTPUT -o lo -j ACCEPT" "Ensures localhost traffic remains allowed during lockdown"
-assert_log "iptables-restore: -A OUTPUT -d 192.168.0.0/16 -p udp --dport 53 -j DROP" "Blocks LAN DNS leakage in kill switch"
-assert_log "ip6tables-restore: :OUTPUT DROP" "Enforces complete IPv6 kill switch lockdown"
-stop_kill_switch >/dev/null 2>&1 || true
-assert_log "iptables-restore" "Restores baseline firewall ruleset on kill switch stop"
-
-# --- 6. hostname_changer ---
-echo -e "\n\e[1;34m-> Module: hostname_changer (start & stop)\e[0m"
-source "$SRCDIR/scripts/hostname_changer"
-hostname_changer_status="Disable"
-start_hostname_changer >/dev/null 2>&1 || true
-assert_log "hostname " "Applies spoofed hostname live to running kernel"
-stop_hostname_changer >/dev/null 2>&1 || true
-assert_log "hostname " "Restores original hostname"
-
-# --- 7. anti_cold_boot ---
-echo -e "\n\e[1;34m-> Module: anti_cold_boot (start & stop)\e[0m"
-source "$SRCDIR/scripts/anti_cold_boot"
-anti_cold_boot_status="Disable"
-start_anti_cold_boot >/dev/null 2>&1 || true
-assert_log "sysctl -w fs.suid_dumpable=0" "Locks suid core-dumps against forensic extraction"
-assert_log "sysctl -w kernel.core_pattern=|/bin/false" "Disables kernel crash dumps to disk"
-stop_anti_cold_boot >/dev/null 2>&1 || true
-assert_log "sysctl -w fs.suid_dumpable=" "Restores suid dumpable state"
-
-# --- 8. emergency_panic ---
-echo -e "\n\e[1;34m-> Module: emergency_panic\e[0m"
-source "$SRCDIR/scripts/emergency_panic"
-trigger_panic >/dev/null 2>&1 || true
-assert_log "ip link set eth0 down" "Severs Ethernet interfaces immediately"
-assert_log "killall -9 firefox" "Terminates browser and sensitive processes"
-assert_log "iptables -P OUTPUT DROP" "Locks all outbound traffic permanently"
-
-# --- 9. traffic_obfuscation ---
-echo -e "\n\e[1;34m-> Module: traffic_obfuscation\e[0m"
-source "$SRCDIR/scripts/traffic_obfuscation"
-start_traffic_obfuscation >/dev/null 2>&1 || true
-assert_log "tc qdisc add dev" "Injects jitter and latency with tc"
-stop_traffic_obfuscation >/dev/null 2>&1 || true
-assert_log "tc qdisc del dev" "Removes latency qdisc on stop"
-
-# --- 10. sandbox_isolation ---
-echo -e "\n\e[1;34m-> Module: sandbox_isolation\e[0m"
-source "$SRCDIR/scripts/sandbox_isolation"
-start_sandbox_isolation >/dev/null 2>&1 || true
-assert_log "ip netns add anon_jail" "Creates isolated kernel namespace"
-stop_sandbox_isolation >/dev/null 2>&1 || true
-assert_log "ip netns del anon_jail" "Tears down kernel namespace cleanly"
-
-# --- 11. notify-send ---
-echo -e "\n\e[1;34m-> Feature: Desktop Notifications (notify)\e[0m"
-source "$SRCDIR/sources/config"
-notify "Security Warning" "Test Alert" "critical"
-assert_log "notify-send -u critical -a ANON Security Warning Test Alert" "Dispatches desktop notifications via notify-send"
-
-# --- 12. Remaining Modules (DPI, Bridges, DoH, DNS, I2P, BT, TZ, Logging, Proxychains, Stealth, Process, Browser, Anti-MITM, Fix) ---
-echo -e "\n\e[1;34m-> Modules: DPI Spoofing, Tor Bridges, I2P, Bluetooth, Timezone, Logging, Proxychains, Stealth\e[0m"
-source "$SRCDIR/scripts/dpi_spoofing"
-if ( set +e; source "$SRCDIR/scripts/dpi_spoofing"; [[ $- != *e* ]] ); then
-    pass "dpi_spoofing does not leak set -e into parent shell"
-else
-    fail "dpi_spoofing leaked set -e"
-fi
-start_dpi_spoofing >/dev/null 2>&1 && [[ "${dpi_spoofing_status:-}" == "Enable" ]] && stop_dpi_spoofing >/dev/null 2>&1
-pass "dpi_spoofing toggles state cleanly"
-
-source "$SRCDIR/scripts/tor_bridges"
-start_tor_bridges < /dev/null >/dev/null 2>&1 || true
-if [[ "${tor_bridges_status:-}" == "Enable" ]] && _is_valid_bridge_line "obfs4 1.2.3.4:443 ABC" && ! _is_valid_bridge_line "bad line"; then
-    pass "tor_bridges handles non-TTY default fallback and syntax validation"
-else
-    fail "tor_bridges fallback/validation failed"
-fi
-stop_tor_bridges >/dev/null 2>&1 || true
-
-source "$SRCDIR/scripts/i2p_integration"
-start_i2p_integration >/dev/null 2>&1 || true
-assert_log "systemctl start i2pd" "Starts i2pd router via service_ctrl"
-stop_i2p_integration >/dev/null 2>&1 || true
-assert_log "systemctl stop i2pd" "Stops i2pd router via service_ctrl"
-
-source "$SRCDIR/scripts/bluetooth_disabler"
-start_bluetooth_disabler >/dev/null 2>&1 || true
-assert_log "rfkill block bluetooth" "Blocks Bluetooth radio via rfkill"
-stop_bluetooth_disabler >/dev/null 2>&1 || true
-assert_log "rfkill unblock bluetooth" "Restores Bluetooth radio on stop"
-
-source "$SRCDIR/scripts/timezone_changer"
-start_timezone_changer >/dev/null 2>&1 || true
-assert_log "timedatectl set-timezone" "Applies spoofed timezone"
-stop_timezone_changer >/dev/null 2>&1 || true
-[[ "${timezone_changer_status:-}" == "Disable" ]] && pass "timezone_changer restores and disables cleanly" || fail "timezone_changer stop failed"
-
-source "$SRCDIR/scripts/volatile_logging"
-start_volatile_logging >/dev/null 2>&1 || true
-assert_log "mount -t tmpfs" "Mounts tmpfs over /var/log for volatile logging"
-stop_volatile_logging >/dev/null 2>&1 || true
-assert_log "systemctl restart systemd-journald" "Restarts journald on volatile logging teardown"
-
-MOCK_PC="$MOCK_DIR/proxychains4.conf"
-printf 'socks4 127.0.0.1 9050\n#quiet_mode\n' > "$MOCK_PC"
-ANON_PROXYCHAINS_CONF="$MOCK_PC" bash -c 'source "$SRCDIR/scripts/proxychains_integration"; start_proxychains_integration >/dev/null 2>&1'
-if grep -q '^socks5  127.0.0.1 9050' "$MOCK_PC" && grep -q '^quiet_mode' "$MOCK_PC"; then
-    pass "proxychains_integration rewrites config to Tor SOCKS5"
-else
-    fail "proxychains_integration failed to rewrite config"
-fi
-ANON_PROXYCHAINS_CONF="$MOCK_PC" bash -c 'source "$SRCDIR/scripts/proxychains_integration"; stop_proxychains_integration >/dev/null 2>&1'
-
-source "$SRCDIR/scripts/execution_stealth"
-start_execution_stealth >/dev/null 2>&1
-if [[ "${execution_stealth_status:-}" == "Enable" ]]; then
-    stop_execution_stealth >/dev/null 2>&1
-    [[ "${execution_stealth_status:-}" == "Disable" ]] && pass "execution_stealth toggles Enable/Disable cleanly" || fail "execution_stealth stop failed"
-else
-    fail "execution_stealth start failed"
-fi
-
-sed '/^main "\$@"/d' "$SRCDIR/scripts/anti_mitm" > "$MOCK_DIR/anti_mitm_lib.sh"
-if (
-    # shellcheck disable=SC1090,SC1091
-    source "$MOCK_DIR/anti_mitm_lib.sh"
-    declare -F notify >/dev/null 2>&1 && [[ "$(_get_gateway_mac 192.168.1.1)" == "aa:bb:cc:dd:ee:ff" ]]
-); then
-    pass "anti_mitm sources config (notify defined) and parses lladdr cleanly"
-else
-    fail "anti_mitm config/lladdr check failed"
-fi
-
-# --- 13. leak_auditor (positive + negative cases) ---
-echo -e "\n\e[1;34m-> Module: leak_auditor (clear, DoH whitelist, DNS leak lockdown)\e[0m"
-if "$SRCDIR/scripts/leak_auditor" --check-once >/dev/null 2>&1; then
-    pass "One-shot leak audit executes and reports clear state"
-else
-    fail "One-shot leak audit failed"
-fi
-
-sed '/^main "\$@"/d' "$SRCDIR/scripts/leak_auditor" > "$MOCK_DIR/auditor_lib.sh"
-echo "nameserver 127.0.2.1" > "$MOCK_DIR/resolv_doh"
-if (
-    # shellcheck disable=SC1090,SC1091
-    source "$MOCK_DIR/auditor_lib.sh"
-    ANON_RESOLV_CONF="$MOCK_DIR/resolv_doh" doh_shield_status="Enable" ip_changer_status="Disable" check_dns_leak
-); then
-    pass "leak_auditor permits 127.0.2.1 when DoH Shield is active"
-else
-    fail "leak_auditor rejected valid DoH loopback resolver"
-fi
-
-echo "nameserver 127.0.0.53" > "$MOCK_DIR/resolv_bad"
-if (
-    # shellcheck disable=SC1090,SC1091
-    source "$MOCK_DIR/auditor_lib.sh"
-    ANON_RESOLV_CONF="$MOCK_DIR/resolv_bad" doh_shield_status="Enable" ip_changer_status="Disable" check_dns_leak 2>/dev/null
-); then
-    fail "leak_auditor failed to catch 127.0.0.53 DNS leak"
-else
-    pass "leak_auditor triggers lockdown on 127.0.0.53 DNS leak"
-fi
-
-# --- 14. metadata_cleaner (file + empty dir edge case) ---
-echo -e "\n\e[1;34m-> Module: metadata_cleaner\e[0m"
-TEST_SAMPLE="$MOCK_DIR/sample_image.jpg"
-touch "$TEST_SAMPLE"
-"$SRCDIR/scripts/metadata_cleaner" "$TEST_SAMPLE" >/dev/null 2>&1
-assert_log "mat2 --inplace $TEST_SAMPLE" "Invokes MAT2 engine for file sanitization"
-
-EMPTY_DIR="$MOCK_DIR/empty_dir"
-mkdir -p "$EMPTY_DIR"
-if "$SRCDIR/scripts/metadata_cleaner" "$EMPTY_DIR" >/dev/null 2>&1; then
-    pass "metadata_cleaner handles empty directories gracefully (exit 0)"
-else
-    fail "metadata_cleaner errored on empty directory"
-fi
-
-# --- 15. Blackbox CLI Tests ---
-echo -e "\n\e[1;33m[*] Running Blackbox Tests (End-to-End Execution)...\e[0m"
-: > "$TEST_LOGS"
-
-echo -e "\n\e[1;34m-> Feature: CLI Argument (--status & --status --json)\e[0m"
-"$MOCK_DIR/anon" --status > blackbox_out.txt 2>&1
-if grep -q "ANON SYSTEM STATUS" blackbox_out.txt && grep -q "Leak Auditor" blackbox_out.txt; then
-    pass "System status dashboard prints all 22 modules successfully"
-else
-    fail "System status failed"
-fi
-
-STATUS_JSON=$("$MOCK_DIR/anon" --status --json 2>&1)
-if echo "$STATUS_JSON" | grep -q '"version":"3.0.0"' && echo "$STATUS_JSON" | grep -q '"leak_auditor":false'; then
-    pass "CLI --status --json emits clean parseable JSON"
-else
-    fail "CLI --status --json output invalid"
-fi
-
-echo -e "\n\e[1;34m-> Feature: CLI Argument (--version & --help)\e[0m"
-VER_OUT=$("$MOCK_DIR/anon" --version 2>&1)
-if [[ "$VER_OUT" == "ANON v3.0.0" ]]; then
-    pass "CLI --version prints clean version string"
-else
-    fail "CLI --version unexpected: $VER_OUT"
-fi
-
-"$MOCK_DIR/anon" --help > blackbox_help.txt 2>&1 || true
-if grep -q "\-\-panic" blackbox_help.txt && grep -q "\-\-audit" blackbox_help.txt && grep -q "\-\-clean-meta" blackbox_help.txt && grep -q "\-\-profile" blackbox_help.txt; then
-    pass "CLI help displays all options including --profile, --audit, and --clean-meta"
-else
-    fail "CLI help missing options"
-fi
-
-echo -e "\n\e[1;34m-> Feature: CLI Argument (--audit & --audit --json)\e[0m"
-"$MOCK_DIR/anon" --audit > blackbox_audit.txt 2>&1 || true
-if grep -q "Audit complete" blackbox_audit.txt; then
-    pass "CLI --audit executes one-shot audit successfully"
-else
-    fail "CLI --audit failed"
-fi
-
-AUDIT_JSON=$("$MOCK_DIR/anon" --audit --json 2>&1)
-if echo "$AUDIT_JSON" | grep -q '"status":"clean"' && ! echo "$AUDIT_JSON" | grep -q $'\x1b'; then
-    pass "CLI --audit --json emits ANSI-free JSON"
-else
-    fail "CLI --audit --json invalid or contains ANSI codes"
-fi
-
-echo -e "\n\e[1;34m-> Feature: CLI Argument (--clean-meta)\e[0m"
-"$MOCK_DIR/anon" --clean-meta "$TEST_SAMPLE" > blackbox_meta.txt 2>&1 || true
-if grep -q "Metadata sanitized successfully" blackbox_meta.txt; then
-    pass "CLI --clean-meta executes metadata sanitizer successfully"
-else
-    fail "CLI --clean-meta failed"
-fi
-
-echo -e "\n\e[1;34m-> Feature: CLI Arguments (--start, --stop, --fix, --panic, invalid --profile)\e[0m"
-mock_cmd sleep
-: > "$TEST_LOGS"
-set_module_status "hostname_changer" "Enable"
-START_OUT=$("$MOCK_DIR/anon" --start < /dev/null 2>&1 || true)
-if echo "$START_OUT" | grep -q "Anon started successfully in non-interactive mode" && grep -q "Hostname changer successfully enabled" <<< "$START_OUT"; then
-    pass "Headless --start executes saved enabled modules without false skip"
-else
-    fail "Headless --start failed or skipped saved enabled module"
-fi
-
-STOP_OUT=$("$MOCK_DIR/anon" --stop < /dev/null 2>&1 || true)
-if echo "$STOP_OUT" | grep -q "Hostname changer successfully disabled"; then
-    pass "CLI --stop deactivates active modules cleanly"
-else
-    fail "CLI --stop failed"
-fi
-
-# Orphaned ip_changer teardown (ip_changer_status=Disable after bootstrap failure, torrc.bak present)
-reset_all_module_states
-touch "$BACKUPDIR/torrc.bak"
-ORPHAN_STOP_OUT=$("$MOCK_DIR/anon" --stop < /dev/null 2>&1 || true)
-if echo "$ORPHAN_STOP_OUT" | grep -q "Ip changer successfully disabled" && [[ ! -f "$BACKUPDIR/torrc.bak" ]]; then
-    pass "CLI --stop cleans up orphaned ip_changer state after failed bootstrap"
-else
-    fail "CLI --stop failed to clean up orphaned ip_changer state"
-fi
-
-set_module_status "kill_switch" "Enable"
-PROF_OUT=$("$MOCK_DIR/anon" --profile quick < /dev/null 2>&1 || true)
-if echo "$PROF_OUT" | grep -q "Profile 'quick' applied successfully" && \
-   echo "$PROF_OUT" | grep -q "Network Kill Switch disabled" && \
-   echo "$PROF_OUT" | grep -q "Ip changer successfully enabled"; then
-    pass "CLI --profile stops excluded modules and starts target profile modules"
-else
-    fail "CLI --profile execution failed"
-fi
-
-FIX_OUT=$("$MOCK_DIR/anon" --fix < /dev/null 2>&1 || true)
-if echo "$FIX_OUT" | grep -q "System successfully repaired"; then
-    pass "CLI --fix runs system recovery cleanly"
-else
-    fail "CLI --fix failed"
-fi
-
-PANIC_OUT=$("$MOCK_DIR/anon" --panic < /dev/null 2>&1 || true)
-if echo "$PANIC_OUT" | grep -q "System has been sanitized and locked down"; then
-    pass "CLI --panic triggers lockdown protocol cleanly"
-else
-    fail "CLI --panic failed"
-fi
-
-if "$MOCK_DIR/anon" --profile nonexistent_profile >/dev/null 2>&1; then
-    fail "CLI --profile accepted invalid profile name"
-else
-    pass "CLI --profile rejects invalid profile name"
-fi
-
-echo -e "\n\e[1;36m=================================================\e[0m"
-echo -e "Test Results: \e[32m$PASS_COUNT Passed\e[0m | \e[31m$FAIL_COUNT Failed\e[0m"
-if [ "$FAIL_COUNT" -eq 0 ]; then
-    echo -e "\e[1;32mALL $PASS_COUNT TESTS PASSED SUCCESSFULLY! The architecture is solid.\e[0m"
-else
-    echo -e "\e[1;31mSOME TESTS FAILED! Please check the logs.\e[0m"
+BIN_PATH="$SCRIPT_DIR/target/release/anon"
+if [[ ! -x "$BIN_PATH" ]]; then
+    echo -e "${RED}[FATAL] Binary missing at $BIN_PATH${RESET}"
     exit 1
 fi
-echo -e "\e[1;36m=================================================\e[0m"
+
+if ! command -v fakeroot >/dev/null 2>&1; then
+    echo -e "${RED}[FATAL] fakeroot is required to run isolated CLI tests${RESET}"
+    exit 1
+fi
+
+# ------------------------------------------------------------------------------
+# Create Isolated Mock Environment
+# ------------------------------------------------------------------------------
+MOCK_DIR="$(mktemp -d /tmp/t_anon_XXXXXX)"
+MOCK_BIN="${MOCK_DIR}/bin"
+MOCK_LOG="${MOCK_DIR}/mock_calls.log"
+trap 'rm -rf "$MOCK_DIR"' EXIT
+
+mkdir -p "$MOCK_BIN" "${MOCK_DIR}/assets/sources" "${MOCK_DIR}/assets/banners" \
+         "${MOCK_DIR}/backups" "${MOCK_DIR}/etc/tor" "${MOCK_DIR}/netns_etc" "${MOCK_DIR}/wrappers"
+
+cp "$BIN_PATH" "${MOCK_DIR}/anon"
+chmod +x "${MOCK_DIR}/anon"
+cp -a "${SCRIPT_DIR}/assets/sources/." "${MOCK_DIR}/assets/sources/"
+cp -a "${SCRIPT_DIR}/assets/banners/." "${MOCK_DIR}/assets/banners/" 2>/dev/null || true
+
+touch "$MOCK_LOG"
+printf 'TransPort 9040\nDNSPort 5353\n' > "${MOCK_DIR}/etc/tor/torrc"
+printf '127.0.0.1 localhost\n' > "${MOCK_DIR}/etc/hosts"
+printf 'nameserver 1.1.1.1\n' > "${MOCK_DIR}/etc/resolv.conf"
+printf 'socks4 127.0.0.1 9050\n' > "${MOCK_DIR}/etc/proxychains4.conf"
+
+create_mock_bin() {
+    local name="$1"
+    local body="$2"
+    cat > "${MOCK_BIN}/${name}" <<EOF
+#!/bin/bash
+echo "${name} \$*" >> "$MOCK_LOG"
+${body}
+EOF
+    chmod +x "${MOCK_BIN}/${name}"
+}
+
+create_mock_bin "iptables" "exit 0"
+create_mock_bin "ip6tables" "exit 0"
+create_mock_bin "iptables-save" "echo '*filter'; echo ':INPUT ACCEPT [0:0]'; echo ':FORWARD ACCEPT [0:0]'; echo ':OUTPUT ACCEPT [0:0]'; echo 'COMMIT'; exit 0"
+create_mock_bin "ip6tables-save" "echo '*filter'; echo ':INPUT ACCEPT [0:0]'; echo ':FORWARD ACCEPT [0:0]'; echo ':OUTPUT ACCEPT [0:0]'; echo 'COMMIT'; exit 0"
+create_mock_bin "iptables-restore" "cat >/dev/null; exit 0"
+create_mock_bin "ip6tables-restore" "cat >/dev/null; exit 0"
+create_mock_bin "systemctl" "if [[ \"\$1\" == \"is-active\" ]]; then exit 0; fi; exit 0"
+create_mock_bin "service" "exit 0"
+create_mock_bin "ip" "if [[ \"\$1\" == \"route\" ]]; then echo 'default via 192.168.1.1 dev eth0'; elif [[ \"\$1\" == \"link\" ]]; then echo 'link/ether 00:11:22:33:44:55 brd ff:ff:ff:ff:ff:ff'; fi; exit 0"
+create_mock_bin "timedatectl" "if [[ \"\$1\" == \"show\" ]]; then echo 'Europe/Istanbul'; fi; exit 0"
+create_mock_bin "hostnamectl" "exit 0"
+create_mock_bin "hostname" "if [[ \$# -eq 0 ]]; then echo 'testhost'; fi; exit 0"
+create_mock_bin "macchanger" "exit 0"
+create_mock_bin "sdmem" "exit 0"
+create_mock_bin "rfkill" "echo '0: hci0: Bluetooth'; echo 'Soft blocked: no'; exit 0"
+create_mock_bin "swapoff" "exit 0"
+create_mock_bin "swapon" "exit 0"
+create_mock_bin "tor" "exit 0"
+create_mock_bin "i2pd" "exit 0"
+create_mock_bin "dnscrypt-proxy" "exit 0"
+create_mock_bin "firejail" "exit 0"
+create_mock_bin "aa-enforce" "exit 0"
+create_mock_bin "aa-disable" "exit 0"
+create_mock_bin "mat2" "for arg in \"\$@\"; do if [[ -f \"\$arg\" ]]; then : > \"\${arg}.cleaned\"; fi; done; exit 0"
+create_mock_bin "exiftool" "exit 0"
+create_mock_bin "curl" "echo '{\"IsTor\":true,\"IP\":\"198.51.100.2\"}'; exit 0"
+create_mock_bin "pkill" "exit 0"
+create_mock_bin "killall" "exit 0"
+create_mock_bin "pgrep" "exit 1"
+create_mock_bin "ss" "exit 0"
+create_mock_bin "mount" "exit 0"
+create_mock_bin "umount" "exit 0"
+create_mock_bin "mountpoint" "exit 1"
+create_mock_bin "sysctl" "exit 0"
+create_mock_bin "chattr" "exit 0"
+create_mock_bin "shred" "exit 0"
+create_mock_bin "notify-send" "exit 0"
+create_mock_bin "obfs4proxy" "exit 0"
+create_mock_bin "snowflake-client" "exit 0"
+create_mock_bin "dmidecode" "echo 'MockVendor'; exit 0"
+
+export PATH="${MOCK_BIN}:$PATH"
+export BASE_DIR="$MOCK_DIR"
+export BACKUPDIR="${MOCK_DIR}/backups"
+export ANON_STATE_FILE="${MOCK_DIR}/backups/anon.state"
+export TORRC="${MOCK_DIR}/etc/tor/torrc"
+export ANON_HOSTS_FILE="${MOCK_DIR}/etc/hosts"
+export ANON_RESOLV_CONF="${MOCK_DIR}/etc/resolv.conf"
+export ANON_PROXYCHAINS_CONF="${MOCK_DIR}/etc/proxychains4.conf"
+export APPARMOR_TOR_PROFILE="${MOCK_DIR}/apparmor.tor"
+export NETNS_ETC_DIR="${MOCK_DIR}/netns_etc"
+export WRAPPER_DIR="${MOCK_DIR}/wrappers"
+export ANON_SKIP_STEALTH=1
+export ANON_TOR_BOOTSTRAP_TIMEOUT=1
+
+run_anon_root() {
+    fakeroot "${MOCK_DIR}/anon" "$@"
+}
+
+# ------------------------------------------------------------------------------
+# 2. CLI Basic, Root Guard, Version, Help, Status & JSON Schema
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}=== 2. CLI Surface, Help, Root Guard & JSON Schema ===${RESET}"
+
+VER_OUT="$("${MOCK_DIR}/anon" --version 2>&1)"
+assert_contains "$VER_OUT" "3.0.0" "anon --version reports 3.0.0"
+
+HELP_OUT="$("${MOCK_DIR}/anon" --help 2>&1)"
+assert_contains "$HELP_OUT" "--start" "anon --help documents --start"
+assert_contains "$HELP_OUT" "--audit" "anon --help documents --audit"
+assert_contains "$HELP_OUT" "--clean-meta" "anon --help documents --clean-meta"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+    "${MOCK_DIR}/anon" --status >/dev/null 2>&1
+    NONROOT_RC=$?
+    if [[ "$NONROOT_RC" -ne 0 ]]; then
+        pass "Non-root execution of --status is rejected (exit $NONROOT_RC)"
+    else
+        fail "Non-root execution unexpectedly succeeded"
+    fi
+else
+    pass "Running natively as UID 0; skipping non-root rejection test"
+fi
+
+STATUS_OUT="$(run_anon_root --status 2>&1)"
+assert_contains "$STATUS_OUT" "Ip changer" "anon --status renders module labels"
+assert_contains "$STATUS_OUT" "ANON SYSTEM STATUS" "anon --status renders header"
+
+JSON_OUT="$(run_anon_root --status --json 2>&1)"
+assert_contains "$JSON_OUT" '"version":"3.0.0"' "--status --json includes version"
+assert_contains "$JSON_OUT" '"active_count":0' "--status --json shows 0 active modules initially"
+assert_contains "$JSON_OUT" '"anti_cold_boot":false' "--status --json includes 22nd module anti_cold_boot"
+
+# ------------------------------------------------------------------------------
+# 3. Leak Auditor (--audit & --audit --json Exit Code Propagation)
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}=== 3. Leak Auditor & Exit Code Propagation ===${RESET}"
+
+AUDIT_OK_OUT="$(run_anon_root --audit 2>&1)"
+AUDIT_OK_RC=$?
+assert_eq "$AUDIT_OK_RC" "0" "--audit returns exit 0 when clean"
+assert_contains "$AUDIT_OK_OUT" "No leaks detected" "--audit reports clean state"
+
+# Simulate Tor active with clearnet nameserver 1.1.1.1 -> MUST exit 2 in BOTH modes!
+printf 'ip_changer_status="Enable"\n' > "$ANON_STATE_FILE"
+printf 'nameserver 1.1.1.1\n' > "$ANON_RESOLV_CONF"
+
+set +e
+AUDIT_LEAK_OUT="$(run_anon_root --audit 2>&1)"
+AUDIT_LEAK_RC=$?
+set -e
+assert_eq "$AUDIT_LEAK_RC" "2" "--audit returns exit 2 on clearnet DNS leak"
+assert_contains "$AUDIT_LEAK_OUT" "CRITICAL LEAK DETECTED" "--audit prints leak warning"
+
+set +e
+AUDIT_LEAK_JSON="$(run_anon_root --audit --json 2>&1)"
+AUDIT_LEAK_JSON_RC=$?
+set -e
+assert_eq "$AUDIT_LEAK_JSON_RC" "2" "--audit --json returns exit 2 on DNS leak"
+assert_contains "$AUDIT_LEAK_JSON" '"status":"leak_detected"' "--audit --json reports leak_detected"
+
+: > "$ANON_STATE_FILE"
+
+# ------------------------------------------------------------------------------
+# 4. Metadata Cleaner (Parallel Dir + Empty + Missing Path)
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}=== 4. Metadata Cleaner ===${RESET}"
+
+META_DIR="${MOCK_DIR}/meta_samples"
+mkdir -p "${META_DIR}/nested"
+printf 'img1' > "${META_DIR}/a.jpg"
+printf 'img2' > "${META_DIR}/nested/b.png"
+
+META_OUT="$(run_anon_root --clean-meta "$META_DIR" 2>&1)"
+META_RC=$?
+assert_eq "$META_RC" "0" "--clean-meta succeeds on directory with files"
+assert_contains "$META_OUT" "(2/2 file(s))" "--clean-meta sanitized both files in parallel"
+
+set +e
+run_anon_root --clean-meta "${MOCK_DIR}/does_not_exist" >/dev/null 2>&1
+MISSING_RC=$?
+set -e
+if [[ "$MISSING_RC" -ne 0 ]]; then
+    pass "--clean-meta fails on nonexistent path"
+else
+    fail "--clean-meta unexpectedly succeeded on nonexistent path"
+fi
+
+# ------------------------------------------------------------------------------
+# 5. Profile Validation, Module Execution & Orphaned torrc.bak Sandbox Fix
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}=== 5. Profiles, Start/Stop & torrc.bak Sandbox Recovery ===${RESET}"
+
+set +e
+BAD_PROF_OUT="$(run_anon_root --profile nonexistent_profile 2>&1)"
+BAD_PROF_RC=$?
+set -e
+if [[ "$BAD_PROF_RC" -ne 0 ]]; then
+    pass "--profile rejects unknown profile name"
+else
+    fail "--profile accepted unknown profile"
+fi
+assert_contains "$BAD_PROF_OUT" "Unknown profile" "--profile prints descriptive error"
+
+# Orphaned torrc.bak recovery should strip '# ANON_SANDBOX' when sandbox_isolation is Disable
+printf 'SocksPort 9050\nSandbox 1 # ANON_SANDBOX\nTransPort 9040\n' > "${MOCK_DIR}/backups/torrc.bak"
+STOP_ORPHAN_OUT="$(run_anon_root --stop 2>&1)"
+TORRC_AFTER="$(cat "$TORRC")"
+assert_not_contains "$TORRC_AFTER" "# ANON_SANDBOX" "Orphaned torrc.bak restore strips stale # ANON_SANDBOX"
+assert_contains "$STOP_ORPHAN_OUT" "Ip changer successfully disabled" "--stop tears down orphaned ip_changer cleanly"
+
+# Test profile quick (enables ip_changer [2], browser_anonymization [7], sandbox_isolation [17])
+PROF_OUT="$(run_anon_root --profile quick 2>&1)"
+assert_contains "$PROF_OUT" "Profile 'quick' applied successfully" "--profile quick applies cleanly"
+STATE_AFTER_QUICK="$(cat "$ANON_STATE_FILE" 2>/dev/null || true)"
+assert_contains "$STATE_AFTER_QUICK" 'ip_changer_status="Enable"' "quick profile enables ip_changer"
+assert_contains "$STATE_AFTER_QUICK" 'sandbox_isolation_status="Enable"' "quick profile enables sandbox_isolation"
+TORRC_SANDBOX="$(cat "$TORRC" 2>/dev/null || true)"
+assert_contains "$TORRC_SANDBOX" "# ANON_SANDBOX" "sandbox_isolation + ip_changer injects ANON_SANDBOX Tor listeners"
+TORRC_BAK_QUICK="$(cat "${MOCK_DIR}/backups/torrc.bak" 2>/dev/null || true)"
+assert_not_contains "$TORRC_BAK_QUICK" "# ANON_SANDBOX" "torrc.bak never stores # ANON_SANDBOX markers"
+
+run_anon_root --stop >/dev/null 2>&1
+JSON_AFTER_STOP="$(run_anon_root --status --json 2>&1)"
+assert_contains "$JSON_AFTER_STOP" '"active_count":0' "--stop resets active_count to 0"
+TORRC_AFTER_STOP="$(cat "$TORRC" 2>/dev/null || true)"
+assert_not_contains "$TORRC_AFTER_STOP" "# ANON_SANDBOX" "Stopping sandbox+ip_changer leaves torrc free of # ANON_SANDBOX"
+
+# Test profile lockdown (anti_mitm [0], volatile_logging [1], bluetooth_disabler [9], anti_cold_boot [12], kill_switch [14], execution_stealth [20])
+LOCK_OUT="$(run_anon_root --profile lockdown 2>&1)"
+assert_contains "$LOCK_OUT" "Profile 'lockdown' applied successfully" "--profile lockdown applies cleanly"
+STATE_AFTER_LOCK="$(cat "$ANON_STATE_FILE" 2>/dev/null || true)"
+assert_contains "$STATE_AFTER_LOCK" 'anti_cold_boot_status="Enable"' "lockdown profile enables anti_cold_boot"
+assert_contains "$STATE_AFTER_LOCK" 'kill_switch_status="Enable"' "lockdown profile enables kill_switch"
+
+run_anon_root --stop >/dev/null 2>&1
+
+# Test default --start (activates ip_changer + kill_switch)
+START_OUT="$(run_anon_root --start 2>&1)"
+assert_contains "$START_OUT" "Anon started successfully" "--start completes cleanly"
+STATE_AFTER_START="$(cat "$ANON_STATE_FILE" 2>/dev/null || true)"
+assert_contains "$STATE_AFTER_START" 'ip_changer_status="Enable"' "--start enables ip_changer by default"
+assert_contains "$STATE_AFTER_START" 'kill_switch_status="Enable"' "--start enables kill_switch by default"
+run_anon_root --stop >/dev/null 2>&1
+
+# ------------------------------------------------------------------------------
+# 6. --fix & --panic Safety Flows
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}=== 6. Emergency Fix & Panic Flows ===${RESET}"
+
+# --profile quick already generated anon_fix_backups.tar.gz in backups/
+FIX_OUT="$(run_anon_root --fix 2>&1)"
+assert_contains "$FIX_OUT" "System successfully repaired" "--fix restores system backup cleanly"
+
+printf 'anti_cold_boot_status="Enable"\n' > "$ANON_STATE_FILE"
+PANIC_OUT="$(printf 'DELETE\n' | run_anon_root --panic 2>&1)"
+assert_contains "$PANIC_OUT" "SUCCESS: System has been sanitized and locked down" "--panic executes emergency lockdown on DELETE"
+JSON_AFTER_PANIC="$(run_anon_root --status --json 2>&1)"
+assert_contains "$JSON_AFTER_PANIC" '"active_count":0' "--panic clears module state"
+
+# ------------------------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------------------------
+echo ""
+echo -e "${YELLOW}============================================================${RESET}"
+echo -e "  Test Results: ${GREEN}${PASS_COUNT} Passed${RESET} | ${RED}${FAIL_COUNT} Failed${RESET}"
+echo -e "${YELLOW}============================================================${RESET}"
+
+if [[ "$FAIL_COUNT" -ne 0 ]]; then
+    exit 1
+fi
+exit 0

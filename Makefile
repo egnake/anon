@@ -2,19 +2,26 @@ tool_name=anon
 DESTDIR ?=
 src_dir=/usr/share
 trigger_dir=/usr/bin
+CARGO ?= cargo
+export PATH := $(HOME)/.cargo/bin:$(PATH)
 
-.PHONY: install uninstall reinstall lint test
+.PHONY: all build install uninstall reinstall lint test clean
 
-install:
+all: build
+
+build:
+	RUSTFLAGS="-D warnings" $(CARGO) build --release
+
+clean:
+	$(CARGO) clean
+
+install: build
 	install -d $(DESTDIR)$(trigger_dir)
-	install -m 755 anon $(DESTDIR)$(trigger_dir)/$(tool_name)
+	install -m 755 target/release/$(tool_name) $(DESTDIR)$(trigger_dir)/$(tool_name)
 	mkdir -p $(DESTDIR)$(src_dir)/$(tool_name)/backups
 	cp -a assets $(DESTDIR)$(src_dir)/$(tool_name)/
 	rm -f $(DESTDIR)$(src_dir)/$(tool_name)/assets/sources/bridges.txt
-	chmod 755 $(DESTDIR)$(src_dir)/$(tool_name)/assets/scripts/*
-	chmod 644 $(DESTDIR)$(src_dir)/$(tool_name)/assets/sources/config \
-		$(DESTDIR)$(src_dir)/$(tool_name)/assets/sources/helpers \
-		$(DESTDIR)$(src_dir)/$(tool_name)/assets/sources/anon.js \
+	chmod 644 $(DESTDIR)$(src_dir)/$(tool_name)/assets/sources/anon.js \
 		$(DESTDIR)$(src_dir)/$(tool_name)/assets/sources/bridges.default.txt
 	mkdir -p $(DESTDIR)/usr/share/kali-menu/applications/ || true
 	cp -f $(DESTDIR)$(src_dir)/$(tool_name)/assets/anon.desktop $(DESTDIR)/usr/share/kali-menu/applications/ || true
@@ -38,10 +45,11 @@ reinstall:
 	$(MAKE) install DESTDIR=$(DESTDIR)
 
 lint:
-	bash -n anon setup.sh test_suite.sh assets/sources/config assets/sources/helpers assets/scripts/*
-	shellcheck -S warning -e SC1090,SC1091,SC2034 \
-		anon setup.sh test_suite.sh assets/sources/config assets/sources/helpers assets/scripts/*
+	RUSTFLAGS="-D warnings" $(CARGO) check --all-targets
+	bash -n setup.sh test_suite.sh
+	shellcheck -S warning -e SC1090,SC1091,SC2034 setup.sh test_suite.sh
 
 test:
+	RUSTFLAGS="-D warnings" $(CARGO) test
 	chmod +x test_suite.sh
 	./test_suite.sh

@@ -8,7 +8,7 @@
     <a href="https://github.com/egnake/anon/blob/main/LICENSE"><img src="https://img.shields.io/badge/Lisans-MIT-blue.svg?style=for-the-badge" alt="License"></a>
     <a href="https://github.com/egnake/anon/releases"><img src="https://img.shields.io/badge/Sürüm-3.0-green.svg?style=for-the-badge" alt="Version"></a>
     <img src="https://img.shields.io/badge/Platform-Linux%20(Debian%2FKali)-orange.svg?style=for-the-badge" alt="Platform">
-    <img src="https://img.shields.io/badge/Dil-Bash_100%25-yellow.svg?style=for-the-badge" alt="Language">
+    <img src="https://img.shields.io/badge/Dil-Rust_(Sıfır_Bağımlılık)-yellow.svg?style=for-the-badge" alt="Language">
     <img src="https://img.shields.io/badge/Mimari-Modüler-purple.svg?style=for-the-badge" alt="Architecture">
   </p>
 
@@ -22,7 +22,7 @@
 
 ## 🚀 Genel Bakış
 
-**ANON**, siber güvenlik araştırmacıları, geliştiriciler ve gizlilik savunucuları için tasarlanmış titiz, açık kaynaklı bir anonimlik ve Operasyonel Güvenlik (OPSEC) çerçevesidir. Temel proxy betiklerinin çok ötesine geçen ANON; sıkı ağ izolasyonu uygulayan, sistem parmak izlerini rastgele değiştiren ve aktif anti-adli bilişim (anti-forensics) tedbirleri alan derinlemesine entegre edilmiş 22 durumlu OPSEC modülü (entegre yardımcı ve kurtarma araçlarıyla birlikte 26 modüler betik) sunar.
+**ANON**, siber güvenlik araştırmacıları, geliştiriciler ve gizlilik savunucuları için **sıfır harici bağımlılıklı Rust** ile geliştirilmiş titiz, açık kaynaklı bir anonimlik ve Operasyonel Güvenlik (OPSEC) çerçevesidir. Hızlı bir yerel ikili dosya (native binary) olarak derlenen ANON; sıkı ağ izolasyonu uygulayan, sistem parmak izlerini rastgele değiştiren, Netlink/inotify tabanlı aktif anti-adli bilişim (anti-forensics) ve paralel metaveri temizleme tedbirleri alan derinlemesine entegre edilmiş 22 durumlu OPSEC modülü sunar.
 
 ANON; Linux çekirdek ağ alanlarını (`netns`), trafik kontrolünü (`tc`) ve dinamik `iptables` yapılandırmalarını kullanarak standart bir Debian kurulumunu son derece kısıtlanmış ve güvenli bir ortama dönüştürür. Çıkan tüm trafiğin kesinlikle Tor ağı üzerinden yönlendirilmesini sağlarken, yaygın zamanlama saldırılarını ve yerel ağ tehditlerini hafifletir.
 
@@ -127,7 +127,7 @@ Resimler, PDF'ler, ofis belgeleri ve medyadan EXIF, GPS konumları, yazar bilgil
 
 ## 🖥️ Etkileşimli Terminal Kullanıcı Arayüzü (TUI)
 
-ANON, hantal komut satırı parametrelerini tamamen Bash ile yazılmış zarif, duyarlı bir TUI ile değiştirir.
+ANON, hantal komut satırı parametrelerini Rust ile yerel olarak derlenen hızlı ve titreşimsiz bir TUI ile değiştirir.
 
 * **Dinamik Estetik Oluşturma:** TUI, her başlatıldığında dinamik olarak değişen, güzel biçimlendirilmiş, ortalanmış ASCII banner'lara sahiptir.
 * **Canlı Kontrol Paneli (Live Dashboard):** Çıkış IP'nizi, aktif devre durumunuzu, anlık ağ trafiğini ve çalışan OPSEC modüllerini sızıntı olmadan gerçek zamanlı izleyin.
@@ -141,7 +141,7 @@ ANON, Linux ağ yığınına derinden entegredir. Gereksinimleri:
 
 - **İşletim Sistemi:** Kali Linux, Parrot Security OS, Debian, Ubuntu veya Windows 10/11 üzerinde WSL2 (`/etc/wsl.conf` içinde `systemd=true` önerilir; Docker üzerinde `--cap-add=NET_ADMIN --cap-add=SYS_ADMIN` ile desteklenir).
 - **İzinler:** `iptables`, kernel ağ alanlarını (namespaces) ve ağ arayüzlerini manipüle etmek için Root ayrıcalıkları (`sudo`) gereklidir.
-- **Bağımlılıklar (`setup.sh` ile otomatik kurulur):** `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
+- **Derleme ve Çalışma Zamanı Bağımlılıkları (`setup.sh` ile otomatik kurulur):** `cargo`, `rustc`, `make`, `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
 - **Windows (WSL2) ve Docker:** Windows'ta WSL2 kurulumu ve kullanıcı `PATH` ayarı için `setup.bat` dosyasını çalıştırın (`anon.bat`, `--clean-meta` için Windows yollarını `wslpath` ile çevirir). Docker imajını `docker build -t anon .` ile derleyip `docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon` komutuyla başlatabilirsiniz.
 
 ---

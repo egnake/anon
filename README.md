@@ -8,7 +8,7 @@
     <a href="https://github.com/egnake/anon/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License"></a>
     <a href="https://github.com/egnake/anon/releases"><img src="https://img.shields.io/badge/Version-3.0-green.svg?style=for-the-badge" alt="Version"></a>
     <img src="https://img.shields.io/badge/Platform-Linux%20(Debian%2FKali)-orange.svg?style=for-the-badge" alt="Platform">
-    <img src="https://img.shields.io/badge/Bash-100%25-yellow.svg?style=for-the-badge" alt="Language">
+    <img src="https://img.shields.io/badge/Rust-Zero_Deps-yellow.svg?style=for-the-badge" alt="Language">
     <img src="https://img.shields.io/badge/Architecture-Modular-purple.svg?style=for-the-badge" alt="Architecture">
   </p>
 
@@ -22,7 +22,7 @@
 
 ## 🚀 Overview
 
-**ANON** is a rigorous, open-source anonymity and Operations Security (OPSEC) framework designed for researchers, developers, and privacy advocates. Moving beyond basic proxy scripts, ANON provides a deeply integrated, 22-module architecture (backed by 26 modular scripts including integrated safety and browser utilities) that enforces strict network isolation, randomizes system fingerprints, and applies active anti-forensics measures.
+**ANON** is a rigorous, open-source anonymity and Operations Security (OPSEC) framework written in **zero-dependency Rust** for researchers, developers, and privacy advocates. Compiled to a fast native binary, ANON provides a deeply integrated, 22-module architecture (alongside native Netlink/inotify daemons, parallel metadata sanitization, disposable browser, emergency panic, and system recovery utilities) that enforces strict network isolation, randomizes system fingerprints, and applies active anti-forensics measures.
 
 By utilizing Linux kernel namespaces (`netns`), traffic control (`tc`), and dynamic `iptables` configurations, ANON transforms a standard Debian-based installation into a highly restricted environment. It ensures that all outbound traffic is strictly routed through the Tor network while mitigating common timing attacks and local network threats.
 
@@ -127,7 +127,7 @@ Mounts an in-memory `tmpfs` disk over `/var/log` and journal directories during 
 
 ## 🖥️ Interactive Terminal User Interface (TUI)
 
-ANON replaces clunky command-line arguments with an elegant, responsive TUI built entirely in Bash.
+ANON replaces clunky command-line arguments with an elegant, flicker-free responsive TUI compiled natively in Rust.
 
 * **Dynamic Aesthetic Rendering:** Centered ASCII banners that change dynamically on launch, providing a clean, distraction-free environment.
 * **Live Dashboard:** Monitor your Tor exit IP, network status, traffic throughput, and active OPSEC modules in real-time without clear web leaks.
@@ -141,7 +141,7 @@ ANON is heavily integrated with the Linux networking stack. It requires:
 
 - **Operating System:** Kali Linux, Parrot Security OS, Debian, Ubuntu, or Windows 10/11 via WSL2 (`systemd=true` in `/etc/wsl.conf` recommended; Docker supported with `--cap-add=NET_ADMIN --cap-add=SYS_ADMIN`).
 - **Permissions:** Root privileges (`sudo`) are required to manipulate `iptables`, kernel namespaces, and network interfaces.
-- **Dependencies (Automatically installed via `setup.sh`):** `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
+- **Build & Runtime Dependencies (Automatically installed via `setup.sh`):** `cargo`, `rustc`, `make`, `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
 - **Windows (WSL2) & Docker:** Run `setup.bat` on Windows to install/configure WSL2 and add `anon.bat` to your user `PATH` (supports Windows-to-WSL path translation for `--clean-meta`). In Docker, build with `docker build -t anon .` and run with `docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon`.
 
 ---

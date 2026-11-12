@@ -25,3 +25,9 @@ assets/sources/bridges.txt
 # Dynamic backups
 backups/*
 !backups/.gitkeep
+
+# Rust build artifacts & release packages
+target/
+Cargo.lock
+*.deb
+*.tar.gz
