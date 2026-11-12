@@ -130,7 +130,11 @@ create_mock_bin "iptables-restore" "cat >/dev/null; exit 0"
 create_mock_bin "ip6tables-restore" "cat >/dev/null; exit 0"
 create_mock_bin "systemctl" "if [[ \"\$1\" == \"is-active\" ]]; then exit 0; fi; exit 0"
 create_mock_bin "service" "exit 0"
-create_mock_bin "ip" "if [[ \"\$1\" == \"route\" ]]; then echo 'default via 192.168.1.1 dev eth0'; elif [[ \"\$1\" == \"link\" ]]; then echo 'link/ether 00:11:22:33:44:55 brd ff:ff:ff:ff:ff:ff'; fi; exit 0"
+create_mock_bin "ip" 'case "$*" in *route*) echo "default via 192.168.1.1 dev eth0" ;; *neigh*) echo "192.168.1.1 dev eth0 lladdr 00:11:22:33:44:55 REACHABLE" ;; *link*) echo "link/ether 00:11:22:33:44:55 brd ff:ff:ff:ff:ff:ff" ;; esac; exit 0'
+create_mock_bin "tc" "exit 0"
+create_mock_bin "arping" "exit 0"
+create_mock_bin "ping" "exit 0"
+create_mock_bin "firefox" "exit 0"
 create_mock_bin "timedatectl" "if [[ \"\$1\" == \"show\" ]]; then echo 'Europe/Istanbul'; fi; exit 0"
 create_mock_bin "hostnamectl" "exit 0"
 create_mock_bin "hostname" "if [[ \$# -eq 0 ]]; then echo 'testhost'; fi; exit 0"
@@ -341,6 +345,112 @@ PANIC_OUT="$(printf 'DELETE\n' | run_anon_root --panic 2>&1)"
 assert_contains "$PANIC_OUT" "SUCCESS: System has been sanitized and locked down" "--panic executes emergency lockdown on DELETE"
 JSON_AFTER_PANIC="$(run_anon_root --status --json 2>&1)"
 assert_contains "$JSON_AFTER_PANIC" '"active_count":0' "--panic clears module state"
+
+# ------------------------------------------------------------------------------
+# 7. Exhaustive Subsystem, Daemon, Stealth, Browser & Edge-Case Coverage
+# ------------------------------------------------------------------------------
+echo -e "${CYAN}=== 7. Daemons, Remaining Profiles, Stealth, Browser & Edge Cases ===${RESET}"
+
+# Invalid CLI flag should exit non-zero
+set +e
+INVALID_OUT="$(run_anon_root --not-a-real-flag 2>&1)"
+INVALID_RC=$?
+set -e
+if [[ "$INVALID_RC" -ne 0 ]]; then
+    pass "Invalid CLI flag exits non-zero ($INVALID_RC)"
+else
+    fail "Invalid CLI flag unexpectedly exited 0"
+fi
+assert_contains "$INVALID_OUT" "Invalid option" "Invalid CLI flag prints error hint"
+
+# DoH Shield audit checks (127.0.2.1 allowed, 8.8.8.8 caught as leak)
+printf 'doh_shield_status="Enable"\n' > "$ANON_STATE_FILE"
+printf 'nameserver 127.0.2.1\n' > "$ANON_RESOLV_CONF"
+DOH_CLEAN_RC=0
+run_anon_root --audit >/dev/null 2>&1 || DOH_CLEAN_RC=$?
+assert_eq "$DOH_CLEAN_RC" "0" "--audit allows 127.0.2.1 when doh_shield is enabled"
+
+printf 'nameserver 8.8.8.8\n' > "$ANON_RESOLV_CONF"
+DOH_LEAK_RC=0
+run_anon_root --audit >/dev/null 2>&1 || DOH_LEAK_RC=$?
+assert_eq "$DOH_LEAK_RC" "2" "--audit detects clearnet 8.8.8.8 leak when doh_shield is enabled"
+: > "$ANON_STATE_FILE"
+printf 'nameserver 1.1.1.1\n' > "$ANON_RESOLV_CONF"
+
+# Metadata cleaner with spaces in filenames and directory names
+SPACE_DIR="${MOCK_DIR}/dir with spaces"
+mkdir -p "$SPACE_DIR"
+printf 'meta1' > "${SPACE_DIR}/photo with spaces.jpg"
+printf 'meta2' > "${SPACE_DIR}/doc 2.png"
+SPACE_META_OUT="$(run_anon_root --clean-meta "$SPACE_DIR" 2>&1)"
+assert_contains "$SPACE_META_OUT" "(2/2 file(s))" "--clean-meta handles paths/filenames with spaces"
+
+# Remaining profiles: darknet, pentest, paranoia, ghost (includes live daemons)
+DARKNET_OUT="$(run_anon_root --profile darknet 2>&1)"
+assert_contains "$DARKNET_OUT" "Profile 'darknet' applied successfully" "--profile darknet applies cleanly"
+assert_contains "$(cat "$ANON_STATE_FILE")" 'tor_bridges_status="Enable"' "darknet profile enables tor_bridges"
+assert_contains "$(cat "$ANON_STATE_FILE")" 'i2p_integration_status="Enable"' "darknet profile enables i2p_integration"
+run_anon_root --stop >/dev/null 2>&1
+
+PENTEST_OUT="$(run_anon_root --profile pentest 2>&1)"
+assert_contains "$PENTEST_OUT" "Profile 'pentest' applied successfully" "--profile pentest applies cleanly"
+PENTEST_STATE="$(cat "$ANON_STATE_FILE")"
+assert_contains "$PENTEST_STATE" 'proxychains_integration_status="Enable"' "pentest profile enables proxychains_integration"
+assert_contains "$PENTEST_STATE" 'traffic_obfuscation_status="Enable"' "pentest profile enables traffic_obfuscation"
+assert_contains "$PENTEST_STATE" 'anti_mitm_status="Enable"' "pentest profile enables live anti_mitm daemon"
+
+MITM_PID="$(sed -n 's/^anti_mitm_pid="\([0-9]*\)"/\1/p' "$ANON_STATE_FILE")"
+TRAFF_PID="$(sed -n 's/^traffic_obfuscation_pid="\([0-9]*\)"/\1/p' "$ANON_STATE_FILE")"
+if [[ -n "$MITM_PID" ]] && [[ "$MITM_PID" -gt 0 ]] && kill -0 "$MITM_PID" 2>/dev/null; then
+    pass "anti_mitm background daemon is genuinely alive (PID $MITM_PID)"
+else
+    fail "anti_mitm daemon failed to stay alive (PID '${MITM_PID:-none}')"
+fi
+if [[ -n "$TRAFF_PID" ]] && [[ "$TRAFF_PID" -gt 0 ]] && kill -0 "$TRAFF_PID" 2>/dev/null; then
+    pass "traffic_obfuscation chaffing daemon is genuinely alive (PID $TRAFF_PID)"
+else
+    fail "traffic_obfuscation daemon failed to stay alive (PID '${TRAFF_PID:-none}')"
+fi
+
+run_anon_root --stop >/dev/null 2>&1
+sleep 0.15
+if [[ -n "$MITM_PID" ]] && ! kill -0 "$MITM_PID" 2>/dev/null; then
+    pass "anti_mitm daemon terminated cleanly on --stop"
+else
+    fail "anti_mitm daemon remained running after --stop"
+fi
+if [[ -n "$TRAFF_PID" ]] && ! kill -0 "$TRAFF_PID" 2>/dev/null; then
+    pass "traffic_obfuscation daemon terminated cleanly on --stop"
+else
+    fail "traffic_obfuscation daemon remained running after --stop"
+fi
+
+GHOST_OUT="$(run_anon_root --profile ghost 2>&1)"
+assert_contains "$GHOST_OUT" "Profile 'ghost' applied successfully" "--profile ghost applies all 19 ghost modules cleanly"
+AUDIT_PID="$(sed -n 's/^leak_auditor_pid="\([0-9]*\)"/\1/p' "$ANON_STATE_FILE")"
+if [[ -n "$AUDIT_PID" ]] && [[ "$AUDIT_PID" -gt 0 ]] && kill -0 "$AUDIT_PID" 2>/dev/null; then
+    pass "leak_auditor background daemon is genuinely alive (PID $AUDIT_PID)"
+else
+    fail "leak_auditor daemon failed to stay alive (PID '${AUDIT_PID:-none}')"
+fi
+
+# Verify execution_stealth live RAM re-exec (without ANON_SKIP_STEALTH) + clean Exit cleanup
+STEALTH_JSON="$(env -u ANON_SKIP_STEALTH fakeroot "${MOCK_DIR}/anon" --status --json 2>&1)"
+assert_contains "$STEALTH_JSON" '"execution_stealth":true' "execution_stealth re-exec preserves valid --status --json output"
+sleep 0.1
+LEFT_KWORKER=0
+for d in /dev/shm/.kworker_*; do
+    if [[ -e "$d" ]]; then
+        LEFT_KWORKER=$((LEFT_KWORKER + 1))
+    fi
+done
+assert_eq "$LEFT_KWORKER" "0" "execution_stealth StealthGuard removes temporary /dev/shm/.kworker_* on exit"
+
+run_anon_root --stop >/dev/null 2>&1
+
+# Disposable browser launch with mocked firefox
+BROWSER_OUT="$(run_anon_root --browser 2>&1)"
+assert_contains "$BROWSER_OUT" "Disposable profile completely wiped" "--browser launches and securely wipes disposable RAM profile"
 
 # ------------------------------------------------------------------------------
 # Summary

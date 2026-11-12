@@ -221,7 +221,7 @@ fn audit_cmd(cfg: &AppConfig, sub_arg: Option<&str>) -> i32 {
     }
 }
 
-fn clean_meta_cmd(args: &[String]) {
+fn clean_meta_cmd(args: &[String]) -> i32 {
     if !args.is_empty() {
         let mut all_ok = true;
         for item in args {
@@ -229,10 +229,7 @@ fn clean_meta_cmd(args: &[String]) {
                 all_ok = false;
             }
         }
-        if !all_ok {
-            std::process::exit(1);
-        }
-        return;
+        return if all_ok { 0 } else { 1 };
     }
 
     print!("  {YELLOW}Enter file or directory path to sanitize:{RESET} ");
@@ -241,10 +238,7 @@ fn clean_meta_cmd(args: &[String]) {
     if io::stdin().read_line(&mut target).is_ok() {
         let t = target.trim();
         if !t.is_empty() {
-            if !clean_meta_target(Path::new(t)) {
-                std::process::exit(1);
-            }
-            return;
+            return if clean_meta_target(Path::new(t)) { 0 } else { 1 };
         }
     }
     err("No target path specified for metadata cleaning.");
@@ -332,34 +326,64 @@ fn main() {
     }
 
     let sub = args.get(1).map(String::as_str);
-    match args[0].to_ascii_lowercase().as_str() {
-        "--start" | "-st" => cli_start(&cfg),
-        "--stop" | "-sp" => stop_all(&cfg, false),
-        "--profile" => cli_profile(&cfg, sub),
-        "--status" | "-ss" => status_cmd(&cfg, sub),
-        "--dashboard" | "-d" => run_dashboard(&cfg),
+    let exit_rc = match args[0].to_ascii_lowercase().as_str() {
+        "--start" | "-st" => {
+            cli_start(&cfg);
+            0
+        }
+        "--stop" | "-sp" => {
+            stop_all(&cfg, false);
+            0
+        }
+        "--profile" => {
+            cli_profile(&cfg, sub);
+            0
+        }
+        "--status" | "-ss" => {
+            status_cmd(&cfg, sub);
+            0
+        }
+        "--dashboard" | "-d" => {
+            run_dashboard(&cfg);
+            0
+        }
         "--browser" | "-b" => {
             let _ = start_disposable_browser(&cfg);
+            0
         }
-        "--audit" | "-a" => {
-            let rc = audit_cmd(&cfg, sub);
-            if rc != 0 {
-                std::process::exit(rc);
-            }
-        }
+        "--audit" | "-a" => audit_cmd(&cfg, sub),
         "--clean-meta" | "-cm" => clean_meta_cmd(&args[1..]),
-        "--panic" | "-p" => trigger_panic(&cfg),
-        "--fix" | "-f" => fix_cmd(&cfg),
-        "--update" | "-u" => self_update(&cfg),
-        "--version" | "-v" => println!("ANON v{ANON_VERSION}"),
-        "--help" | "-h" => print_help(),
+        "--panic" | "-p" => {
+            trigger_panic(&cfg);
+            0
+        }
+        "--fix" | "-f" => {
+            fix_cmd(&cfg);
+            0
+        }
+        "--update" | "-u" => {
+            self_update(&cfg);
+            0
+        }
+        "--version" | "-v" => {
+            println!("ANON v{ANON_VERSION}");
+            0
+        }
+        "--help" | "-h" => {
+            print_help();
+            0
+        }
         invalid => {
             warn(&format!("Anon: Invalid option {RED}'{invalid}'{RESET}"));
             info(&format!(
                 "Run {GREEN}'anon --help'{RESET} parameter for more information."
             ));
-            std::process::exit(1);
+            1
         }
+    };
+    drop(_stealth_guard);
+    if exit_rc != 0 {
+        std::process::exit(exit_rc);
     }
 }
 

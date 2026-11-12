@@ -130,7 +130,7 @@ bash -n setup.sh test_suite.sh
 shellcheck -S warning -e SC1090,SC1091,SC2034 setup.sh test_suite.sh
 ```
 
-### Run Full Test Suite (Cargo Unit Tests + 41 Isolated Fakeroot Assertions)
+### Run Full Test Suite (Cargo Unit Tests + 62 Isolated Fakeroot Assertions)
 ```bash
 chmod +x test_suite.sh
 ./test_suite.sh

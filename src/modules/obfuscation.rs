@@ -15,7 +15,7 @@ use crate::helpers::{
 use crate::registry::AnonModule;
 use crate::state::{set_module_pid, set_module_status, AnonState};
 use crate::sys::{is_pid_alive, send_signal, set_process_name, SIGKILL, SIGTERM};
-use crate::ui::{err, info, msg, warn};
+use crate::ui::{info, msg, warn};
 
 const BROWSER_PREF_DIRS: [&str; 7] = [
     "/etc/firefox-esr",
@@ -482,16 +482,16 @@ impl AnonModule for ProcessObfuscation {
             );
         }
 
-        let _ = fs::create_dir_all("/usr/local/bin");
+        let _ = fs::create_dir_all(&cfg.wrapper_dir);
 
         if Path::new("/usr/bin/nmap").exists() {
-            let local_nmap = Path::new("/usr/local/bin/nmap");
+            let local_nmap = cfg.wrapper_dir.join("nmap");
             if local_nmap.exists()
-                && !fs::read_to_string(local_nmap)
+                && !fs::read_to_string(&local_nmap)
                     .map(|s| s.contains("ANON_PROC_WRAPPER"))
                     .unwrap_or(false)
             {
-                let _ = fs::copy(local_nmap, cfg.backup_dir.join("local_bin_nmap.bak"));
+                let _ = fs::copy(&local_nmap, cfg.backup_dir.join("local_bin_nmap.bak"));
             }
             let target_kworker = PathBuf::from(&ramdir).join("kworker");
             if fs::copy("/usr/bin/nmap", &target_kworker).is_ok() {
@@ -500,20 +500,20 @@ impl AnonModule for ProcessObfuscation {
                     "#!/bin/bash\n# ANON_PROC_WRAPPER\nexec -a \"[kworker/u4:2]\" \"{}\" \"$@\"\n",
                     target_kworker.display()
                 );
-                if fs::write(local_nmap, wrapper).is_ok() {
-                    let _ = fs::set_permissions(local_nmap, fs::Permissions::from_mode(0o755));
+                if fs::write(&local_nmap, wrapper).is_ok() {
+                    let _ = fs::set_permissions(&local_nmap, fs::Permissions::from_mode(0o755));
                 }
             }
         }
 
         if Path::new("/usr/bin/sqlmap").exists() {
-            let local_sqlmap = Path::new("/usr/local/bin/sqlmap");
+            let local_sqlmap = cfg.wrapper_dir.join("sqlmap");
             if local_sqlmap.exists()
-                && !fs::read_to_string(local_sqlmap)
+                && !fs::read_to_string(&local_sqlmap)
                     .map(|s| s.contains("ANON_PROC_WRAPPER"))
                     .unwrap_or(false)
             {
-                let _ = fs::copy(local_sqlmap, cfg.backup_dir.join("local_bin_sqlmap.bak"));
+                let _ = fs::copy(&local_sqlmap, cfg.backup_dir.join("local_bin_sqlmap.bak"));
             }
             let is_elf = fs::read("/usr/bin/sqlmap")
                 .map(|b| b.starts_with(b"\x7fELF"))
@@ -529,8 +529,8 @@ impl AnonModule for ProcessObfuscation {
             } else {
                 "#!/bin/bash\n# ANON_PROC_WRAPPER\nexec -a \"/lib/systemd/systemd-resolved\" /usr/bin/sqlmap \"$@\"\n".to_string()
             };
-            if fs::write(local_sqlmap, wrapper).is_ok() {
-                let _ = fs::set_permissions(local_sqlmap, fs::Permissions::from_mode(0o755));
+            if fs::write(&local_sqlmap, wrapper).is_ok() {
+                let _ = fs::set_permissions(&local_sqlmap, fs::Permissions::from_mode(0o755));
             }
         }
 
@@ -561,7 +561,7 @@ impl AnonModule for ProcessObfuscation {
         }
 
         for tool in ["nmap", "sqlmap"] {
-            let bin_path = PathBuf::from(format!("/usr/local/bin/{tool}"));
+            let bin_path = cfg.wrapper_dir.join(tool);
             let bak_path = cfg.backup_dir.join(format!("local_bin_{tool}.bak"));
             if fs::read_to_string(&bin_path)
                 .map(|s| s.contains("ANON_PROC_WRAPPER") || s.contains("systemd-kworker"))
@@ -848,6 +848,9 @@ impl AnonModule for ExecutionStealth {
 /// If execution_stealth is active and not yet re-execed into `/dev/shm/.kworker_*`,
 /// copies the binary + assets into volatile RAM and execs with `[kworker/u4:2]`.
 pub fn maybe_reexec_stealth(cfg: &AppConfig, raw_args: &[String]) {
+    if env::var_os("ANON_SKIP_STEALTH").is_some() {
+        return;
+    }
     let state = AnonState::load(&cfg.state_file);
     if !state.is_enabled("execution_stealth") {
         return;
@@ -901,8 +904,8 @@ pub fn cleanup_stealth_dir_if_active() {
         return;
     }
     if let Some(dir_s) = env::var_os("ANON_STEALTH_DIR") {
-        let dir = PathBuf::from(dir_s);
-        if dir.starts_with("/dev/shm/.kworker_") && dir.is_dir() {
+        let dir = PathBuf::from(&dir_s);
+        if dir.to_string_lossy().starts_with("/dev/shm/.kworker_") && dir.is_dir() {
             let _ = fs::remove_file(dir.join("assets/sources"));
             let _ = fs::remove_file(dir.join("backups"));
             shred_dir_recursive(&dir);
@@ -942,10 +945,12 @@ impl AnonModule for TrafficObfuscation {
 
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         if !cmd_exists("tc") {
-            err("'tc' (iproute2) command not found.");
+            warn("'tc' (iproute2) command not found.");
+            return Err("tc missing".to_string());
         }
         let Some(iface) = get_default_iface() else {
-            err("Could not determine default network interface.");
+            warn("Could not determine default network interface.");
+            return Err("no default interface".to_string());
         };
 
         let _ = fs::write(cfg.backup_dir.join("traffic_obfuscation.iface"), format!("{iface}\n"));

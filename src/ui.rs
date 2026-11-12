@@ -24,6 +24,7 @@ static CACHED_BANNER: OnceLock<Option<String>> = OnceLock::new();
 
 pub fn err(msg_text: &str) -> ! {
     eprintln!("\n {BG_BLUE}{WHITE}{BOLD} ANON {RESET} {RED}✖ ERROR:{RESET} {msg_text}\n");
+    crate::modules::obfuscation::cleanup_stealth_dir_if_active();
     std::process::exit(1);
 }
 
