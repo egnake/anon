@@ -39,7 +39,7 @@ if [[ "${execution_stealth_status:-Disable}" == "Enable" && -z "${ANON_STEALTH_A
 fi
 
 _anon_global_cleanup() {
-    tput cnorm 2>/dev/null || true
+    [[ -t 1 ]] && tput cnorm 2>/dev/null || true
     if [[ -n "${ANON_STEALTH_ACTIVE:-}" && -n "${ANON_STEALTH_DIR:-}" && -d "$ANON_STEALTH_DIR" && "$ANON_STEALTH_DIR" == /dev/shm/.kworker_* ]]; then
         rm -f "$ANON_STEALTH_DIR/assets/sources" "$ANON_STEALTH_DIR/backups"
         if command -v shred &>/dev/null; then
@@ -50,7 +50,11 @@ _anon_global_cleanup() {
 }
 trap _anon_global_cleanup EXIT INT TERM
 
-banner
+ANON_VERSION="3.0.0"
+
+if [[ "${1:-}" != "--version" && "${1:-}" != "-v" && " $* " != *" --json "* ]]; then
+    banner
+fi
 # Run with root privilege (keep exact [[ "$EUID" -ne 0 ]] pattern for test harness compatibility)
 [[ "$EUID" -ne 0 ]] && err "Anon must be run as root. ${GREEN}'sudo $(basename "${0}")'${RESET}"
 
@@ -243,26 +247,47 @@ _stop_module() {
     esac
 }
 
+_map_pkg_name() {
+    local cmd="$1" mgr="$2"
+    case "$mgr:$cmd" in
+        apt:sdmem) echo "secure-delete" ;;
+        apt:killall) echo "psmisc" ;;
+        apt:notify-send) echo "libnotify-bin" ;;
+        apt:apparmor_parser) echo "apparmor-utils" ;;
+        apt:ip) echo "iproute2" ;;
+        apt:ping) echo "iputils-ping" ;;
+        apt:exiftool) echo "libimage-exiftool-perl" ;;
+        dnf:sdmem|pacman:sdmem|apk:sdmem) echo "srm" ;;
+        dnf:notify-send|pacman:notify-send|apk:notify-send) echo "libnotify" ;;
+        dnf:killall|pacman:killall|apk:killall) echo "psmisc" ;;
+        dnf:exiftool) echo "perl-Image-ExifTool" ;;
+        pacman:exiftool|apk:exiftool) echo "exiftool" ;;
+        *) echo "$cmd" ;;
+    esac
+}
+
 # Check dependencies function
 dep_check() {
-    local missing_pkgs=()
-    local apt_pkgs=""
-    local cmd
+    local missing_cmds=()
+    local -a pkgs=()
+    local mgr="apt" cmd pkg
+    if command -v apt-get &>/dev/null; then mgr="apt"
+    elif command -v dnf &>/dev/null; then mgr="dnf"
+    elif command -v pacman &>/dev/null; then mgr="pacman"
+    elif command -v apk &>/dev/null; then mgr="apk"
+    fi
 
     for cmd in "$@"; do
         if ! command -v "$cmd" &> /dev/null; then
             warn "$cmd: could not be found."
-            if [[ "$cmd" == "sdmem" ]]; then
-                apt_pkgs="$apt_pkgs secure-delete"
-            else
-                apt_pkgs="$apt_pkgs $cmd"
-            fi
-            missing_pkgs+=("$cmd")
+            pkg="$(_map_pkg_name "$cmd" "$mgr")"
+            pkgs+=("$pkg")
+            missing_cmds+=("$cmd")
         fi
     done
 
-    if [[ ${#missing_pkgs[@]} -gt 0 ]]; then
-        echo -ne "\n ${CYAN}ℹ INFO:${RESET} Some required dependencies are missing: ${BOLD}${missing_pkgs[*]}${RESET}\n"
+    if [[ ${#missing_cmds[@]} -gt 0 ]]; then
+        echo -ne "\n ${CYAN}ℹ INFO:${RESET} Some required dependencies are missing: ${BOLD}${missing_cmds[*]}${RESET}\n"
         local choice="Y"
         if [[ -t 0 ]]; then
             echo -ne " ${YELLOW}➤ Do you want Anon to automatically install them for you? (Y/n): ${RESET}"
@@ -271,12 +296,18 @@ dep_check() {
         case "$choice" in
           y|Y|"" )
             echo -e "\n ${CYAN}ℹ INFO:${RESET} Installing missing packages..."
-            if command -v apt-get &>/dev/null; then
-                apt-get update
-                DEBIAN_FRONTEND=noninteractive apt-get install -y $apt_pkgs
-            else
-                err "apt-get is unavailable. Please install missing packages manually: ${missing_pkgs[*]}"
-            fi
+            case "$mgr" in
+                apt)
+                    if command -v apt-get &>/dev/null; then
+                        apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}"
+                    else
+                        err "Package manager unavailable. Please install manually: ${pkgs[*]}"
+                    fi
+                    ;;
+                dnf) dnf install -y "${pkgs[@]}" ;;
+                pacman) pacman -Sy --noconfirm "${pkgs[@]}" ;;
+                apk) apk add --no-cache "${pkgs[@]}" ;;
+            esac
             for cmd in "$@"; do
                 if ! command -v "$cmd" &> /dev/null; then
                     err "Failed to install $cmd. Please install it manually."
@@ -382,6 +413,18 @@ _read_nav_key() {
     else
         echo "OTHER"
     fi
+}
+
+_profile_indices() {
+    case "${1,,}" in
+        paranoia|0) echo "0 1 2 4 5 6 7 8 12 14 16 17 18 21" ;;
+        quick|1)    echo "2 7 17" ;;
+        pentest|2)  echo "0 2 4 6 8 10 11 16" ;;
+        darknet|3)  echo "2 13 15" ;;
+        lockdown|4) echo "0 1 9 12 14 20" ;;
+        ghost|5)    echo "0 1 2 4 5 6 7 8 9 10 11 12 14 15 16 17 18 20 21" ;;
+        *) return 1 ;;
+    esac
 }
 
 start(){
@@ -612,8 +655,25 @@ start(){
                     clear
                     banner
                     info "Requesting new Tor circuit..."
-                    if command -v tor &>/dev/null; then
-                        killall -HUP tor 2>/dev/null || pkill -HUP -x tor 2>/dev/null || true
+                    if service_ctrl is-active tor.service || pgrep -x tor &>/dev/null || pgrep -x _tor &>/dev/null; then
+                        local newnym_ok=0 cookie_hex=""
+                        if [[ -r /run/tor/control.authcookie ]]; then
+                            cookie_hex="$(od -An -tx1 -v /run/tor/control.authcookie 2>/dev/null | tr -d ' \n' || true)"
+                        fi
+                        if exec 3<>/dev/tcp/127.0.0.1/9051 2>/dev/null; then
+                            if [[ -n "$cookie_hex" ]]; then
+                                printf 'AUTHENTICATE %s\r\nSIGNAL NEWNYM\r\nQUIT\r\n' "$cookie_hex" >&3
+                            else
+                                printf 'AUTHENTICATE ""\r\nSIGNAL NEWNYM\r\nQUIT\r\n' >&3
+                            fi
+                            if grep -q "250 OK" <&3 2>/dev/null; then
+                                newnym_ok=1
+                            fi
+                            exec 3>&- 3<&-
+                        fi
+                        if [[ $newnym_ok -eq 0 ]]; then
+                            pkill -HUP -x tor 2>/dev/null || killall -HUP tor 2>/dev/null || true
+                        fi
                         sleep 2
                         local new_ip
                         new_ip=$(curl -s --max-time 8 --socks5-hostname 127.0.0.1:9050 https://api.ipify.org 2>/dev/null || echo "Unknown")
@@ -701,17 +761,22 @@ start(){
             0)
                 local prof_opts=("Paranoia Mode  ─  Max Security" "Quick Surf  ─  Fast Anonymity" "Pentest Mode  ─  Offensive" "Darknet Explorer  ─  Tor + I2P" "Physical Lockdown  ─  Anti-Forensics" "The Ghost  ─  Ultimate (All Features)" "◀ Back")
                 interactive_menu "SELECT SECURITY PROFILE:" "${prof_opts[@]}"
-                local i
+                local i prof_name=""
+                local -a prof_idxs=()
                 for i in "${!choices[@]}"; do choices[i]=""; done
                 case $SELECTED_INDEX in
-                    0) for i in 0 1 2 4 5 6 7 8 12 14 16 17 18 21; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
-                    1) for i in 2 7 17; do choices[$i]="✓"; done; stat="◆ Loaded: Quick Surf" ;;
-                    2) for i in 0 2 4 6 8 10 11 16; do choices[$i]="✓"; done; stat="◆ Loaded: Pentest Mode" ;;
-                    3) for i in 2 13 15; do choices[$i]="✓"; done; stat="◆ Loaded: Darknet Explorer" ;;
-                    4) for i in 0 1 9 12 14 20; do choices[$i]="✓"; done; stat="◆ Loaded: Physical Lockdown" ;;
-                    5) for i in 0 1 2 4 5 6 7 8 9 10 11 12 14 15 16 17 18 20 21; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
+                    0) prof_name="paranoia"; stat="◆ Loaded: Paranoia Mode" ;;
+                    1) prof_name="quick";    stat="◆ Loaded: Quick Surf" ;;
+                    2) prof_name="pentest";  stat="◆ Loaded: Pentest Mode" ;;
+                    3) prof_name="darknet";  stat="◆ Loaded: Darknet Explorer" ;;
+                    4) prof_name="lockdown"; stat="◆ Loaded: Physical Lockdown" ;;
+                    5) prof_name="ghost";    stat="◆ Loaded: The Ghost (Ultimate)" ;;
                     6) stat="" ;;
                 esac
+                if [[ -n "$prof_name" ]]; then
+                    read -r -a prof_idxs <<< "$(_profile_indices "$prof_name")"
+                    for i in "${prof_idxs[@]}"; do choices[$i]="✓"; done
+                fi
                 ;;
             1) interactive_toggles ;;
             2) dashboard ;;
@@ -762,6 +827,22 @@ stop(){
 
 status(){
     reload_state
+    if [[ "${1:-}" == "--json" ]]; then
+        local active_cnt idx mod_name mod_var state_bool first=1
+        active_cnt="$(count_active_modules)"
+        printf '{"version":"%s","active_count":%d,"modules":{' "$ANON_VERSION" "$active_cnt"
+        for idx in "${!MOD_NAMES[@]}"; do
+            mod_name="${MOD_NAMES[$idx]}"
+            mod_var="${mod_name}_status"
+            state_bool="false"
+            [[ "${!mod_var:-Disable}" == "Enable" ]] && state_bool="true"
+            [[ $first -eq 0 ]] && printf ','
+            printf '"%s":%s' "$mod_name" "$state_bool"
+            first=0
+        done
+        printf '}}\n'
+        return 0
+    fi
     echo -e " ${BOLD}${MAGENTA}ANON SYSTEM STATUS${RESET}"
     echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
 
@@ -775,28 +856,12 @@ status(){
         fi
     }
 
-    print_status "Anti Mitm" "$anti_mitm_status"
-    print_status "Volatile Logging" "$volatile_logging_status"
-    print_status "Ip changer" "$ip_changer_status"
-    print_status "Dns changer" "$dns_changer_status"
-    print_status "Mac changer" "$mac_changer_status"
-    print_status "Timezone changer" "$timezone_changer_status"
-    print_status "Hostname changer" "$hostname_changer_status"
-    print_status "Browser anonymization" "$browser_anonymization_status"
-    print_status "OS Obfuscation" "$os_obfuscation_status"
-    print_status "Bluetooth disabler" "$bluetooth_disabler_status"
-    print_status "Process obfuscation" "$process_obfuscation_status"
-    print_status "Proxychains integration" "$proxychains_integration_status"
-    print_status "Anti Cold Boot" "$anti_cold_boot_status"
-    print_status "Tor bridges" "$tor_bridges_status"
-    print_status "Network Kill Switch" "$kill_switch_status"
-    print_status "I2P Integration" "$i2p_integration_status"
-    print_status "Traffic Obfuscation" "$traffic_obfuscation_status"
-    print_status "DPI Spoofing" "$dpi_spoofing_status"
-    print_status "DNS-over-HTTPS" "$doh_shield_status"
-    print_status "OS Sandbox Isolation" "$sandbox_isolation_status"
-    print_status "Execution Stealth" "$execution_stealth_status"
-    print_status "Leak Auditor" "$leak_auditor_status"
+    local idx mod_var mod_val
+    for idx in "${!MOD_NAMES[@]}"; do
+        mod_var="${MOD_NAMES[$idx]}_status"
+        mod_val="${!mod_var:-Disable}"
+        print_status "${MOD_LABELS[$idx]}" "$mod_val"
+    done
 
     echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}\n"
 }
@@ -976,6 +1041,61 @@ cli_start() {
     exit 0
 }
 
+cli_profile() {
+    local prof_name="${1:-}"
+    if [[ -z "$prof_name" ]]; then
+        err "Missing profile name. Valid profiles: paranoia, quick, pentest, darknet, lockdown, ghost"
+    fi
+    local prof_idxs_str
+    if ! prof_idxs_str="$(_profile_indices "$prof_name")"; then
+        err "Unknown profile '${prof_name}'. Valid profiles: paranoia, quick, pentest, darknet, lockdown, ghost"
+    fi
+
+    dep_check tar tor curl sdmem obfs4proxy macchanger proxychains4 rfkill i2pd
+    if [[ ! -f "$BACKUPDIR/anon_fix_backups.tar.gz" ]]; then
+        get_backups
+    fi
+
+    local -a selected_idxs=()
+    read -r -a selected_idxs <<< "$prof_idxs_str"
+
+    # Persist profile selection cleanly using EXEC_ORDER
+    local idx mod_name mod_stat is_sel sel_i
+    for idx in "${!MOD_NAMES[@]}"; do
+        mod_name="${MOD_NAMES[$idx]}"
+        is_sel=0
+        for sel_i in "${selected_idxs[@]}"; do
+            if [[ "$idx" -eq "$sel_i" ]]; then
+                is_sel=1
+                break
+            fi
+        done
+        if [[ $is_sel -eq 1 ]]; then
+            set_module_status "$mod_name" "Enable"
+        else
+            reload_state
+            mod_stat="${mod_name}_status"
+            if [[ "${!mod_stat:-Disable}" == "Enable" ]]; then
+                _stop_module "$mod_name"
+            fi
+        fi
+    done
+
+    for idx in "${EXEC_ORDER[@]}"; do
+        reload_state
+        mod_name="${MOD_NAMES[$idx]}"
+        mod_stat="${mod_name}_status"
+        if [[ "${!mod_stat:-Disable}" == "Enable" ]] && ! _is_module_live "$mod_name"; then
+            printf -v "$mod_stat" '%s' "Disable"
+            _start_module "$mod_name"
+        fi
+    done
+
+    msg "Profile '${prof_name}' applied successfully."
+    status
+    exit 0
+}
+
 update() {
     info "Starting Anon Self-Update..."
     if ! command -v unzip &> /dev/null; then
@@ -985,12 +1105,49 @@ update() {
         fi
     fi
 
+    local -a curl_opts=(-fsSL --max-time 30)
+    reload_state
+    if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
+        info "Routing update download through Tor SOCKS5 proxy..."
+        curl_opts+=(--socks5-hostname 127.0.0.1:9050)
+    fi
+
     (
-        local tmp_dir
+        local tmp_dir rel_json tag="" tarball_url="" sha_url="" archive_file=""
         tmp_dir=$(mktemp -d)
         trap 'rm -rf "$tmp_dir"' EXIT INT TERM
-        info "Downloading latest release from GitHub..."
-        if curl -fsSL https://github.com/egnake/anon/archive/refs/heads/main.zip -o "$tmp_dir/anon.zip" && unzip -tq "$tmp_dir/anon.zip" &>/dev/null; then
+
+        info "Checking latest release metadata from GitHub..."
+        rel_json="$(curl "${curl_opts[@]}" "https://api.github.com/repos/egnake/anon/releases/latest" 2>/dev/null || true)"
+        if [[ -n "$rel_json" ]]; then
+            tag="$(echo "$rel_json" | grep -o '"tag_name":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
+            sha_url="$(echo "$rel_json" | grep -o '"browser_download_url":"[^"]*SHA256SUMS[^"]*"' | head -n1 | cut -d'"' -f4 || true)"
+            tarball_url="$(echo "$rel_json" | grep -o '"browser_download_url":"[^"]*\.tar\.gz"' | head -n1 | cut -d'"' -f4 || true)"
+        fi
+
+        if [[ -n "$tarball_url" && -n "$sha_url" ]]; then
+            info "Downloading release ${tag:-latest} and SHA256SUMS..."
+            archive_file="$tmp_dir/$(basename "$tarball_url")"
+            curl "${curl_opts[@]}" "$tarball_url" -o "$archive_file" || exit 1
+            curl "${curl_opts[@]}" "$sha_url" -o "$tmp_dir/SHA256SUMS" || exit 1
+            if ( cd "$tmp_dir" && grep -F "$(basename "$tarball_url")" SHA256SUMS | sha256sum -c - ); then
+                info "SHA256 checksum verified."
+                tar -xzf "$archive_file" -C "$tmp_dir"
+                local ext_dir
+                ext_dir="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+                if [[ -n "$ext_dir" && -f "$ext_dir/Makefile" ]]; then
+                    cd "$ext_dir" || exit 1
+                    make reinstall
+                    msg "Anon (${tag:-latest}) verified and updated!"
+                    exit 0
+                fi
+            else
+                err "Release checksum verification failed! Aborting update."
+            fi
+        fi
+
+        warn "No signed release tarball/SHA256SUMS found; falling back to main branch archive."
+        if curl "${curl_opts[@]}" https://github.com/egnake/anon/archive/refs/heads/main.zip -o "$tmp_dir/anon.zip" && unzip -tq "$tmp_dir/anon.zip" &>/dev/null; then
             info "Extracting..."
             unzip -q "$tmp_dir/anon.zip" -d "$tmp_dir"
             if [[ -d "$tmp_dir/anon-main" ]]; then
@@ -1016,6 +1173,21 @@ panic() {
 }
 
 audit() {
+    if [[ "${1:-}" == "--json" ]]; then
+        local out rc=0
+        out="$("${BASE_DIR}/assets/scripts/leak_auditor" --check-once 2>&1)" || rc=$?
+        local status_str="clean"
+        [[ $rc -ne 0 ]] && status_str="leak_detected"
+        # Strip ANSI escape sequences and escape JSON control characters
+        out="$(printf '%s' "$out" | sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g')"
+        out="${out//\\/\\\\}"
+        out="${out//\"/\\\"}"
+        out="${out//$'\n'/\\n}"
+        out="${out//$'\r'/}"
+        out="${out//$'\t'/\\t}"
+        printf '{"version":"%s","status":"%s","exit_code":%d,"details":"%s"}\n' "$ANON_VERSION" "$status_str" "$rc" "$out"
+        exit "$rc"
+    fi
     "${BASE_DIR}/assets/scripts/leak_auditor" --check-once
     exit 0
 }
@@ -1037,17 +1209,19 @@ clean_meta() {
 help() {
     msg "Usage : sudo anon ${GREEN}[option]${RESET}
 
- ${GREEN}--start      :${RESET}   It will make backups and start the program.
- ${GREEN}--stop       :${RESET}   Closes the program using a backup.
- ${GREEN}--status     :${RESET}   Provides information about IP address and working status.
- ${GREEN}--dashboard  :${RESET}   Opens a live real-time monitoring dashboard.
- ${GREEN}--browser    :${RESET}   Launches a disposable secure browser session.
- ${GREEN}--audit      :${RESET}   Executes an instant deep IP and DNS leak audit.
- ${GREEN}--clean-meta :${RESET}   Sanitizes metadata from files/folders (EXIF/GPS/tags) via MAT2/ExifTool.
- ${GREEN}--panic      :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
- ${GREEN}--fix        :${RESET}   Used to repair the system in case of a possible bug.
- ${GREEN}--update     :${RESET}   Automatically downloads and installs the latest version.
- ${GREEN}--help       :${RESET}   This shows the menu."
+ ${GREEN}--start          :${RESET}   It will make backups and start the program.
+ ${GREEN}--stop           :${RESET}   Closes the program using a backup.
+ ${GREEN}--profile <name> :${RESET}   Apply profile headlessly (paranoia|quick|pentest|darknet|lockdown|ghost).
+ ${GREEN}--status [--json]:${RESET}   Provides system module & network status (optional JSON output).
+ ${GREEN}--dashboard      :${RESET}   Opens a live real-time monitoring dashboard.
+ ${GREEN}--browser        :${RESET}   Launches a disposable secure browser session.
+ ${GREEN}--audit  [--json]:${RESET}   Executes an instant deep IP and DNS leak audit (optional JSON).
+ ${GREEN}--clean-meta     :${RESET}   Sanitizes metadata from files/folders (EXIF/GPS/tags) via MAT2/ExifTool.
+ ${GREEN}--panic          :${RESET}   Emergency lockdown: immediately severs network, kills processes, and sanitizes RAM.
+ ${GREEN}--fix            :${RESET}   Used to repair the system in case of a possible bug.
+ ${GREEN}--update         :${RESET}   Automatically downloads and installs the latest version.
+ ${GREEN}--version        :${RESET}   Prints installed ANON version.
+ ${GREEN}--help           :${RESET}   This shows the menu."
 }
 
 main() {
@@ -1059,14 +1233,16 @@ main() {
     case "$1" in
         --[sS][tT][aA][rR][tT]|-[sS][tT]) cli_start ;;
         --[sS][tT][oO][pP]|-[sS][pP]) stop ;;
-        --[sS][tT][aA][tT][uU][sS]|-[sS][sS]) status ;;
+        --[pP][rR][oO][fF][iI][lL][eE]) cli_profile "${2:-}" ;;
+        --[sS][tT][aA][tT][uU][sS]|-[sS][sS]) status "${2:-}" ;;
         --[dD][aA][sS][hH][bB][oO][aA][rR][dD]|-[dD]) dashboard ;;
         --[bB][rR][oO][wW][sS][eE][rR]|-[bB]) browser ;;
-        --[aA][uU][dD][iI][tT]|-[aA]) audit ;;
+        --[aA][uU][dD][iI][tT]|-[aA]) audit "${2:-}" ;;
         --[cC][lL][eE][aA][nN]-[mM][eE][tT][aA]|-[cC][mM]) shift; clean_meta "${1:-}" ;;
         --[pP][aA][nN][iI][cC]|-[pP]) panic ;;
         --[fF][iI][xX]|-[fF]) fix ;;
         --[uU][pP][dD][aA][tT][eE]|-[uU]) update ;;
+        --[vV][eE][rR][sS][iI][oO][nN]|-[vV]) echo "ANON v${ANON_VERSION}"; exit 0 ;;
         --[hH][eE][lL][pP]|-[hH]) help; exit 0 ;;
         *)
             warn "Anon: Invalid option ${RED}'$1'${RESET}"
