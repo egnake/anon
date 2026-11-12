@@ -843,12 +843,19 @@ stop(){
                 _stop_module "$mod_name"
             fi
         done
-    else
+    elif ! _is_module_live "ip_changer"; then
         if [[ "$non_fatal" == "non_fatal" ]]; then
             warn "No features are currently active."
         else
             err "No features are active. (Run to activate '${GREEN}sudo anon --start${RESET}')"
         fi
+    fi
+
+    # A failed Tor bootstrap marks ip_changer Disable but leaves its firewall,
+    # torrc and resolv.conf in place; tear that orphaned state down too.
+    reload_state
+    if [[ "${ip_changer_status:-Disable}" != "Enable" ]] && _is_module_live "ip_changer"; then
+        _stop_module "ip_changer"
     fi
 }
 
@@ -916,6 +923,8 @@ dashboard() {
                     fi
                 elif [[ "${i2p_integration_status:-Disable}" == "Enable" ]]; then
                     echo "SECURE_I2P|Hidden" > "$status_file"
+                elif [[ "${kill_switch_status:-Disable}" == "Enable" ]]; then
+                    echo "LOCKED|Blocked (no anonymity network up)" > "$status_file"
                 else
                     echo "UNSECURE|Direct (Unprotected)" > "$status_file"
                 fi
@@ -960,6 +969,9 @@ dashboard() {
             elif [[ "$net_state" == "WAITING" ]]; then
                 boxline "${CYAN}  ● Network    ${BOLD}SCANNING...${RESET}"
                 boxline "${CYAN}  ● Exit IP    ${YELLOW}Detecting...${RESET}"
+            elif [[ "$net_state" == "LOCKED" ]]; then
+                boxline "${YELLOW}  ● Network    ${BOLD}LOCKED${RESET}${YELLOW} (Kill Switch — Tor offline)${RESET}"
+                boxline "${CYAN}  ● IP         ${YELLOW}${net_ip}${RESET}"
             else
                 boxline "${RED}  ○ Network    ${BOLD}UNSECURE${RESET}${RED} (Direct)${RESET}"
                 boxline "${CYAN}  ● IP         ${YELLOW}${net_ip}${RESET}"

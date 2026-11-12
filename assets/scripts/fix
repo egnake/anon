@@ -98,6 +98,10 @@ restore_system(){
     if [[ -s "$BACKUPDIR/hosts.bak" ]]; then
         cat "$BACKUPDIR/hosts.bak" > /etc/hosts 2>/dev/null || true
     fi
+    # Drop any Snowflake pre-bootstrap host pins left by ip_changer
+    if declare -F _unpin_snowflake_hosts >/dev/null 2>&1; then
+        _unpin_snowflake_hosts
+    fi
 
     if [[ -s "$BACKUPDIR/dhclient.conf.bak" && -d /etc/dhcp ]]; then
         cat "$BACKUPDIR/dhclient.conf.bak" > /etc/dhcp/dhclient.conf 2>/dev/null || true

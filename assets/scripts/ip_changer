@@ -4,6 +4,106 @@
 # IP Changer — Atomic Tor Transparent Proxy Integration
 # ═══════════════════════════════════════════════════════════════════
 
+# Snowflake rendezvous parameters (CDN77 domain fronting, Tor Browser defaults).
+# Overridable via environment for when upstream rotates fronts/brokers.
+ANON_SNOWFLAKE_URL="${ANON_SNOWFLAKE_URL:-https://1098762253.rsc.cdn77.org/}"
+ANON_SNOWFLAKE_FRONTS="${ANON_SNOWFLAKE_FRONTS:-www.cdn77.com,www.phpmyadmin.net}"
+ANON_SNOWFLAKE_ICE="${ANON_SNOWFLAKE_ICE:-stun:stun.l.google.com:19302,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.uls.co.za:3478,stun:stun.voipgate.com:3478,stun:stun.voys.nl:3478}"
+_ANON_PT_PIN_TAG="# ANON_PT_PIN"
+
+# Remove host pins previously written by _pin_snowflake_hosts (inode-preserving).
+_unpin_snowflake_hosts() {
+    local hosts_file="${ANON_HOSTS_FILE:-/etc/hosts}" tmp rc
+    [[ -f "$hosts_file" ]] || return 0
+    grep -q "${_ANON_PT_PIN_TAG}\$" "$hosts_file" 2>/dev/null || return 0
+    tmp="$(mktemp)" || return 0
+    grep -v "${_ANON_PT_PIN_TAG}\$" "$hosts_file" > "$tmp" 2>/dev/null
+    rc=$?
+    if (( rc <= 1 )); then
+        cat "$tmp" > "$hosts_file" 2>/dev/null || true
+    fi
+    rm -f "$tmp"
+}
+
+# Snowflake must resolve its front domains and STUN servers BEFORE Tor is up,
+# but once the transparent proxy is active every DNS query goes to Tor's DNSPort
+# (chicken-and-egg). Pre-resolve them while clearnet DNS still works and pin them.
+_pin_snowflake_hosts() {
+    local hosts_file="${ANON_HOSTS_FILE:-/etc/hosts}"
+    local -a names=() ice_list=()
+    local name ip entry pinned=0
+    IFS=',' read -r -a names <<< "$ANON_SNOWFLAKE_FRONTS"
+    IFS=',' read -r -a ice_list <<< "$ANON_SNOWFLAKE_ICE"
+    for entry in "${ice_list[@]}"; do
+        entry="${entry#stun:}"
+        names+=("${entry%:*}")
+    done
+
+    _unpin_snowflake_hosts
+    [[ -w "$hosts_file" ]] || { warn "Cannot write ${hosts_file}; Snowflake DNS pinning skipped."; return 1; }
+
+    for name in "${names[@]}"; do
+        [[ "$name" =~ ^[A-Za-z0-9.-]+$ ]] || continue
+        ip="$(timeout 5 getent ahostsv4 "$name" 2>/dev/null | awk 'NR==1{print $1}')"
+        [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || continue
+        if printf '%s\t%s %s\n' "$ip" "$name" "$_ANON_PT_PIN_TAG" >> "$hosts_file" 2>/dev/null; then
+            pinned=$((pinned + 1))
+        fi
+    done
+
+    if (( pinned == 0 )); then
+        warn "Could not pre-resolve Snowflake front/STUN hosts (no clearnet DNS?). Snowflake may fail to bootstrap."
+        return 1
+    fi
+    info "Pinned ${pinned} Snowflake rendezvous host(s) for pre-bootstrap resolution."
+}
+
+# Prints Tor bootstrap PROGRESS (0-100) via ControlPort, or nothing on failure.
+_tor_bootstrap_progress() {
+    local auth='""' cookie_file cookie_hex
+    for cookie_file in /run/tor/control.authcookie /var/lib/tor/control_auth_cookie; do
+        if [[ -r "$cookie_file" ]]; then
+            cookie_hex="$(od -An -tx1 -v "$cookie_file" 2>/dev/null | tr -d ' \n')"
+            [[ -n "$cookie_hex" ]] && auth="$cookie_hex"
+            break
+        fi
+    done
+    # shellcheck disable=SC2016
+    timeout 5 bash -c 'exec 3<>/dev/tcp/127.0.0.1/9051 || exit 1
+        printf "AUTHENTICATE %s\r\nGETINFO status/bootstrap-phase\r\nQUIT\r\n" "$1" >&3
+        cat <&3' _ "$auth" 2>/dev/null | grep -o 'PROGRESS=[0-9]*' | head -n1 | cut -d= -f2
+}
+
+# Waits until Tor reports 100% bootstrap. Returns 0 on success, 1 on timeout.
+_wait_for_tor_bootstrap() {
+    local max_wait="${1:-90}" elapsed=0 progress last="" unreachable=0
+    info "Waiting for Tor to bootstrap (up to ${max_wait}s)..."
+    while (( elapsed < max_wait )); do
+        progress="$(_tor_bootstrap_progress)"
+        if [[ "$progress" =~ ^[0-9]+$ ]]; then
+            unreachable=0
+            if [[ "$progress" != "$last" ]]; then
+                info "Tor bootstrap: ${progress}%"
+                last="$progress"
+            fi
+            if (( progress >= 100 )); then
+                return 0
+            fi
+        else
+            unreachable=$((unreachable + 1))
+            # ControlPort never came up: don't stall for the full window
+            if (( unreachable >= 5 )); then
+                warn "Tor ControlPort unreachable; skipping bootstrap wait."
+                return 1
+            fi
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+    warn "Tor did not finish bootstrapping within ${max_wait}s (last: ${last:-unknown}%)."
+    return 1
+}
+
 _append_bridges_to_torrc() {
     local target_torrc="$1"
     local bridges_file="$2"
@@ -111,6 +211,11 @@ start_ip_changer(){
         return 0
     fi
 
+    # Pre-resolve Snowflake rendezvous hosts while clearnet DNS is still reachable
+    if [[ "${dpi_spoofing_status:-Disable}" == "Enable" ]]; then
+        _pin_snowflake_hosts || true
+    fi
+
     # Backup current firewall, torrc, and resolv.conf state
     cat "$torrc_path" > "$BACKUPDIR/torrc.bak" 2>/dev/null || touch "$BACKUPDIR/torrc.bak"
     backup_resolv_conf "tor"
@@ -150,9 +255,12 @@ EOF
     obfs4_bin="$(command -v obfs4proxy 2>/dev/null || echo "/usr/bin/obfs4proxy")"
 
     if [[ "${dpi_spoofing_status:-Disable}" == "Enable" ]]; then
+        local sf_fronts="$ANON_SNOWFLAKE_FRONTS"
+        local sf_params="url=${ANON_SNOWFLAKE_URL} fronts=${sf_fronts} front=${sf_fronts##*,} ice=${ANON_SNOWFLAKE_ICE}"
         echo "UseBridges 1" >> "$torrc_path"
-        echo "ClientTransportPlugin snowflake exec ${snowflake_bin} -url https://snowflake-broker.torproject.net.global.prod.fastly.net/ -front cdn.sstatic.net -ice stun:stun.voip.blackberry.com:3478,stun:stun.altar.com.pl:3478,stun:stun.antisip.com:3478,stun:stun.bluesip.net:3478,stun:stun.dus.net:3478,stun:stun.epygi.com:3478,stun:stun.sonetel.com:3478,stun:stun.uls.co.za:3478,stun:stun.voys.nl:3478 -max 3" >> "$torrc_path"
-        echo "Bridge snowflake 192.0.2.3:1 2B280B23E1107BB62ABFC40DDCC8824814F80A72" >> "$torrc_path"
+        echo "ClientTransportPlugin snowflake exec ${snowflake_bin}" >> "$torrc_path"
+        echo "Bridge snowflake 192.0.2.3:80 2B280B23E1107BB62ABFC40DDCC8824814F80A72 fingerprint=2B280B23E1107BB62ABFC40DDCC8824814F80A72 ${sf_params}" >> "$torrc_path"
+        echo "Bridge snowflake 192.0.2.4:80 8838024498816A039FCBBAB14E6F40A0843051FA fingerprint=8838024498816A039FCBBAB14E6F40A0843051FA ${sf_params}" >> "$torrc_path"
     elif [[ "${tor_bridges_status:-Disable}" == "Enable" ]] && [[ -n "$active_bridges_file" ]]; then
         echo "UseBridges 1" >> "$torrc_path"
         echo "ClientTransportPlugin obfs4 exec ${obfs4_bin}" >> "$torrc_path"
@@ -181,10 +289,17 @@ EOF
     set_module_status "ip_changer" "Enable"
     info "Ip changer successfully enabled"
 
-    # Automated Leak Test
-    info "Running automated leak test..."
-    sleep 3
+    # Automated Leak Test (only after Tor has actually bootstrapped)
+    local boot_timeout=90
+    if [[ "${dpi_spoofing_status:-Disable}" == "Enable" || "${tor_bridges_status:-Disable}" == "Enable" ]]; then
+        boot_timeout=180
+    fi
+    boot_timeout="${ANON_TOR_BOOTSTRAP_TIMEOUT:-$boot_timeout}"
     local retries=3 success=0 i
+    # Tor never bootstrapped: one confirmation probe is enough before failing over
+    _wait_for_tor_bootstrap "$boot_timeout" || retries=1
+
+    info "Running automated leak test..."
     for i in $(seq 1 $retries); do
         info "Leak test attempt $i/$retries..."
         if curl -s --max-time 15 https://check.torproject.org/api/ip | grep -q '"IsTor":true'; then
@@ -202,20 +317,22 @@ EOF
 
     if [[ "$success" -eq 0 ]]; then
         active_bridges_file="$(resolve_bridges_file)"
-        # Only fall back to obfs4 if neither Snowflake nor obfs4 is already configured
-        if [[ "${dpi_spoofing_status:-Disable}" == "Disable" && "${tor_bridges_status:-Disable}" == "Disable" && -n "$active_bridges_file" ]]; then
+        # Fall back to obfs4 if not already configured (also when Snowflake failed;
+        # Tor will use whichever bridge transport succeeds first)
+        if [[ "${tor_bridges_status:-Disable}" == "Disable" && -n "$active_bridges_file" ]]; then
             warn "Tor connection failed. Attempting Auto-Fallback to Tor Bridges..."
             set_module_status "tor_bridges" "Enable"
             info "Bridges enabled. Restarting Tor..."
 
-            echo "UseBridges 1" >> "$torrc_path"
+            grep -q '^UseBridges 1' "$torrc_path" 2>/dev/null || echo "UseBridges 1" >> "$torrc_path"
             echo "ClientTransportPlugin obfs4 exec ${obfs4_bin}" >> "$torrc_path"
             _append_bridges_to_torrc "$torrc_path" "$active_bridges_file"
 
             service_ctrl restart tor.service || true
             info "Tor restarted with Obfs4 Bridges. Retrying leak test..."
 
-            sleep 5
+            retries=3
+            _wait_for_tor_bootstrap "${ANON_TOR_BOOTSTRAP_TIMEOUT:-180}" || retries=1
             local fallback_success=0 j
             for j in $(seq 1 $retries); do
                 info "Fallback test attempt $j/$retries..."
@@ -310,6 +427,7 @@ stop_ip_changer(){
     fi
     unlock_nm_dns
     restore_resolv_conf "tor"
+    _unpin_snowflake_hosts
     rm -f "$BACKUPDIR/torrc.bak" "$BACKUPDIR/iptables.rules.bak" "$BACKUPDIR/ip6tables.rules.bak"
     set_module_status "ip_changer" "Disable"
     info "Ip changer successfully disabled"

@@ -81,6 +81,9 @@ export BASE_DIR="$MOCK_DIR"
 export SRCDIR="$MOCK_DIR/assets"
 export BACKUPDIR="$MOCK_DIR/backups"
 export ANON_STATE_FILE="$MOCK_DIR/anon.state"
+export ANON_TOR_BOOTSTRAP_TIMEOUT=1
+export ANON_HOSTS_FILE="$MOCK_DIR/hosts"
+touch "$ANON_HOSTS_FILE"
 mkdir -p "$BACKUPDIR"
 touch "$BACKUPDIR/anon_fix_backups.tar.gz"
 
@@ -161,6 +164,30 @@ assert_log "systemctl start tor.service" "Triggers tor.service start"
 assert_log "check.torproject.org/api/ip" "Executes automated Tor leak test"
 stop_ip_changer >/dev/null 2>&1 || true
 assert_log "systemctl stop tor.service" "Stops tor.service on teardown"
+
+# Snowflake pre-bootstrap DNS pinning + CDN77 torrc generation + unpin on stop
+cat > "$MOCK_DIR/getent" << 'EOF'
+#!/bin/bash
+echo "198.51.100.10  STREAM $2"
+EOF
+chmod +x "$MOCK_DIR/getent"
+ip_changer_status="Disable"
+set_module_status "dpi_spoofing" "Enable"
+start_ip_changer >/dev/null 2>&1 || true
+if grep -q "ANON_PT_PIN" "$ANON_HOSTS_FILE" && grep -q "1098762253.rsc.cdn77.org" "$TORRC"; then
+    pass "ip_changer pins Snowflake rendezvous hosts and writes CDN77 bridge config"
+else
+    fail "ip_changer Snowflake pinning or CDN77 config missing"
+fi
+stop_ip_changer >/dev/null 2>&1 || true
+if ! grep -q "ANON_PT_PIN" "$ANON_HOSTS_FILE"; then
+    pass "stop_ip_changer unpins Snowflake hosts cleanly"
+else
+    fail "stop_ip_changer left ANON_PT_PIN entries in hosts file"
+fi
+stop_kill_switch >/dev/null 2>&1 || true
+reset_all_module_states
+dpi_spoofing_status="Disable"
 
 # --- 4. mac_changer ---
 echo -e "\n\e[1;34m-> Module: mac_changer (start & stop)\e[0m"
@@ -426,6 +453,16 @@ if echo "$STOP_OUT" | grep -q "Hostname changer successfully disabled"; then
     pass "CLI --stop deactivates active modules cleanly"
 else
     fail "CLI --stop failed"
+fi
+
+# Orphaned ip_changer teardown (ip_changer_status=Disable after bootstrap failure, torrc.bak present)
+reset_all_module_states
+touch "$BACKUPDIR/torrc.bak"
+ORPHAN_STOP_OUT=$("$MOCK_DIR/anon" --stop < /dev/null 2>&1 || true)
+if echo "$ORPHAN_STOP_OUT" | grep -q "Ip changer successfully disabled" && [[ ! -f "$BACKUPDIR/torrc.bak" ]]; then
+    pass "CLI --stop cleans up orphaned ip_changer state after failed bootstrap"
+else
+    fail "CLI --stop failed to clean up orphaned ip_changer state"
 fi
 
 set_module_status "kill_switch" "Enable"
