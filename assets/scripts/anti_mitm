@@ -2,23 +2,71 @@
 set -euo pipefail
 
 # Anti-MITM Daemon — Pure Bash Implementation
-# Monitors ARP cache for gateway MAC changes using 'ip neigh'.
+# Monitors IPv4/IPv6 neighbor caches for gateway MAC changes using 'ip neigh'.
 # If a MITM/ARP-spoof is detected, the network interface is
 # brought down immediately to prevent data exfiltration.
 
 POLL_INTERVAL="${ANON_MITM_POLL_INTERVAL:-2}"
 
-_get_default_iface() {
-    ip route 2>/dev/null | awk '/^default/{print $5; exit}'
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -z "${BASE_DIR:-}" ]]; then
+    if [[ -f "${_SCRIPT_DIR}/../sources/config" ]]; then
+        BASE_DIR="$(cd "${_SCRIPT_DIR}/../.." && pwd)"
+    elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+        BASE_DIR="/usr/share/anon"
+    else
+        BASE_DIR="$(cd "${_SCRIPT_DIR}/../.." && pwd)"
+    fi
+fi
+export BASE_DIR
+
+if [[ -f "${BASE_DIR}/assets/sources/config" ]]; then
+    # shellcheck disable=SC1090
+    source "${BASE_DIR}/assets/sources/config" 2>/dev/null || true
+elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+    # shellcheck disable=SC1091
+    source "/usr/share/anon/assets/sources/config" 2>/dev/null || true
+fi
+
+_get_iface_v4() {
+    if declare -F get_default_iface >/dev/null 2>&1; then
+        get_default_iface
+    else
+        ip route 2>/dev/null | awk '/^default/{print $5; exit}' | cut -d'@' -f1
+    fi
 }
 
-_get_gateway_ip() {
-    ip route 2>/dev/null | awk '/^default/{print $3; exit}'
+_get_gw_v4() {
+    if declare -F get_gateway_ip >/dev/null 2>&1; then
+        get_gateway_ip
+    else
+        ip route 2>/dev/null | awk '/^default/{print $3; exit}'
+    fi
+}
+
+_get_gw_v6() {
+    ip -6 route show default 2>/dev/null | awk '/^default/{for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}'
+}
+
+_extract_lladdr() {
+    awk '{for(i=1;i<=NF;i++) if($i=="lladdr" && (i+1)<=NF){print tolower($(i+1)); exit}}'
 }
 
 _get_gateway_mac() {
     local gw_ip="$1"
-    ip neigh show "$gw_ip" 2>/dev/null | awk '{print $5; exit}'
+    local mac=""
+    mac="$(ip neigh show "$gw_ip" 2>/dev/null | _extract_lladdr || true)"
+    if [[ -z "$mac" ]]; then
+        ping -c1 -W1 "$gw_ip" &>/dev/null || true
+        mac="$(ip neigh show "$gw_ip" 2>/dev/null | _extract_lladdr || true)"
+    fi
+    echo "$mac"
+}
+
+_get_gateway6_mac() {
+    local gw6_ip="$1"
+    [[ -z "$gw6_ip" ]] && return 0
+    ip -6 neigh show "$gw6_ip" 2>/dev/null | _extract_lladdr || true
 }
 
 _lockdown() {
@@ -39,37 +87,54 @@ _lockdown() {
     ip link set dev "$iface" down 2>/dev/null || true
 
     # Additionally block the spoofed MAC via iptables as defense-in-depth
-    if command -v iptables &>/dev/null; then
-        iptables -C INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null \
-            || iptables -A INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null || true
+    if [[ "$spoofed_mac" =~ ^([0-9a-f]{2}:){5}[0-9a-f]{2}$ ]]; then
+        if command -v iptables &>/dev/null; then
+            iptables -C INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null \
+                || iptables -A INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null || true
+        fi
+        if command -v ip6tables &>/dev/null; then
+            ip6tables -C INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null \
+                || ip6tables -A INPUT -m mac --mac-source "$spoofed_mac" -j DROP 2>/dev/null || true
+        fi
+    fi
+
+    if declare -F set_module_pid >/dev/null 2>&1; then
+        set_module_pid "anti_mitm" "0" || true
+        set_module_status "anti_mitm" "Disable" || true
     fi
 
     echo "[ANON ANTI-MITM] Network interface ${iface} is DOWN. Manual intervention required." >&2
 }
 
 main() {
-    local iface gw_ip baseline_mac
+    local iface gw_ip baseline_mac gw6_ip baseline_mac6
 
-    iface="$(_get_default_iface)"
+    iface="$(_get_iface_v4)"
     if [[ -z "$iface" ]]; then
         echo "[ANON ANTI-MITM] ERROR: No default network interface found." >&2
         exit 1
     fi
 
-    gw_ip="$(_get_gateway_ip)"
+    gw_ip="$(_get_gw_v4)"
     if [[ -z "$gw_ip" ]]; then
         echo "[ANON ANTI-MITM] ERROR: No default gateway found." >&2
         exit 1
     fi
 
     # Force an ARP resolution so ip neigh has an entry
+    if command -v arping &>/dev/null; then
+        arping -c1 -w1 -I "$iface" "$gw_ip" &>/dev/null || true
+    fi
     ping -c1 -W1 "$gw_ip" &>/dev/null || true
 
     baseline_mac="$(_get_gateway_mac "$gw_ip")"
-    if [[ -z "$baseline_mac" || "$baseline_mac" == "FAILED" || "$baseline_mac" == "INCOMPLETE" ]]; then
+    if [[ -z "$baseline_mac" || "$baseline_mac" == "failed" || "$baseline_mac" == "incomplete" ]]; then
         echo "[ANON ANTI-MITM] ERROR: Cannot resolve gateway MAC for ${gw_ip}." >&2
         exit 1
     fi
+
+    gw6_ip="$(_get_gw_v6 || true)"
+    baseline_mac6="$(_get_gateway6_mac "$gw6_ip" || true)"
 
     echo "[ANON ANTI-MITM] Monitoring gateway ${gw_ip} (MAC: ${baseline_mac}) on ${iface}" >&2
     echo "[ANON ANTI-MITM] Poll interval: ${POLL_INTERVAL}s" >&2
@@ -77,18 +142,20 @@ main() {
     while true; do
         sleep "$POLL_INTERVAL"
 
-        local current_mac
+        local current_mac current_mac6
         current_mac="$(_get_gateway_mac "$gw_ip")"
 
-        # Skip incomplete / failed ARP states (transient)
-        if [[ -z "$current_mac" || "$current_mac" == "FAILED" || "$current_mac" == "INCOMPLETE" ]]; then
-            continue
+        if [[ -n "$current_mac" && "$current_mac" != "$baseline_mac" ]]; then
+            _lockdown "$iface" "$current_mac" "$gw_ip"
+            exit 2
         fi
 
-        if [[ "$current_mac" != "$baseline_mac" ]]; then
-            _lockdown "$iface" "$current_mac" "$gw_ip"
-            # Exit after lockdown — the interface is down, nothing more to monitor
-            exit 2
+        if [[ -n "$gw6_ip" && -n "$baseline_mac6" ]]; then
+            current_mac6="$(_get_gateway6_mac "$gw6_ip" || true)"
+            if [[ -n "$current_mac6" && "$current_mac6" != "$baseline_mac6" ]]; then
+                _lockdown "$iface" "$current_mac6" "$gw6_ip"
+                exit 2
+            fi
         fi
     done
 }

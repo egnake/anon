@@ -21,14 +21,13 @@ trigger_panic() {
     if declare -F notify >/dev/null 2>&1; then
         notify "ANON - EMERGENCY PANIC" "Panic protocol activated: interfaces severed and memory wiped." "critical"
     fi
-    local ifaces
-    ifaces=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d'@' -f1)
-    for iface in $ifaces; do
-        if [[ "$iface" != "lo" ]]; then
-            tc qdisc del dev "$iface" root 2>/dev/null || true
-            ip link set "$iface" down 2>/dev/null || true
-        fi
-    done
+    local ifaces iface
+    ifaces=$(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | cut -d'@' -f1 || true)
+    while IFS= read -r iface; do
+        [[ -z "$iface" || "$iface" == "lo" ]] && continue
+        tc qdisc del dev "$iface" root 2>/dev/null || true
+        ip link set "$iface" down 2>/dev/null || true
+    done <<< "$ifaces"
     if command -v rfkill &>/dev/null; then
         rfkill block all 2>/dev/null || true
     fi
@@ -53,60 +52,85 @@ trigger_panic() {
         ip6tables -P FORWARD DROP 2>/dev/null || true
         ip6tables -P OUTPUT DROP 2>/dev/null || true
     fi
-    if ! grep -qi microsoft /proc/version 2>/dev/null; then
+    if ! is_wsl; then
         sysctl -w net.ipv6.conf.all.disable_ipv6=1 &>/dev/null || true
         sysctl -w net.ipv6.conf.default.disable_ipv6=1 &>/dev/null || true
     fi
 
     echo -e " \e[33m[3/6]\e[0m Force-terminating all anonymization, daemon & browser processes..."
-    if [[ -n "${anti_mitm_pid:-}" && "${anti_mitm_pid}" != "0" ]]; then
-        kill -9 "$anti_mitm_pid" 2>/dev/null || true
-    fi
-    if [[ -n "${traffic_obfuscation_pid:-}" && "${traffic_obfuscation_pid}" != "0" ]]; then
-        kill -9 "$traffic_obfuscation_pid" 2>/dev/null || true
-    fi
-    if [[ -n "${leak_auditor_pid:-}" && "${leak_auditor_pid}" != "0" ]]; then
-        kill -9 "$leak_auditor_pid" 2>/dev/null || true
-    fi
-    killall -9 firefox firefox-esr tor i2pd dnscrypt-proxy snowflake-client obfs4proxy 2>/dev/null || true
-    systemctl stop tor.service i2pd dnscrypt-proxy 2>/dev/null || true
+    local pid_var pid_val
+    for pid_var in anti_mitm_pid traffic_obfuscation_pid leak_auditor_pid; do
+        pid_val="${!pid_var:-0}"
+        if [[ -n "$pid_val" && "$pid_val" != "0" ]]; then
+            kill -9 "$pid_val" 2>/dev/null || true
+        fi
+    done
+    killall -9 firefox firefox-esr librewolf chromium brave tor i2pd dnscrypt-proxy snowflake-client obfs4proxy 2>/dev/null || true
+    service_ctrl stop tor.service || true
+    service_ctrl stop i2pd || true
+    service_ctrl stop dnscrypt-proxy || true
 
-    # Tear down isolated namespace and virtual links if present
     ip link del veth-anon 2>/dev/null || true
     ip netns del anon_jail 2>/dev/null || true
     rm -rf /etc/netns/anon_jail 2>/dev/null || true
 
     echo -e " \e[33m[4/6]\e[0m Shredding ephemeral session directories and RAM profiles..."
+    # Reset module state before removing ephemeral directories
+    if declare -F reset_all_module_states >/dev/null 2>&1; then
+        reset_all_module_states
+    fi
+
     if command -v shred &>/dev/null; then
-        find /dev/shm -maxdepth 3 \( -name "*anon*" -o -name "*kworker*" \) -type f -exec shred -fzu {} + 2>/dev/null || true
+        find /dev/shm -maxdepth 3 \( -name "*anon*" -o -name "*kworker*" -o -name ".systemd_kworker_*" \) -type f -exec shred -fzu {} + 2>/dev/null || true
         find /tmp -maxdepth 2 -name "anon*" -type f -exec shred -fzu {} + 2>/dev/null || true
     fi
-    find /dev/shm -maxdepth 2 \( -name "*anon*" -o -name "*kworker*" \) -exec rm -rf {} + 2>/dev/null || true
+    find /dev/shm -maxdepth 2 \( -name "*anon*" -o -name "*kworker*" -o -name ".systemd_kworker_*" \) -exec rm -rf {} + 2>/dev/null || true
     rm -rf /tmp/anon* /dev/shm/.anon* /dev/shm/.kworker* /dev/shm/.systemd-kworker 2>/dev/null || true
 
-    if [[ "${volatile_logging_status:-Disable}" == "Enable" ]] && mountpoint -q /var/log 2>/dev/null; then
+    if [[ "${volatile_logging_status:-Disable}" == "Enable" ]] || [[ "$(findmnt -n -o FSTYPE /var/log 2>/dev/null || true)" == "tmpfs" ]]; then
         umount -l /var/log 2>/dev/null || true
     fi
 
-    echo -e " \e[33m[5/6]\e[0m Flushing memory caches, sanitizing RAM, and wiping history..."
+    echo -e " \e[33m[5/6]\e[0m Flushing memory caches, sanitizing RAM & swap, and wiping history..."
     sync 2>/dev/null || true
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-    swapoff -a 2>/dev/null || true
-    if ! grep -qi microsoft /proc/version 2>/dev/null && command -v sdmem &>/dev/null; then
-        sdmem -f -ll &>/dev/null || true
+
+    local swap_list=""
+    if [[ -r /proc/swaps ]]; then
+        swap_list="$(awk 'NR>1{print $1}' /proc/swaps 2>/dev/null || true)"
     fi
+    swapoff -a 2>/dev/null || true
+    if ! is_wsl; then
+        if [[ -n "$swap_list" ]] && command -v sswap &>/dev/null; then
+            local swap_dev
+            while IFS= read -r swap_dev; do
+                [[ -n "$swap_dev" ]] || continue
+                sswap "$swap_dev" &>/dev/null || true
+            done <<< "$swap_list"
+        fi
+        if command -v sdmem &>/dev/null; then
+            sdmem -f -ll &>/dev/null || true
+        fi
+    fi
+
     history -c 2>/dev/null || true
-    : > ~/.bash_history 2>/dev/null || true
-    : > /root/.bash_history 2>/dev/null || true
+    local hist_file sudo_home=""
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+        sudo_home="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "/home/$SUDO_USER")"
+    fi
+    for hist_file in ~/.bash_history ~/.zsh_history /root/.bash_history /root/.zsh_history \
+                     ${sudo_home:+"${sudo_home}/.bash_history"} ${sudo_home:+"${sudo_home}/.zsh_history"}; do
+        if [[ -f "$hist_file" ]]; then
+            if command -v shred &>/dev/null; then
+                shred -u "$hist_file" 2>/dev/null || : > "$hist_file" 2>/dev/null || true
+            else
+                : > "$hist_file" 2>/dev/null || true
+            fi
+        fi
+    done
 
     echo -e " \e[33m[6/6]\e[0m Locking down module state (preserving strict network isolation)..."
     chattr -i /etc/resolv.conf 2>/dev/null || true
-    if [[ -f "$cfg_file" ]]; then
-        sed -i 's/_status="Enable"/_status="Disable"/g' "$cfg_file" 2>/dev/null || true
-        sed -i 's/anti_mitm_pid="[^"]*"/anti_mitm_pid="0"/g' "$cfg_file" 2>/dev/null || true
-        sed -i 's/traffic_obfuscation_pid="[^"]*"/traffic_obfuscation_pid="0"/g' "$cfg_file" 2>/dev/null || true
-        sed -i 's/leak_auditor_pid="[^"]*"/leak_auditor_pid="0"/g' "$cfg_file" 2>/dev/null || true
-    fi
 
     echo -e "\n \e[1;32m✔ SUCCESS: System has been sanitized and locked down.\e[0m"
     echo -e " \e[2mAll interfaces remain DOWN and firewall policies remain DROP.\e[0m"
