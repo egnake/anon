@@ -12,6 +12,7 @@ use crate::helpers::{
     cmd_exists, find_in_path, get_default_iface, is_netns_active, is_wsl, rand_u64, run_capture,
     run_quiet, service_ctrl, shred_dir_recursive, sysctl_read, sysctl_write,
 };
+use crate::i18n::t;
 use crate::registry::AnonModule;
 use crate::state::{set_module_pid, set_module_status, AnonState};
 use crate::sys::{is_pid_alive, send_signal, set_process_name, SIGKILL, SIGTERM};
@@ -99,7 +100,10 @@ impl AnonModule for TimezoneChanger {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("timezone_changer") {
-            warn("Timezone changer is already running");
+            warn(t(
+                "Timezone changer is already running",
+                "Saat dilimi değiştirici zaten çalışıyor"
+            ));
             return Ok(());
         }
         let orig = detect_current_timezone();
@@ -110,11 +114,24 @@ impl AnonModule for TimezoneChanger {
         if apply_timezone(selected) {
             set_module_status(&cfg.state_file, "timezone_changer", true)?;
             info(&format!(
-                "Timezone changer successfully enabled (Spoofed to: {selected})"
+                "{} ({}: {selected})",
+                t(
+                    "Timezone changer successfully enabled",
+                    "Saat dilimi değiştirici başarıyla etkinleştirildi"
+                ),
+                t("Spoofed to", "Sahte saat dilimi")
             ));
         } else {
             warn(&format!(
-                "Failed to apply spoofed timezone ({selected}); timedatectl or zoneinfo unavailable."
+                "{} ({selected}); {}",
+                t(
+                    "Failed to apply spoofed timezone",
+                    "Sahte saat dilimi uygulanamadı"
+                ),
+                t(
+                    "timedatectl or zoneinfo unavailable.",
+                    "timedatectl veya zoneinfo kullanılamıyor."
+                )
             ));
             let _ = fs::remove_file(bak);
         }
@@ -133,7 +150,10 @@ impl AnonModule for TimezoneChanger {
             let _ = fs::remove_file(bak);
         }
         set_module_status(&cfg.state_file, "timezone_changer", false)?;
-        info("Timezone changer successfully disabled");
+        info(t(
+            "Timezone changer successfully disabled",
+            "Saat dilimi değiştirici başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -157,7 +177,10 @@ impl AnonModule for HostnameChanger {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("hostname_changer") {
-            warn("Hostname changer is already running");
+            warn(t(
+                "Hostname changer is already running",
+                "Ana makine adı değiştirici zaten çalışıyor"
+            ));
             return Ok(());
         }
 
@@ -238,7 +261,12 @@ impl AnonModule for HostnameChanger {
 
         set_module_status(&cfg.state_file, "hostname_changer", true)?;
         info(&format!(
-            "Hostname changer successfully enabled (Spoofed to: {new_hostname})"
+            "{} ({}: {new_hostname})",
+            t(
+                "Hostname changer successfully enabled",
+                "Ana makine adı değiştirici başarıyla etkinleştirildi"
+            ),
+            t("Spoofed to", "Sahte ad")
         ));
         Ok(())
     }
@@ -277,7 +305,10 @@ impl AnonModule for HostnameChanger {
         }
 
         set_module_status(&cfg.state_file, "hostname_changer", false)?;
-        info("Hostname changer successfully disabled");
+        info(t(
+            "Hostname changer successfully disabled",
+            "Ana makine adı değiştirici başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -299,7 +330,10 @@ impl AnonModule for BrowserAnonymization {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("browser_anonymization") {
-            warn("Browser anonymization is already running");
+            warn(t(
+                "Browser anonymization is already running",
+                "Tarayıcı anonimleştirme zaten çalışıyor"
+            ));
             return Ok(());
         }
 
@@ -316,9 +350,15 @@ impl AnonModule for BrowserAnonymization {
 
         if installed {
             set_module_status(&cfg.state_file, "browser_anonymization", true)?;
-            info("Browser anonymization successfully enabled");
+            info(t(
+                "Browser anonymization successfully enabled",
+                "Tarayıcı anonimleştirme başarıyla etkinleştirildi"
+            ));
         } else {
-            warn("No supported Firefox/LibreWolf directory found (checked /etc/firefox-esr, /etc/firefox, /etc/librewolf, etc.)");
+            warn(t(
+                "No supported Firefox/LibreWolf directory found (checked /etc/firefox-esr, /etc/firefox, /etc/librewolf, etc.)",
+                "Desteklenen Firefox/LibreWolf dizini bulunamadı (/etc/firefox-esr, /etc/firefox, /etc/librewolf vb. kontrol edildi)"
+            ));
         }
         Ok(())
     }
@@ -328,7 +368,10 @@ impl AnonModule for BrowserAnonymization {
             let _ = fs::remove_file(Path::new(dir).join("anon.js"));
         }
         set_module_status(&cfg.state_file, "browser_anonymization", false)?;
-        info("Browser anonymization successfully disabled");
+        info(t(
+            "Browser anonymization successfully disabled",
+            "Tarayıcı anonimleştirme başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -350,7 +393,10 @@ impl AnonModule for OsObfuscation {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("os_obfuscation") {
-            warn("OS Obfuscation is already running");
+            warn(t(
+                "OS Obfuscation is already running",
+                "İşletim Sistemi İz Gizleme zaten çalışıyor"
+            ));
             return Ok(());
         }
 
@@ -397,7 +443,10 @@ impl AnonModule for OsObfuscation {
         }
 
         set_module_status(&cfg.state_file, "os_obfuscation", true)?;
-        info("OS Obfuscation enabled (Windows 10/11 fingerprint emulation)");
+        info(t(
+            "OS Obfuscation enabled (Windows 10/11 fingerprint emulation)",
+            "İşletim Sistemi İz Gizleme etkinleştirildi (Windows 10/11 parmak izi taklidi)"
+        ));
         Ok(())
     }
 
@@ -430,7 +479,10 @@ impl AnonModule for OsObfuscation {
         );
 
         set_module_status(&cfg.state_file, "os_obfuscation", false)?;
-        info("OS Obfuscation disabled — original TCP/IP fingerprint restored");
+        info(t(
+            "OS Obfuscation disabled — original TCP/IP fingerprint restored",
+            "İşletim Sistemi İz Gizleme devre dışı bırakıldı — orijinal TCP/IP parmak izi geri yüklendi"
+        ));
         Ok(())
     }
 }
@@ -452,7 +504,10 @@ impl AnonModule for ProcessObfuscation {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("process_obfuscation") {
-            warn("Process obfuscation is already running");
+            warn(t(
+                "Process obfuscation is already running",
+                "Süreç gizleme zaten çalışıyor"
+            ));
             return Ok(());
         }
 
@@ -466,11 +521,20 @@ impl AnonModule for ProcessObfuscation {
             .unwrap_or_else(|| "rw".to_string());
         let _ = fs::write(cfg.backup_dir.join("proc_mount_opts.bak"), format!("{orig_opts}\n"));
 
-        info("Remounting /proc with hidepid=2...");
+        info(t(
+            "Remounting /proc with hidepid=2...",
+            "/proc dizini hidepid=2 ile yeniden bağlanıyor..."
+        ));
         if run_quiet("mount", &["-o", "remount,rw,hidepid=2", "/proc"]) {
-            info("/proc remounted with hidepid=2 — process isolation active");
+            info(t(
+                "/proc remounted with hidepid=2 — process isolation active",
+                "/proc hidepid=2 ile yeniden bağlandı — süreç izolasyonu etkin"
+            ));
         } else {
-            warn("Could not remount /proc with hidepid=2 (kernel may not support it)");
+            warn(t(
+                "Could not remount /proc with hidepid=2 (kernel may not support it)",
+                "/proc hidepid=2 ile yeniden bağlanamadı (çekirdek desteklemiyor olabilir)"
+            ));
         }
 
         let ramdir = format!("/dev/shm/.systemd_kworker_{:06x}", rand_u64() & 0xff_ffff);
@@ -535,7 +599,10 @@ impl AnonModule for ProcessObfuscation {
         }
 
         set_module_status(&cfg.state_file, "process_obfuscation", true)?;
-        info("Process obfuscation enabled (hidepid=2 + RAM-based stealth execution)");
+        info(t(
+            "Process obfuscation enabled (hidepid=2 + RAM-based stealth execution)",
+            "Süreç gizleme etkinleştirildi (hidepid=2 + RAM tabanlı gizli yürütme)"
+        ));
         Ok(())
     }
 
@@ -555,9 +622,18 @@ impl AnonModule for ProcessObfuscation {
         }
 
         if run_quiet("mount", &["-o", &format!("remount,{restore_opts}"), "/proc"]) {
-            info(&format!("/proc mount options restored ({restore_opts})"));
+            info(&format!(
+                "{} ({restore_opts})",
+                t(
+                    "/proc mount options restored",
+                    "/proc bağlama seçenekleri geri yüklendi"
+                )
+            ));
         } else {
-            warn("Could not restore /proc mount options");
+            warn(t(
+                "Could not restore /proc mount options",
+                "/proc bağlama seçenekleri geri yüklenemedi"
+            ));
         }
 
         for tool in ["nmap", "sqlmap"] {
@@ -586,7 +662,10 @@ impl AnonModule for ProcessObfuscation {
         shred_dir_recursive(Path::new("/dev/shm/.systemd-kworker"));
 
         set_module_status(&cfg.state_file, "process_obfuscation", false)?;
-        info("Process obfuscation disabled");
+        info(t(
+            "Process obfuscation disabled",
+            "Süreç gizleme devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -649,17 +728,26 @@ impl AnonModule for SandboxIsolation {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("sandbox_isolation") {
-            warn("Sandbox Isolation is already active");
+            warn(t(
+                "Sandbox Isolation is already active",
+                "İzolasyon Alanı zaten etkin"
+            ));
             return Ok(());
         }
 
         if let Some(routes) = run_capture("ip", &["-4", "route", "show"]) {
             if routes.contains("10.200.200.") {
-                warn("Existing route overlaps 10.200.200.0/24; namespace routing may conflict.");
+                warn(t(
+                    "Existing route overlaps 10.200.200.0/24; namespace routing may conflict.",
+                    "Mevcut rota 10.200.200.0/24 ile çakışıyor; ad alanı yönlendirmesi çakışabilir."
+                ));
             }
         }
 
-        info("Setting up Kernel-level Network Namespace + MAC enforcement...");
+        info(t(
+            "Setting up Kernel-level Network Namespace + MAC enforcement...",
+            "Çekirdek düzeyinde Ağ Ad Alanı + MAC zorlaması kuruluyor..."
+        ));
 
         let _ = run_quiet("ip", &["link", "del", "veth-anon"]);
         let _ = run_quiet("ip", &["netns", "del", "anon_jail"]);
@@ -708,7 +796,10 @@ impl AnonModule for SandboxIsolation {
             }
         }
 
-        info("Network namespace 'anon_jail' created and routed through Tor");
+        info(t(
+            "Network namespace 'anon_jail' created and routed through Tor",
+            "'anon_jail' ağ ad alanı oluşturuldu ve Tor üzerinden yönlendirildi"
+        ));
 
         // AppArmor MAC profile
         if cmd_exists("apparmor_parser") {
@@ -717,13 +808,22 @@ impl AnonModule for SandboxIsolation {
             }
             if fs::write(&cfg.apparmor_tor_profile, APPARMOR_TOR_CONTENT).is_ok() {
                 if run_quiet("apparmor_parser", &["-r", &cfg.apparmor_tor_profile.to_string_lossy()]) {
-                    info("AppArmor profile loaded for /usr/bin/tor");
+                    info(t(
+                        "AppArmor profile loaded for /usr/bin/tor",
+                        "/usr/bin/tor için AppArmor profili yüklendi"
+                    ));
                 } else {
-                    warn("Failed to load AppArmor profile for Tor");
+                    warn(t(
+                        "Failed to load AppArmor profile for Tor",
+                        "Tor için AppArmor profili yüklenemedi"
+                    ));
                 }
             }
         } else {
-            info("AppArmor not available — skipping MAC profile installation");
+            info(t(
+                "AppArmor not available — skipping MAC profile installation",
+                "AppArmor mevcut değil — MAC profil kurulumu atlanıyor"
+            ));
         }
 
         // Firejail wrappers
@@ -751,13 +851,22 @@ impl AnonModule for SandboxIsolation {
                     let _ = fs::set_permissions(&wrap_path, fs::Permissions::from_mode(0o755));
                 }
             }
-            info("Firejail sandboxed wrappers created for external tools");
+            info(t(
+                "Firejail sandboxed wrappers created for external tools",
+                "Harici araçlar için Firejail sarmalayıcıları oluşturuldu"
+            ));
         } else {
-            info("Firejail not available — skipping sandboxed tool wrappers");
+            info(t(
+                "Firejail not available — skipping sandboxed tool wrappers",
+                "Firejail mevcut değil — sarmalanmış araçlar atlanıyor"
+            ));
         }
 
         set_module_status(&cfg.state_file, "sandbox_isolation", true)?;
-        msg("Sandbox Isolation active (Namespace + AppArmor + Firejail)");
+        msg(t(
+            "Sandbox Isolation active (Namespace + AppArmor + Firejail)",
+            "İzolasyon Alanı etkin (Ad Alanı + AppArmor + Firejail)"
+        ));
         Ok(())
     }
 
@@ -796,7 +905,10 @@ impl AnonModule for SandboxIsolation {
         if cfg.apparmor_tor_profile.is_file() {
             let _ = run_quiet("apparmor_parser", &["-R", &cfg.apparmor_tor_profile.to_string_lossy()]);
             let _ = fs::remove_file(&cfg.apparmor_tor_profile);
-            info("AppArmor profile for Tor removed");
+            info(t(
+                "AppArmor profile for Tor removed",
+                "Tor için AppArmor profili kaldırıldı"
+            ));
         }
 
         if let Ok(entries) = fs::read_dir(&cfg.wrapper_dir) {
@@ -806,10 +918,16 @@ impl AnonModule for SandboxIsolation {
                 }
             }
         }
-        info("Firejail sandboxed wrappers removed");
+        info(t(
+            "Firejail sandboxed wrappers removed",
+            "Firejail sarmalayıcıları kaldırıldı"
+        ));
 
         set_module_status(&cfg.state_file, "sandbox_isolation", false)?;
-        info("Sandbox Isolation removed (Namespace + MAC profiles cleaned)");
+        info(t(
+            "Sandbox Isolation removed (Namespace + MAC profiles cleaned)",
+            "İzolasyon Alanı kaldırıldı (Ad Alanı + MAC profilleri temizlendi)"
+        ));
         Ok(())
     }
 }
@@ -829,18 +947,36 @@ impl AnonModule for ExecutionStealth {
     }
 
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
-        info("Activating Execution Stealth...");
+        info(t(
+            "Activating Execution Stealth...",
+            "Yürütme Gizliliği etkinleştiriliyor..."
+        ));
         set_module_status(&cfg.state_file, "execution_stealth", true)?;
-        msg("Execution Stealth activated.");
-        msg("Restart the framework for Process Masquerading and Fileless Execution to take effect.");
+        msg(t(
+            "Execution Stealth activated.",
+            "Yürütme Gizliliği etkinleştirildi."
+        ));
+        msg(t(
+            "Restart the framework for Process Masquerading and Fileless Execution to take effect.",
+            "Süreç Maskeleme ve Dosyasız Yürütmenin devreye girmesi için aracı yeniden başlatın."
+        ));
         Ok(())
     }
 
     fn stop(&self, cfg: &AppConfig) -> Result<(), String> {
-        info("Deactivating Execution Stealth...");
+        info(t(
+            "Deactivating Execution Stealth...",
+            "Yürütme Gizliliği devre dışı bırakılıyor..."
+        ));
         set_module_status(&cfg.state_file, "execution_stealth", false)?;
-        msg("Execution Stealth deactivated.");
-        msg("Any currently masked processes will remain masked until terminated.");
+        msg(t(
+            "Execution Stealth deactivated.",
+            "Yürütme Gizliliği devre dışı bırakıldı."
+        ));
+        msg(t(
+            "Any currently masked processes will remain masked until terminated.",
+            "Halihazırda maskelenmiş süreçler sonlandırılana kadar maskeli kalacaktır."
+        ));
         Ok(())
     }
 }
@@ -945,18 +1081,28 @@ impl AnonModule for TrafficObfuscation {
 
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         if !cmd_exists("tc") {
-            warn("'tc' (iproute2) command not found.");
+            warn(t(
+                "'tc' (iproute2) command not found.",
+                "'tc' (iproute2) komutu bulunamadı."
+            ));
             return Err("tc missing".to_string());
         }
         let Some(iface) = get_default_iface() else {
-            warn("Could not determine default network interface.");
+            warn(t(
+                "Could not determine default network interface.",
+                "Varsayılan ağ arayüzü belirlenemedi."
+            ));
             return Err("no default interface".to_string());
         };
 
         let _ = fs::write(cfg.backup_dir.join("traffic_obfuscation.iface"), format!("{iface}\n"));
 
         info(&format!(
-            "Injecting latency and jitter to interface {}{iface}{}...",
+            "{} {}{iface}{}...",
+            t(
+                "Injecting latency and jitter to interface",
+                "Arayüze gecikme ve rastgele titreme (jitter) ekleniyor:"
+            ),
             crate::ui::YELLOW,
             crate::ui::RESET
         ));
@@ -969,15 +1115,29 @@ impl AnonModule for TrafficObfuscation {
             ],
         ) {
             warn(&format!(
-                "Kernel netem qdisc unsupported or failed on {iface}; continuing with background chaffing."
+                "{} {iface}; {}",
+                t(
+                    "Kernel netem qdisc unsupported or failed on",
+                    "Çekirdek netem qdisc desteklenmiyor veya başarısız:"
+                ),
+                t(
+                    "continuing with background chaffing.",
+                    "arka plan sahte trafiği (chaff) ile devam ediliyor."
+                )
             ));
         }
 
-        info("Starting background dummy traffic generation...");
+        info(t(
+            "Starting background dummy traffic generation...",
+            "Arka plan sahte trafik üretimi başlatılıyor..."
+        ));
         let pid = spawn_self_daemon(cfg, "traffic-chaff")?;
         set_module_pid(&cfg.state_file, "traffic_obfuscation", pid)?;
         set_module_status(&cfg.state_file, "traffic_obfuscation", true)?;
-        msg("Traffic Obfuscation (Timing Attack Defense) initialized.");
+        msg(t(
+            "Traffic Obfuscation (Timing Attack Defense) initialized.",
+            "Trafik Karartma (Zamanlama Saldırısı Koruması) başlatıldı."
+        ));
         Ok(())
     }
 
@@ -1004,7 +1164,10 @@ impl AnonModule for TrafficObfuscation {
 
         let _ = set_module_pid(&cfg.state_file, "traffic_obfuscation", 0);
         set_module_status(&cfg.state_file, "traffic_obfuscation", false)?;
-        info("Traffic Obfuscation disabled.");
+        info(t(
+            "Traffic Obfuscation disabled.",
+            "Trafik Karartma devre dışı bırakıldı."
+        ));
         Ok(())
     }
 }

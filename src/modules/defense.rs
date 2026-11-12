@@ -9,6 +9,7 @@ use crate::helpers::{
     cmd_exists, get_default_iface, get_gateway_ip, get_gateway_v6, is_mountpoint, is_tor_running,
     is_wsl, resolve_username_any, run_capture, run_quiet, service_ctrl, sysctl_read, sysctl_write,
 };
+use crate::i18n::t;
 use crate::modules::network::KillSwitch;
 use crate::modules::obfuscation::spawn_self_daemon;
 use crate::registry::AnonModule;
@@ -38,7 +39,10 @@ impl AnonModule for AntiMitm {
         let state = AnonState::load(&cfg.state_file);
         let existing = state.get_pid("anti_mitm");
         if is_pid_alive(existing) {
-            warn(&format!("Anti mitm is already running (PID: {existing})"));
+            warn(&format!(
+                "{} (PID: {existing})",
+                t("Anti mitm is already running", "Anti-MITM zaten çalışıyor")
+            ));
             return Ok(());
         }
         let pid = spawn_self_daemon(cfg, "anti-mitm")?;
@@ -47,12 +51,18 @@ impl AnonModule for AntiMitm {
         if !is_pid_alive(pid) {
             let _ = set_module_pid(&cfg.state_file, "anti_mitm", 0);
             let _ = set_module_status(&cfg.state_file, "anti_mitm", false);
-            warn("Anti mitm could not attach (no active default gateway/interface).");
+            warn(t(
+                "Anti mitm could not attach (no active default gateway/interface).",
+                "Anti-MITM bağlanamadı (aktif varsayılan ağ geçidi/arayüz yok)."
+            ));
             return Ok(());
         }
         set_module_pid(&cfg.state_file, "anti_mitm", pid)?;
         set_module_status(&cfg.state_file, "anti_mitm", true)?;
-        info("Anti mitm successfully enabled");
+        info(t(
+            "Anti mitm successfully enabled",
+            "Anti-MITM başarıyla etkinleştirildi"
+        ));
         Ok(())
     }
 
@@ -67,7 +77,10 @@ impl AnonModule for AntiMitm {
         }
         set_module_pid(&cfg.state_file, "anti_mitm", 0)?;
         set_module_status(&cfg.state_file, "anti_mitm", false)?;
-        info("Anti mitm successfully disabled");
+        info(t(
+            "Anti mitm successfully disabled",
+            "Anti-MITM başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -219,14 +232,21 @@ impl AnonModule for LeakAuditor {
         let existing = state.get_pid("leak_auditor");
         if is_pid_alive(existing) {
             warn(&format!(
-                "Background leak auditor is already running (PID: {existing})"
+                "{} (PID: {existing})",
+                t(
+                    "Background leak auditor is already running",
+                    "Arka plan sızıntı denetleyicisi zaten çalışıyor"
+                )
             ));
             return Ok(());
         }
         let pid = spawn_self_daemon(cfg, "leak-auditor")?;
         set_module_pid(&cfg.state_file, "leak_auditor", pid)?;
         set_module_status(&cfg.state_file, "leak_auditor", true)?;
-        info("Background leak auditor successfully enabled");
+        info(t(
+            "Background leak auditor successfully enabled",
+            "Arka plan sızıntı denetleyicisi başarıyla etkinleştirildi"
+        ));
         Ok(())
     }
 
@@ -241,7 +261,10 @@ impl AnonModule for LeakAuditor {
         }
         set_module_pid(&cfg.state_file, "leak_auditor", 0)?;
         set_module_status(&cfg.state_file, "leak_auditor", false)?;
-        info("Background leak auditor successfully disabled");
+        info(t(
+            "Background leak auditor successfully disabled",
+            "Arka plan sızıntı denetleyicisi başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -326,13 +349,32 @@ fn check_ip_leak(state: &AnonState) -> Result<(), String> {
 }
 
 fn trigger_leak_lockdown(cfg: &AppConfig, reason: &str) -> ! {
-    eprintln!("\x1b[1;31m[ANON LEAK AUDITOR] *** CRITICAL LEAK DETECTED ***\x1b[0m");
-    eprintln!("\x1b[1;31m[ANON LEAK AUDITOR] Reason: {reason}\x1b[0m");
-    eprintln!("\x1b[1;33m[ANON LEAK AUDITOR] Enforcing immediate network lockdown...\x1b[0m");
+    eprintln!(
+        "\x1b[1;31m[ANON {}] *** {} ***\x1b[0m",
+        t("LEAK AUDITOR", "SIZINTI DENETLEYİCİ"),
+        t("CRITICAL LEAK DETECTED", "KRİTİK SIZINTI TESPİT EDİLDİ")
+    );
+    eprintln!(
+        "\x1b[1;31m[ANON {}] {}: {reason}\x1b[0m",
+        t("LEAK AUDITOR", "SIZINTI DENETLEYİCİ"),
+        t("Reason", "Neden")
+    );
+    eprintln!(
+        "\x1b[1;33m[ANON {}] {}\x1b[0m",
+        t("LEAK AUDITOR", "SIZINTI DENETLEYİCİ"),
+        t(
+            "Enforcing immediate network lockdown...",
+            "Acil ağ kilitlemesi uygulanıyor..."
+        )
+    );
 
     notify(
-        "ANON - CRITICAL LEAK AUDIT",
-        &format!("Leak detected: {reason}! Activating kill switch."),
+        t("ANON - CRITICAL LEAK AUDIT", "ANON - KRİTİK SIZINTI DENETİMİ"),
+        &format!(
+            "{} {reason}! {}",
+            t("Leak detected:", "Sızıntı tespit edildi:"),
+            t("Activating kill switch.", "Öldürme anahtarı (Kill Switch) etkinleştiriliyor.")
+        ),
         "critical",
     );
 
@@ -350,13 +392,26 @@ fn trigger_leak_lockdown(cfg: &AppConfig, reason: &str) -> ! {
     let _ = KillSwitch.start(cfg);
     let _ = set_module_pid(&cfg.state_file, "leak_auditor", 0);
     let _ = set_module_status(&cfg.state_file, "leak_auditor", false);
-    eprintln!("\x1b[1;31m[ANON LEAK AUDITOR] Network lockdown enforced. Terminating auditor.\x1b[0m");
+    eprintln!(
+        "\x1b[1;31m[ANON {}] {}\x1b[0m",
+        t("LEAK AUDITOR", "SIZINTI DENETLEYİCİ"),
+        t(
+            "Network lockdown enforced. Terminating auditor.",
+            "Ağ kilitlemesi uygulandı. Denetleyici sonlandırılıyor."
+        )
+    );
     std::process::exit(2);
 }
 
 pub fn run_audit_once(cfg: &AppConfig) -> Result<String, (i32, String)> {
     let mut out = String::new();
-    out.push_str("\x1b[1;36m[*] ANON Leak Auditor: Running one-shot audit...\x1b[0m\n");
+    out.push_str(&format!(
+        "\x1b[1;36m[*] {}\x1b[0m\n",
+        t(
+            "ANON Leak Auditor: Running one-shot audit...",
+            "ANON Sızıntı Denetleyicisi: Tek seferlik denetim çalıştırılıyor..."
+        )
+    ));
     let state = AnonState::load(&cfg.state_file);
 
     if let Err(reason) = check_dns_leak(cfg, &state)
@@ -364,7 +419,9 @@ pub fn run_audit_once(cfg: &AppConfig) -> Result<String, (i32, String)> {
         .and_then(|_| check_ip_leak(&state))
     {
         out.push_str(&format!(
-            "[ANON LEAK AUDITOR] CRITICAL LEAK DETECTED: {reason}\n"
+            "[ANON {}] {}: {reason}\n",
+            t("LEAK AUDITOR", "SIZINTI DENETLEYİCİ"),
+            t("CRITICAL LEAK DETECTED", "KRİTİK SIZINTI TESPİT EDİLDİ")
         ));
         if cmd_exists("iptables") {
             for p in ["OUTPUT", "INPUT", "FORWARD"] {
@@ -380,7 +437,13 @@ pub fn run_audit_once(cfg: &AppConfig) -> Result<String, (i32, String)> {
         return Err((2, out));
     }
 
-    out.push_str("\x1b[1;32m[✔] Audit complete: No leaks detected.\x1b[0m\n");
+    out.push_str(&format!(
+        "\x1b[1;32m[✔] {}\x1b[0m\n",
+        t(
+            "Audit complete: No leaks detected.",
+            "Denetim tamamlandı: Sızıntı tespit edilmedi."
+        )
+    ));
     Ok(out)
 }
 
@@ -430,25 +493,40 @@ impl AnonModule for VolatileLogging {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("volatile_logging") {
-            warn("Volatile logging is already active");
+            warn(t(
+                "Volatile logging is already active",
+                "Geçici RAM günlüğü (Volatile logging) zaten etkin"
+            ));
             return Ok(());
         }
 
         info(&format!(
-            "Initializing volatile logging (Tails OS paradigm, size: {})...",
+            "{} ({}: {})...",
+            t(
+                "Initializing volatile logging",
+                "Geçici RAM günlüğü başlatılıyor"
+            ),
+            t("Tails OS paradigm, size", "Tails OS yaklaşımı, boyut"),
             cfg.volatile_log_size
         ));
 
         if is_mountpoint("/var/log") {
-            warn("/var/log is already a mountpoint; skipping tmpfs overlay");
+            warn(t(
+                "/var/log is already a mountpoint; skipping tmpfs overlay",
+                "/var/log zaten bir bağlama noktası; tmpfs katmanı atlanıyor"
+            ));
         } else {
             let opts = format!("size={},mode=0755", cfg.volatile_log_size);
             if !run_quiet("mount", &["-t", "tmpfs", "-o", &opts, "tmpfs", "/var/log"]) {
-                warn("Failed to mount tmpfs on /var/log");
+                warn(t(
+                    "Failed to mount tmpfs on /var/log",
+                    "/var/log üzerine tmpfs bağlanamadı"
+                ));
                 return Err("mount tmpfs failed".to_string());
             }
             info(&format!(
-                "Mounted tmpfs ({}) over /var/log",
+                "{} ({}) -> /var/log",
+                t("Mounted tmpfs", "tmpfs bağlandı"),
                 cfg.volatile_log_size
             ));
         }
@@ -479,26 +557,44 @@ impl AnonModule for VolatileLogging {
         if let Some(pids) = run_capture("pidof", &["rsyslogd"]) {
             if let Some(pid) = pids.split_whitespace().next().and_then(|s| s.parse::<i32>().ok()) {
                 let _ = send_signal(pid, crate::sys::SIGHUP);
-                info("Sent SIGHUP to rsyslog → writing to RAM");
+                info(t(
+                    "Sent SIGHUP to rsyslog → writing to RAM",
+                    "rsyslog'a SIGHUP gönderildi → RAM'e yazılıyor"
+                ));
             }
         }
 
         set_module_status(&cfg.state_file, "volatile_logging", true)?;
-        info("Volatile logging enabled — all logs now write to volatile RAM");
+        info(t(
+            "Volatile logging enabled — all logs now write to volatile RAM",
+            "Geçici RAM günlüğü etkinleştirildi — tüm kayıtlar artık geçici RAM'e yazılıyor"
+        ));
         Ok(())
     }
 
     fn stop(&self, cfg: &AppConfig) -> Result<(), String> {
-        info("Restoring persistent logging...");
+        info(t(
+            "Restoring persistent logging...",
+            "Kalıcı günlük kaydı geri yükleniyor..."
+        ));
         if is_mountpoint("/var/log") {
             sync_filesystems();
             if run_quiet("umount", &["-l", "/var/log"]) || run_quiet("umount", &["/var/log"]) {
-                info("Unmounted tmpfs from /var/log — historical logs restored");
+                info(t(
+                    "Unmounted tmpfs from /var/log — historical logs restored",
+                    "/var/log üzerindeki tmpfs ayrıldı — geçmiş kayıtlar geri yüklendi"
+                ));
             } else {
-                warn("Could not unmount /var/log — it may still be in use");
+                warn(t(
+                    "Could not unmount /var/log — it may still be in use",
+                    "/var/log ayrılamadı — hala kullanımda olabilir"
+                ));
             }
         } else {
-            info("/var/log is not a tmpfs mountpoint; nothing to unmount");
+            info(t(
+                "/var/log is not a tmpfs mountpoint; nothing to unmount",
+                "/var/log bir tmpfs bağlama noktası değil; ayrılacak bir şey yok"
+            ));
         }
 
         let _ = service_ctrl("restart", "systemd-journald", None);
@@ -511,7 +607,10 @@ impl AnonModule for VolatileLogging {
         }
 
         set_module_status(&cfg.state_file, "volatile_logging", false)?;
-        info("Volatile logging disabled");
+        info(t(
+            "Volatile logging disabled",
+            "Geçici RAM günlüğü devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -533,17 +632,26 @@ impl AnonModule for BluetoothDisabler {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("bluetooth_disabler") {
-            warn("Bluetooth disabler is already running");
+            warn(t(
+                "Bluetooth disabler is already running",
+                "Bluetooth devre dışı bırakıcı zaten çalışıyor"
+            ));
             return Ok(());
         }
         if !cmd_exists("rfkill") {
-            warn("rfkill not found; cannot disable Bluetooth.");
+            warn(t(
+                "rfkill not found; cannot disable Bluetooth.",
+                "rfkill bulunamadı; Bluetooth devre dışı bırakılamıyor."
+            ));
             return Err("rfkill missing".to_string());
         }
 
         let bt_state = run_capture("rfkill", &["list", "bluetooth"]).unwrap_or_default();
         if bt_state.trim().is_empty() {
-            warn("No Bluetooth radio detected by rfkill.");
+            warn(t(
+                "No Bluetooth radio detected by rfkill.",
+                "rfkill tarafından algılanan bir Bluetooth radyosu yok."
+            ));
             return Err("no bluetooth".to_string());
         }
 
@@ -552,7 +660,10 @@ impl AnonModule for BluetoothDisabler {
         }
         let _ = run_quiet("rfkill", &["block", "bluetooth"]);
         set_module_status(&cfg.state_file, "bluetooth_disabler", true)?;
-        info("Bluetooth disabler successfully enabled (Blocked)");
+        info(t(
+            "Bluetooth disabler successfully enabled (Blocked)",
+            "Bluetooth devre dışı bırakıcı başarıyla etkinleştirildi (Engellendi)"
+        ));
         Ok(())
     }
 
@@ -563,7 +674,10 @@ impl AnonModule for BluetoothDisabler {
             let _ = fs::remove_file(marker);
         }
         set_module_status(&cfg.state_file, "bluetooth_disabler", false)?;
-        info("Bluetooth disabler successfully disabled (Unblocked)");
+        info(t(
+            "Bluetooth disabler successfully disabled (Unblocked)",
+            "Bluetooth devre dışı bırakıcı başarıyla kapatıldı (Engel kaldırıldı)"
+        ));
         Ok(())
     }
 }
@@ -609,11 +723,17 @@ impl AnonModule for AntiColdBoot {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("anti_cold_boot") {
-            warn("Anti cold boot is already running");
+            warn(t(
+                "Anti cold boot is already running",
+                "Anti Cold Boot koruması zaten çalışıyor"
+            ));
             return Ok(());
         }
 
-        info("Initiating anti cold-boot & anti-forensic memory lockdown...");
+        info(t(
+            "Initiating anti cold-boot & anti-forensic memory lockdown...",
+            "Anti Cold Boot ve adli bilişim karşıtı bellek kilitlemesi başlatılıyor..."
+        ));
 
         let swaps = active_swap_devices();
         if !swaps.is_empty() {
@@ -656,9 +776,15 @@ impl AnonModule for AntiColdBoot {
         let _ = sysctl_write("kernel.core_pattern", "|/bin/false");
 
         if is_wsl() {
-            warn("WSL environment detected! Skipping RAM/Swap wipe to prevent fatal E_UNEXPECTED host crash.");
+            warn(t(
+                "WSL environment detected! Skipping RAM/Swap wipe to prevent fatal E_UNEXPECTED host crash.",
+                "WSL ortamı tespit edildi! Kritik E_UNEXPECTED ana sistem çökmesini önlemek için RAM/Swap silme atlanıyor."
+            ));
         } else if cmd_exists("sdmem") {
-            info("Wiping free RAM securely (this may take a moment)...");
+            info(t(
+                "Wiping free RAM securely (this may take a moment)...",
+                "Boş RAM güvenli şekilde temizleniyor (biraz zaman alabilir)..."
+            ));
             let _ = Command::new("sdmem")
                 .args(["-f", "-ll"])
                 .stdin(std::process::Stdio::null())
@@ -666,12 +792,18 @@ impl AnonModule for AntiColdBoot {
                 .stderr(std::process::Stdio::null())
                 .status();
         } else {
-            info("Performing native Rust RAM page zeroization...");
+            info(t(
+                "Performing native Rust RAM page zeroization...",
+                "Yerel Rust RAM sayfası sıfırlaması gerçekleştiriliyor..."
+            ));
             wipe_free_ram_native(128);
         }
 
         set_module_status(&cfg.state_file, "anti_cold_boot", true)?;
-        info("Anti cold boot & memory lockdown successfully enabled (Swap locked OFF)");
+        info(t(
+            "Anti cold boot & memory lockdown successfully enabled (Swap locked OFF)",
+            "Anti Cold Boot ve bellek kilitlemesi başarıyla etkinleştirildi (Takas alanı KAPALI kilitlendi)"
+        ));
         Ok(())
     }
 
@@ -702,7 +834,10 @@ impl AnonModule for AntiColdBoot {
         }
 
         set_module_status(&cfg.state_file, "anti_cold_boot", false)?;
-        info("Anti cold boot successfully disabled");
+        info(t(
+            "Anti cold boot successfully disabled",
+            "Anti Cold Boot başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }

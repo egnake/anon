@@ -13,6 +13,7 @@ use crate::helpers::{
     is_wsl, list_interfaces, rand_u64, resolve_user_home, resolve_uid_any, run_capture, run_quiet,
     run_stdin, service_ctrl, shred_dir_recursive, shred_file, sysctl_write, unlock_nm_dns,
 };
+use crate::i18n::t;
 use crate::modules::defense::active_swap_devices;
 use crate::modules::network::unpin_snowflake_hosts;
 use crate::modules::obfuscation::{apply_timezone, ANON_JS_EMBEDDED};
@@ -426,16 +427,31 @@ pub fn trigger_panic(cfg: &AppConfig) {
     crate::ui::clear_screen();
     println!("\x1b[1;31m");
     println!("  ╔══════════════════════════════════════════════════════════════╗");
-    println!("  ║        CRITICAL: EMERGENCY PANIC PROTOCOL ACTIVATED          ║");
+    println!(
+        "  ║{}║",
+        t(
+            "        CRITICAL: EMERGENCY PANIC PROTOCOL ACTIVATED          ",
+            "       KRİTİK: ACİL PANİK PROTOKOLÜ ETKİNLEŞTİRİLDİ           "
+        )
+    );
     println!("  ╚══════════════════════════════════════════════════════════════╝");
     println!("\x1b[0m");
 
     let state = AnonState::load(&cfg.state_file);
 
-    println!(" \x1b[33m[1/6]\x1b[0m Severing all network physical, wireless, and virtual interfaces...");
+    println!(
+        " \x1b[33m[1/6]\x1b[0m {}",
+        t(
+            "Severing all network physical, wireless, and virtual interfaces...",
+            "Tüm fiziksel, kablosuz ve sanal ağ arayüzleri kesiliyor..."
+        )
+    );
     notify(
-        "ANON - EMERGENCY PANIC",
-        "Panic protocol activated: interfaces severed and memory wiped.",
+        t("ANON - EMERGENCY PANIC", "ANON - ACİL PANİK"),
+        t(
+            "Panic protocol activated: interfaces severed and memory wiped.",
+            "Panik protokolü etkinleştirildi: arayüzler kesildi ve bellek silindi."
+        ),
         "critical",
     );
     for iface in list_interfaces() {
@@ -449,7 +465,13 @@ pub fn trigger_panic(cfg: &AppConfig) {
         let _ = run_quiet("rfkill", &["block", "all"]);
     }
 
-    println!(" \x1b[33m[2/6]\x1b[0m Locking down kernel firewall (IPv4/IPv6 total drop)...");
+    println!(
+        " \x1b[33m[2/6]\x1b[0m {}",
+        t(
+            "Locking down kernel firewall (IPv4/IPv6 total drop)...",
+            "Çekirdek güvenlik duvarı kilitleniyor (IPv4/IPv6 tam engelleme)..."
+        )
+    );
     for args in [
         &["-F"][..],
         &["-X"],
@@ -481,7 +503,13 @@ pub fn trigger_panic(cfg: &AppConfig) {
         let _ = sysctl_write("net.ipv6.conf.default.disable_ipv6", "1");
     }
 
-    println!(" \x1b[33m[3/6]\x1b[0m Force-terminating all anonymization, daemon & browser processes...");
+    println!(
+        " \x1b[33m[3/6]\x1b[0m {}",
+        t(
+            "Force-terminating all anonymization, daemon & browser processes...",
+            "Tüm anonimleştirme, arka plan servisi ve tarayıcı süreçleri sonlandırılıyor..."
+        )
+    );
     for mod_name in ["anti_mitm", "traffic_obfuscation", "leak_auditor"] {
         let pid = state.get_pid(mod_name);
         if pid > 0 {
@@ -512,7 +540,13 @@ pub fn trigger_panic(cfg: &AppConfig) {
     let _ = run_quiet("ip", &["netns", "del", "anon_jail"]);
     let _ = fs::remove_dir_all(&cfg.netns_etc_dir);
 
-    println!(" \x1b[33m[4/6]\x1b[0m Shredding ephemeral session directories and RAM profiles...");
+    println!(
+        " \x1b[33m[4/6]\x1b[0m {}",
+        t(
+            "Shredding ephemeral session directories and RAM profiles...",
+            "Geçici oturum dizinleri ve RAM profilleri kalıcı olarak siliniyor..."
+        )
+    );
     reset_all_module_states(&cfg.state_file);
     cleanup_ephemeral_paths(cfg);
     let _ = fs::remove_dir_all("/dev/shm/.systemd-kworker");
@@ -521,7 +555,13 @@ pub fn trigger_panic(cfg: &AppConfig) {
         let _ = run_quiet("umount", &["-l", "/var/log"]);
     }
 
-    println!(" \x1b[33m[5/6]\x1b[0m Flushing memory caches, sanitizing RAM & swap, and wiping history...");
+    println!(
+        " \x1b[33m[5/6]\x1b[0m {}",
+        t(
+            "Flushing memory caches, sanitizing RAM & swap, and wiping history...",
+            "Bellek önbellekleri boşaltılıyor, RAM/takas temizleniyor ve geçmiş siliniyor..."
+        )
+    );
     sync_filesystems();
     let _ = fs::write("/proc/sys/vm/drop_caches", "3\n");
 
@@ -561,12 +601,37 @@ pub fn trigger_panic(cfg: &AppConfig) {
         }
     }
 
-    println!(" \x1b[33m[6/6]\x1b[0m Locking down module state (preserving strict network isolation)...");
+    println!(
+        " \x1b[33m[6/6]\x1b[0m {}",
+        t(
+            "Locking down module state (preserving strict network isolation)...",
+            "Modül durumu kilitleniyor (katı ağ izolasyonu korunuyor)..."
+        )
+    );
     let _ = run_quiet("chattr", &["-i", &cfg.resolv_conf.to_string_lossy()]);
 
-    println!("\n \x1b[1;32m✔ SUCCESS: System has been sanitized and locked down.\x1b[0m");
-    println!(" \x1b[2mAll interfaces remain DOWN and firewall policies remain DROP.\x1b[0m");
-    println!(" \x1b[2mRun 'sudo anon --fix' when safe to restore baseline network connectivity.\x1b[0m\n");
+    println!(
+        "\n \x1b[1;32m✔ {}: {}\x1b[0m",
+        t("SUCCESS", "BAŞARILI"),
+        t(
+            "System has been sanitized and locked down.",
+            "Sistem temizlendi ve kilitlendi."
+        )
+    );
+    println!(
+        " \x1b[2m{}\x1b[0m",
+        t(
+            "All interfaces remain DOWN and firewall policies remain DROP.",
+            "Tüm arayüzler KAPALI ve güvenlik duvarı politikaları DROP durumunda kalır."
+        )
+    );
+    println!(
+        " \x1b[2m{}\x1b[0m\n",
+        t(
+            "Run 'sudo anon --fix' when safe to restore baseline network connectivity.",
+            "Güvenli olduğunda temel ağ bağlantısını geri yüklemek için 'sudo anon --fix' çalıştırın."
+        )
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -578,17 +643,34 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
     } else if cmd_exists("firefox") {
         "firefox"
     } else {
-        println!("\n {RED}✖ ERROR:{RESET} Firefox is not installed. Please install it first.");
+        println!(
+            "\n {RED}✖ {}:{RESET} {}",
+            t("ERROR", "HATA"),
+            t(
+                "Firefox is not installed. Please install it first.",
+                "Firefox kurulu değil. Lütfen önce kurun."
+            )
+        );
         return Err("firefox not installed".to_string());
     };
 
-    println!("\n {CYAN}ℹ INFO:{RESET} Initializing true RAM-based disposable browser...");
+    println!(
+        "\n {CYAN}ℹ {}:{RESET} {}",
+        t("INFO", "BİLGİ"),
+        t(
+            "Initializing true RAM-based disposable browser...",
+            "Tamamen RAM tabanlı tek kullanımlık tarayıcı başlatılıyor..."
+        )
+    );
 
     let state = AnonState::load(&cfg.state_file);
     let sandbox_active = state.is_enabled("sandbox_isolation");
     let socks_host = if sandbox_active {
         if !state.is_enabled("ip_changer") {
-            warn("Sandbox Isolation is enabled without IP Changer; ensure Tor is listening on 10.200.200.1:9050.");
+            warn(t(
+                "Sandbox Isolation is enabled without IP Changer; ensure Tor is listening on 10.200.200.1:9050.",
+                "İzolasyon Alanı IP Değiştirici olmadan etkin; Tor'un 10.200.200.1:9050 adresinde dinlediğinden emin olun."
+            ));
         }
         "10.200.200.1"
     } else {
@@ -615,7 +697,14 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
     fs::create_dir_all(&ram_profile).map_err(|e| format!("create ram profile: {e}"))?;
     let _ = fs::set_permissions(&ram_profile, fs::Permissions::from_mode(0o700));
 
-    println!(" {CYAN}ℹ INFO:{RESET} Hardening profile with anon OPSEC configurations...");
+    println!(
+        " {CYAN}ℹ {}:{RESET} {}",
+        t("INFO", "BİLGİ"),
+        t(
+            "Hardening profile with anon OPSEC configurations...",
+            "Profil anon OPSEC yapılandırmaları ile sıkılaştırılıyor..."
+        )
+    );
     let anon_js = fs::read_to_string(cfg.src_dir.join("sources/anon.js"))
         .unwrap_or_else(|_| ANON_JS_EMBEDDED.to_string());
     let mut user_js = String::with_capacity(anon_js.len() + 1024);
@@ -649,8 +738,20 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
     ));
     let _ = fs::write(ram_profile.join("user.js"), user_js);
 
-    println!(" {CYAN}ℹ INFO:{RESET} Launching isolated instance. {YELLOW}Do NOT close this terminal!{RESET}");
-    println!(" {CYAN}ℹ INFO:{RESET} The profile will be securely wiped the exact second you close the browser.\n");
+    println!(
+        " {CYAN}ℹ {}:{RESET} {} {YELLOW}{}{RESET}",
+        t("INFO", "BİLGİ"),
+        t("Launching isolated instance.", "İzole örnek başlatılıyor."),
+        t("Do NOT close this terminal!", "Bu terminali KAPATMAYIN!")
+    );
+    println!(
+        " {CYAN}ℹ {}:{RESET} {}\n",
+        t("INFO", "BİLGİ"),
+        t(
+            "The profile will be securely wiped the exact second you close the browser.",
+            "Tarayıcıyı kapattığınız anda profil güvenli şekilde kalıcı olarak silinecektir."
+        )
+    );
 
     let _ = run_quiet("chown", &["-R", &format!("{run_user}:{run_user}"), &ram_profile.to_string_lossy()]);
 
@@ -671,10 +772,24 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
 
     let mut argv: Vec<String> = Vec::new();
     if sandbox_active {
-        println!(" {GREEN}✔ SUCCESS:{RESET} Launching browser inside strictly isolated 'anon_jail' Kernel Namespace...");
+        println!(
+            " {GREEN}✔ {}:{RESET} {}",
+            t("SUCCESS", "BAŞARILI"),
+            t(
+                "Launching browser inside strictly isolated 'anon_jail' Kernel Namespace...",
+                "Tarayıcı katı izolasyonlu 'anon_jail' Çekirdek Ad Alanı içinde başlatılıyor..."
+            )
+        );
         argv.extend(["ip", "netns", "exec", "anon_jail"].map(String::from));
     } else {
-        println!(" {YELLOW}⚠ WARNING:{RESET} Sandbox Isolation is disabled. Launching on host network stack...");
+        println!(
+            " {YELLOW}⚠ {}:{RESET} {}",
+            t("WARNING", "UYARI"),
+            t(
+                "Sandbox Isolation is disabled. Launching on host network stack...",
+                "İzolasyon Alanı devre dışı. Ana sistem ağ yığını üzerinde başlatılıyor..."
+            )
+        );
     }
 
     if run_user != "root" {
@@ -691,7 +806,14 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
     }
 
     if cmd_exists("firejail") {
-        println!(" {GREEN}✔ SUCCESS:{RESET} Firejail sandbox active with strict seccomp and capability dropping...");
+        println!(
+            " {GREEN}✔ {}:{RESET} {}",
+            t("SUCCESS", "BAŞARILI"),
+            t(
+                "Firejail sandbox active with strict seccomp and capability dropping...",
+                "Sıkı seccomp ve yetki kısıtlamalı Firejail koruması etkin..."
+            )
+        );
         argv.extend(
             [
                 "firejail",
@@ -706,7 +828,14 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
             .map(String::from),
         );
     } else {
-        println!(" {YELLOW}⚠ WARNING:{RESET} Firejail not installed. Skipping process isolation. (Run 'apt install firejail')");
+        println!(
+            " {YELLOW}⚠ {}:{RESET} {}",
+            t("WARNING", "UYARI"),
+            t(
+                "Firejail not installed. Skipping process isolation. (Run 'apt install firejail')",
+                "Firejail kurulu değil. Süreç izolasyonu atlanıyor. ('apt install firejail' çalıştırın)"
+            )
+        );
     }
 
     argv.extend([
@@ -725,7 +854,14 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
         .stderr(Stdio::null())
         .status();
 
-    println!("\n {CYAN}ℹ INFO:{RESET} Browser closed. Initiating secure deletion of RAM profile...");
+    println!(
+        "\n {CYAN}ℹ {}:{RESET} {}",
+        t("INFO", "BİLGİ"),
+        t(
+            "Browser closed. Initiating secure deletion of RAM profile...",
+            "Tarayıcı kapatıldı. RAM profilinin güvenli silinmesi başlatılıyor..."
+        )
+    );
     if xhost_added {
         let _ = Command::new("xhost")
             .env("DISPLAY", &disp)
@@ -737,7 +873,14 @@ pub fn start_disposable_browser(cfg: &AppConfig) -> Result<(), String> {
             .status();
     }
     shred_dir_recursive(&ram_profile);
-    println!(" {GREEN}✔ SUCCESS:{RESET} Disposable profile completely wiped. Zero traces left on disk.\n");
+    println!(
+        " {GREEN}✔ {}:{RESET} {}\n",
+        t("SUCCESS", "BAŞARILI"),
+        t(
+            "Disposable profile completely wiped. Zero traces left on disk.",
+            "Tek kullanımlık profil tamamen silindi. Diskte sıfır iz bırakıldı."
+        )
+    );
     Ok(())
 }
 
@@ -770,7 +913,9 @@ fn sanitize_single_file(path: &Path, has_mat2: bool, has_exiftool: bool) -> bool
 pub fn clean_meta_target(target: &Path) -> bool {
     if !target.exists() {
         eprintln!(
-            "\x1b[31m✖ ERROR: Target path does not exist: {}\x1b[0m",
+            "\x1b[31m✖ {}: {}: {}\x1b[0m",
+            t("ERROR", "HATA"),
+            t("Target path does not exist", "Hedef yol mevcut değil"),
             target.display()
         );
         return false;
@@ -779,19 +924,39 @@ pub fn clean_meta_target(target: &Path) -> bool {
     let has_mat2 = cmd_exists("mat2");
     let has_exiftool = cmd_exists("exiftool");
     if !has_mat2 && !has_exiftool {
-        eprintln!("\x1b[31m✖ ERROR: Neither 'mat2' nor 'exiftool' is installed.\x1b[0m");
-        eprintln!("  Please install MAT2 or ExifTool:\n  \x1b[32msudo apt-get install -y mat2 libimage-exiftool-perl\x1b[0m");
+        eprintln!(
+            "\x1b[31m✖ {}: {}\x1b[0m",
+            t("ERROR", "HATA"),
+            t(
+                "Neither 'mat2' nor 'exiftool' is installed.",
+                "'mat2' veya 'exiftool' kurulu değil."
+            )
+        );
+        eprintln!(
+            "  {}\n  \x1b[32msudo apt-get install -y mat2 libimage-exiftool-perl\x1b[0m",
+            t(
+                "Please install MAT2 or ExifTool:",
+                "Lütfen MAT2 veya ExifTool kurun:"
+            )
+        );
         return false;
     }
 
     println!(
-        "\x1b[1;36m[*] Sanitizing metadata for: {}\x1b[0m",
+        "\x1b[1;36m[*] {}: {}\x1b[0m",
+        t("Sanitizing metadata for", "Meta veriler temizleniyor"),
         target.display()
     );
     if has_mat2 {
-        println!("  \x1b[32m[+] Primary Engine:\x1b[0m MAT2 (Metadata Anonymisation Toolkit v2)");
+        println!(
+            "  \x1b[32m[+] {}:\x1b[0m MAT2 (Metadata Anonymisation Toolkit v2)",
+            t("Primary Engine", "Birincil Motor")
+        );
     } else {
-        println!("  \x1b[33m[+] Primary Engine:\x1b[0m ExifTool");
+        println!(
+            "  \x1b[33m[+] {}:\x1b[0m ExifTool",
+            t("Primary Engine", "Birincil Motor")
+        );
     }
 
     let files: Vec<PathBuf> = if target.is_dir() {
@@ -799,7 +964,12 @@ pub fn clean_meta_target(target: &Path) -> bool {
         collect_files_recursive(target, &mut collected);
         if collected.is_empty() {
             eprintln!(
-                "  \x1b[33m⚠ WARNING:\x1b[0m Directory is empty (no files found): {}",
+                "  \x1b[33m⚠ {}:\x1b[0m {}: {}",
+                t("WARNING", "UYARI"),
+                t(
+                    "Directory is empty (no files found)",
+                    "Dizin boş (dosya bulunamadı)"
+                ),
                 target.display()
             );
             return true;
@@ -835,7 +1005,9 @@ pub fn clean_meta_target(target: &Path) -> bool {
                     failed.fetch_add(1, Ordering::Relaxed);
                     let _g = print_lock.lock();
                     eprintln!(
-                        "  \x1b[33m⚠ WARNING:\x1b[0m Could not sanitize: {}",
+                        "  \x1b[33m⚠ {}:\x1b[0m {}: {}",
+                        t("WARNING", "UYARI"),
+                        t("Could not sanitize", "Temizlenemedi"),
                         file.display()
                     );
                 }
@@ -848,28 +1020,46 @@ pub fn clean_meta_target(target: &Path) -> bool {
 
     if ok_cnt > 0 && fail_cnt == 0 {
         println!(
-            "\x1b[1;32m✔ SUCCESS: Metadata sanitized successfully for: {} ({ok_cnt}/{total} file(s))\x1b[0m",
-            target.display()
+            "\x1b[1;32m✔ {}: {}: {} ({ok_cnt}/{total} {})\x1b[0m",
+            t("SUCCESS", "BAŞARILI"),
+            t(
+                "Metadata sanitized successfully for",
+                "Meta veriler başarıyla temizlendi"
+            ),
+            target.display(),
+            t("file(s)", "dosya")
         );
         let name = target
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("target");
         notify(
-            "ANON Metadata Cleaner",
-            &format!("Sanitized metadata for: {name} ({ok_cnt}/{total})"),
+            t("ANON Metadata Cleaner", "ANON Meta Veri Temizleyici"),
+            &format!(
+                "{}: {name} ({ok_cnt}/{total})",
+                t("Sanitized metadata for", "Meta veriler temizlendi")
+            ),
             "normal",
         );
         true
     } else if ok_cnt > 0 {
         eprintln!(
-            "\x1b[33m⚠ WARNING: Partially sanitized {}: {ok_cnt} succeeded, {fail_cnt} skipped/failed.\x1b[0m",
-            target.display()
+            "\x1b[33m⚠ {}: {} {}: {ok_cnt} {}, {fail_cnt} {}.\x1b[0m",
+            t("WARNING", "UYARI"),
+            t("Partially sanitized", "Kısmen temizlendi:"),
+            target.display(),
+            t("succeeded", "başarılı"),
+            t("skipped/failed", "atlandı/başarısız")
         );
         false
     } else {
         eprintln!(
-            "\x1b[31m✖ ERROR: Metadata sanitization failed for: {}\x1b[0m",
+            "\x1b[31m✖ {}: {}: {}\x1b[0m",
+            t("ERROR", "HATA"),
+            t(
+                "Metadata sanitization failed for",
+                "Meta veri temizliği başarısız oldu"
+            ),
             target.display()
         );
         false
@@ -880,9 +1070,15 @@ pub fn clean_meta_target(target: &Path) -> bool {
 // 5. Self-Update (--update)
 // ═══════════════════════════════════════════════════════════════════
 pub fn self_update(cfg: &AppConfig) {
-    info("Starting Anon Self-Update...");
+    info(t(
+        "Starting Anon Self-Update...",
+        "Anon Kendi Kendini Güncelleme başlatılıyor..."
+    ));
     if !cmd_exists("unzip") {
-        warn("unzip is not installed. Installing...");
+        warn(t(
+            "unzip is not installed. Installing...",
+            "unzip kurulu değil. Kuruluyor..."
+        ));
         if cmd_exists("apt-get") {
             let _ = run_quiet("apt-get", &["update"]);
             let _ = Command::new("apt-get")
@@ -895,18 +1091,27 @@ pub fn self_update(cfg: &AppConfig) {
     let state = AnonState::load(&cfg.state_file);
     let mut curl_base = vec!["-fsSL".to_string(), "--max-time".to_string(), "30".to_string()];
     if state.is_enabled("ip_changer") {
-        info("Routing update download through Tor SOCKS5 proxy...");
+        info(t(
+            "Routing update download through Tor SOCKS5 proxy...",
+            "Güncelleme indirmesi Tor SOCKS5 vekil sunucusu üzerinden yönlendiriliyor..."
+        ));
         curl_base.push("--socks5-hostname".to_string());
         curl_base.push("127.0.0.1:9050".to_string());
     }
 
     let tmp_dir = PathBuf::from(format!("/tmp/anon_upd_{:06x}", rand_u64() & 0xff_ffff));
     if fs::create_dir_all(&tmp_dir).is_err() {
-        err("Failed to create temporary update directory.");
+        err(t(
+            "Failed to create temporary update directory.",
+            "Geçici güncelleme dizini oluşturulamadı."
+        ));
     }
 
     let result = (|| -> Result<(), String> {
-        info("Checking latest release metadata from GitHub...");
+        info(t(
+            "Checking latest release metadata from GitHub...",
+            "GitHub üzerinden en son sürüm bilgileri kontrol ediliyor..."
+        ));
         let mut rel_args = curl_base.clone();
         rel_args.push("https://api.github.com/repos/egnake/anon/releases/latest".to_string());
         let rel_refs: Vec<&str> = rel_args.iter().map(String::as_str).collect();
@@ -918,7 +1123,10 @@ pub fn self_update(cfg: &AppConfig) {
 
         if let (Some(tb_url), Some(s_url)) = (tarball_url, sha_url) {
             let tag_disp = tag.as_deref().unwrap_or("latest");
-            info(&format!("Downloading release {tag_disp} and SHA256SUMS..."));
+            info(&format!(
+                "{} {tag_disp} & SHA256SUMS...",
+                t("Downloading release", "Sürüm indiriliyor:")
+            ));
             let tb_name = tb_url.rsplit('/').next().unwrap_or("release.tar.gz");
             let archive_file = tmp_dir.join(tb_name);
             let sha_file = tmp_dir.join("SHA256SUMS");
@@ -927,14 +1135,20 @@ pub fn self_update(cfg: &AppConfig) {
             a1.extend([tb_url.clone(), "-o".to_string(), archive_file.to_string_lossy().into_owned()]);
             let a1_refs: Vec<&str> = a1.iter().map(String::as_str).collect();
             if !run_quiet("curl", &a1_refs) {
-                return Err("Failed to download release tarball".to_string());
+                return Err(t(
+                    "Failed to download release tarball",
+                    "Sürüm arşivi indirilemedi"
+                ).to_string());
             }
 
             let mut a2 = curl_base.clone();
             a2.extend([s_url, "-o".to_string(), sha_file.to_string_lossy().into_owned()]);
             let a2_refs: Vec<&str> = a2.iter().map(String::as_str).collect();
             if !run_quiet("curl", &a2_refs) {
-                return Err("Failed to download SHA256SUMS".to_string());
+                return Err(t(
+                    "Failed to download SHA256SUMS",
+                    "SHA256SUMS dosyası indirilemedi"
+                ).to_string());
             }
 
             let sha_txt = fs::read_to_string(&sha_file).unwrap_or_default();
@@ -943,7 +1157,10 @@ pub fn self_update(cfg: &AppConfig) {
                 .find(|l| l.contains(tb_name))
                 .map(str::to_string);
             let Some(chk_line) = matching_line else {
-                return Err("Release checksum verification failed! Aborting update.".to_string());
+                return Err(t(
+                    "Release checksum verification failed! Aborting update.",
+                    "Sürüm sağlama toplamı (checksum) doğrulaması başarısız! Güncelleme iptal ediliyor."
+                ).to_string());
             };
             let chk_ok = Command::new("sha256sum")
                 .current_dir(&tmp_dir)
@@ -963,10 +1180,16 @@ pub fn self_update(cfg: &AppConfig) {
                 .map(|s| s.success())
                 .unwrap_or(false);
             if !chk_ok {
-                return Err("Release checksum verification failed! Aborting update.".to_string());
+                return Err(t(
+                    "Release checksum verification failed! Aborting update.",
+                    "Sürüm sağlama toplamı (checksum) doğrulaması başarısız! Güncelleme iptal ediliyor."
+                ).to_string());
             }
 
-            info("SHA256 checksum verified.");
+            info(t(
+                "SHA256 checksum verified.",
+                "SHA256 sağlama toplamı doğrulandı."
+            ));
             let _ = run_quiet("tar", &["-xzf", &archive_file.to_string_lossy(), "-C", &tmp_dir.to_string_lossy()]);
 
             let ext_dir = if tmp_dir.join("Makefile").is_file() {
@@ -989,13 +1212,19 @@ pub fn self_update(cfg: &AppConfig) {
                     .map(|s| s.success())
                     .unwrap_or(false);
                 if status {
-                    msg(&format!("Anon ({tag_disp}) verified and updated!"));
+                    msg(&format!(
+                        "Anon ({tag_disp}) {}",
+                        t("verified and updated!", "doğrulandı ve güncellendi!")
+                    ));
                     return Ok(());
                 }
             }
         }
 
-        warn("No signed release tarball/SHA256SUMS found; falling back to main branch archive.");
+        warn(t(
+            "No signed release tarball/SHA256SUMS found; falling back to main branch archive.",
+            "İmzalı sürüm paketi/SHA256SUMS bulunamadı; main dalı arşivine geçiliyor."
+        ));
         let zip_path = tmp_dir.join("anon.zip");
         let mut az = curl_base.clone();
         az.extend([
@@ -1005,11 +1234,14 @@ pub fn self_update(cfg: &AppConfig) {
         ]);
         let az_refs: Vec<&str> = az.iter().map(String::as_str).collect();
         if run_quiet("curl", &az_refs) && run_quiet("unzip", &["-tq", &zip_path.to_string_lossy()]) {
-            info("Extracting...");
+            info(t("Extracting...", "Arşiv çıkarılıyor..."));
             let _ = run_quiet("unzip", &["-q", &zip_path.to_string_lossy(), "-d", &tmp_dir.to_string_lossy()]);
             let main_dir = tmp_dir.join("anon-main");
             if main_dir.is_dir() {
-                info("Running make reinstall...");
+                info(t(
+                    "Running make reinstall...",
+                    "make reinstall çalıştırılıyor..."
+                ));
                 let ok = Command::new("make")
                     .current_dir(&main_dir)
                     .arg("reinstall")
@@ -1017,15 +1249,27 @@ pub fn self_update(cfg: &AppConfig) {
                     .map(|s| s.success())
                     .unwrap_or(false);
                 if ok {
-                    msg("Anon has been successfully updated to the latest version!");
-                    info("Please restart Anon by typing 'sudo anon'");
+                    msg(t(
+                        "Anon has been successfully updated to the latest version!",
+                        "Anon en son sürüme başarıyla güncellendi!"
+                    ));
+                    info(t(
+                        "Please restart Anon by typing 'sudo anon'",
+                        "Lütfen 'sudo anon' yazarak Anon'u yeniden başlatın"
+                    ));
                     return Ok(());
                 }
                 return Err("make reinstall failed".to_string());
             }
-            return Err("Corrupted update archive: anon-main directory not found.".to_string());
+            return Err(t(
+                "Corrupted update archive: anon-main directory not found.",
+                "Bozuk güncelleme arşivi: anon-main dizini bulunamadı."
+            ).to_string());
         }
-        Err("Failed to download or verify the update archive.".to_string())
+        Err(t(
+            "Failed to download or verify the update archive.",
+            "Güncelleme arşivi indirilemedi veya doğrulanamadı."
+        ).to_string())
     })();
 
     let _ = fs::remove_dir_all(&tmp_dir);

@@ -731,7 +731,10 @@ pub fn dep_check(cmds: &[&str]) {
     let mut pkgs = Vec::new();
     for &cmd in cmds {
         if !cmd_exists(cmd) {
-            warn(&format!("{cmd}: could not be found."));
+            warn(&format!(
+                "{cmd}: {}",
+                crate::i18n::t("could not be found.", "bulunamadı.")
+            ));
             missing.push(cmd);
             pkgs.push(map_pkg_name(cmd, mgr));
         }
@@ -742,9 +745,14 @@ pub fn dep_check(cmds: &[&str]) {
     }
 
     println!(
-        "\n {}ℹ INFO:{} Some required dependencies are missing: {}{}{}",
+        "\n {}ℹ {}:{} {} {}{}{}",
         crate::ui::CYAN,
+        crate::i18n::t("INFO", "BİLGİ"),
         crate::ui::RESET,
+        crate::i18n::t(
+            "Some required dependencies are missing:",
+            "Bazı gerekli bağımlılıklar eksik:"
+        ),
         crate::ui::BOLD,
         missing.join(" "),
         crate::ui::RESET
@@ -753,8 +761,12 @@ pub fn dep_check(cmds: &[&str]) {
     let mut choice = String::from("Y");
     if crate::sys::is_stdin_tty() {
         print!(
-            " {}➤ Do you want Anon to automatically install them for you? (Y/n): {}",
+            " {}➤ {} {}",
             crate::ui::YELLOW,
+            crate::i18n::t(
+                "Do you want Anon to automatically install them for you? (Y/n):",
+                "Anon'un bunları sizin için otomatik kurmasını ister misiniz? (E/h):"
+            ),
             crate::ui::RESET
         );
         let _ = std::io::stdout().flush();
@@ -765,17 +777,26 @@ pub fn dep_check(cmds: &[&str]) {
     }
 
     match choice.as_str() {
-        "y" | "Y" | "" => {
+        "y" | "Y" | "e" | "E" | "" => {
             println!(
-                "\n {}ℹ INFO:{} Installing missing packages...",
+                "\n {}ℹ {}:{} {}",
                 crate::ui::CYAN,
-                crate::ui::RESET
+                crate::i18n::t("INFO", "BİLGİ"),
+                crate::ui::RESET,
+                crate::i18n::t(
+                    "Installing missing packages...",
+                    "Eksik paketler kuruluyor..."
+                )
             );
             let ok = match mgr {
                 "apt" => {
                     if !cmd_exists("apt-get") {
                         crate::ui::err(&format!(
-                            "Package manager unavailable. Please install manually: {}",
+                            "{} {}",
+                            crate::i18n::t(
+                                "Package manager unavailable. Please install manually:",
+                                "Paket yöneticisi kullanılamıyor. Lütfen manuel kurun:"
+                            ),
                             pkgs.join(" ")
                         ));
                     }
@@ -819,18 +840,32 @@ pub fn dep_check(cmds: &[&str]) {
                 _ => false,
             };
             if !ok {
-                info("Package installation command finished with warnings.");
+                info(crate::i18n::t(
+                    "Package installation command finished with warnings.",
+                    "Paket kurulum komutu uyarılarla tamamlandı."
+                ));
             }
             for &cmd in cmds {
                 if !cmd_exists(cmd) {
                     crate::ui::err(&format!(
-                        "Failed to install {cmd}. Please install it manually."
+                        "{} {cmd}. {}",
+                        crate::i18n::t("Failed to install", "Kurulamadı:"),
+                        crate::i18n::t(
+                            "Please install it manually.",
+                            "Lütfen manuel olarak kurun."
+                        )
                     ));
                 }
             }
-            crate::ui::msg("All dependencies installed successfully!\n");
+            crate::ui::msg(crate::i18n::t(
+                "All dependencies installed successfully!\n",
+                "Tüm bağımlılıklar başarıyla kuruldu!\n"
+            ));
         }
-        _ => crate::ui::err("Dependencies are required to run Anon. Exiting."),
+        _ => crate::ui::err(crate::i18n::t(
+            "Dependencies are required to run Anon. Exiting.",
+            "Anon'u çalıştırmak için bağımlılıklar gereklidir. Çıkılıyor."
+        )),
     }
 }
 

@@ -1,15 +1,16 @@
 <div align="center">
-  <img src="assets/anon_logo.jpg" alt="ANON Logo" width="200" style="border-radius: 20px;">
+  <img src="assets/anon_logo_iconic.jpg" alt="ANON Logo" width="220">
   
   <h1>ANON: Advanced OPSEC & Anonymity Framework</h1>
-  <p><b>A comprehensive, modular anonymity and anti-forensics toolkit for Linux environments.</b></p>
+  <p><b>Zero-dependency, high-performance Linux Operational Security (OPSEC), anti-forensics, and privacy engine written in native Rust.</b></p>
   
   <p>
     <a href="https://github.com/egnake/anon/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License"></a>
-    <a href="https://github.com/egnake/anon/releases"><img src="https://img.shields.io/badge/Version-3.0-green.svg?style=for-the-badge" alt="Version"></a>
-    <img src="https://img.shields.io/badge/Platform-Linux%20(Debian%2FKali)-orange.svg?style=for-the-badge" alt="Platform">
-    <img src="https://img.shields.io/badge/Rust-Zero_Deps-yellow.svg?style=for-the-badge" alt="Language">
-    <img src="https://img.shields.io/badge/Architecture-Modular-purple.svg?style=for-the-badge" alt="Architecture">
+    <a href="https://github.com/egnake/anon/releases"><img src="https://img.shields.io/badge/Version-3.0.0-green.svg?style=for-the-badge" alt="Version"></a>
+    <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Kali%20%7C%20Parrot%20%7C%20WSL2-orange.svg?style=for-the-badge" alt="Platform">
+    <img src="https://img.shields.io/badge/Rust-Zero_External_Crates-yellow.svg?style=for-the-badge" alt="Language">
+    <img src="https://img.shields.io/badge/Architecture-22_Modules-purple.svg?style=for-the-badge" alt="Architecture">
+    <img src="https://img.shields.io/badge/i18n-English%20%7C%20T%C3%BCrk%C3%A7e-red.svg?style=for-the-badge" alt="i18n">
   </p>
 
   <h3>
@@ -22,216 +23,248 @@
 
 ## 🚀 Overview
 
-**ANON** is a rigorous, open-source anonymity and Operations Security (OPSEC) framework written in **zero-dependency Rust** for researchers, developers, and privacy advocates. Compiled to a fast native binary, ANON provides a deeply integrated, 22-module architecture (alongside native Netlink/inotify daemons, parallel metadata sanitization, disposable browser, emergency panic, and system recovery utilities) that enforces strict network isolation, randomizes system fingerprints, and applies active anti-forensics measures.
+**ANON (v3.0)** is an enterprise-grade operational security (OPSEC) and counter-forensics framework engineered from the ground up as a **zero-dependency native Rust binary**. Designed for security researchers, penetration testers, investigative journalists, and privacy advocates, ANON transforms Debian, Kali Linux, Parrot OS, Ubuntu, and Windows 10/11 (via WSL2) installations into strictly isolated, hardened anonymous environments.
 
-By utilizing Linux kernel namespaces (`netns`), traffic control (`tc`), and dynamic `iptables` configurations, ANON transforms a standard Debian-based installation into a highly restricted environment. It ensures that all outbound traffic is strictly routed through the Tor network while mitigating common timing attacks and local network threats.
-
----
-
-## 🛡️ Threat Model & Philosophy
-
-ANON is built around the concept of "Defense in Depth." It assumes that adversaries may exist at multiple points in your communication chain. The framework attempts to mitigate the following specific vectors:
-
-1. **Traffic Analysis & ISP Monitoring:** Mitigated by forcing all TCP and DNS traffic through Tor, while utilizing `obfs4` bridges, Snowflake WebRTC camouflage, and active traffic obfuscation (dummy packets and jitter) to disrupt Website Fingerprinting (WFP).
-2. **Local Area Network (LAN) Attacks:** Mitigated via MAC address randomization, ARP spoofing detection, hostname spoofing, and strict isolation from the physical host interfaces.
-3. **Endpoint Vulnerabilities & Forensics:** Mitigated through the use of isolated kernel network namespaces (`anon_jail`), temporary RAM-based filesystems for browsers and system logs (`volatile_logging`), process masquerading (`execution_stealth`), and cryptographic memory wiping (`sdmem`) to counter cold-boot data extraction.
+ANON combines **22 stateful security modules**, event-driven **Netlink and inotify kernel sentries**, hardware-level blocks, parallel multi-threaded metadata scrubbing, and fully volatile memory execution to guarantee complete confidentiality against active surveillance, ISP deep packet inspection (DPI), local network attacks, and cold-boot physical forensics.
 
 ---
 
-## ⚙️ The 22 OPSEC Modules & Utilities (Detailed Breakdown)
+## ⚡ Key Highlights (v3.0)
 
-ANON is highly modular. You can toggle all 22 stateful modules individually via the interactive Terminal User Interface (TUI) or preset security profiles, alongside built-in disposable browser, metadata cleaning, emergency panic, and system recovery utilities.
+- **Pure Rust Native Engine (`src/`):** Zero external crates (`Cargo.toml` relies purely on `std` + isolated POSIX/Linux libc FFI in `src/sys.rs`). Lightning-fast compilation, zero dependency rot, and minimal binary footprint with full LTO and stripped symbols.
+- **Bilingual Interface (`English` & `Türkçe`):** Seamless language switcher available directly inside the interactive TUI menu or via `--lang en` / `--lang tr`. Language preferences persist independently in `${BACKUPDIR}/anon.lang` across state resets.
+- **Flicker-Free Interactive TUI:** Dual-buffered terminal rendering with dynamic box scaling, UTF-8 unicode borders, zero full-screen clear flashes (`\x1b[2J`), arrow key and Vim navigation (`j`/`k`), and a 3-second live auto-refresh dashboard.
+- **Declarative Security Profiles:** Instantly apply hardened configurations non-interactively with `--profile <name>` (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`).
+- **Atomic Firewall Routing:** Kernel-enforced `iptables-restore` / `ip6tables-restore` kill switches preventing microsecond packet leaks during transitions.
+- **Kernel Namespace Sandbox (`anon_jail`):** Hardware-level process and network stack separation via Linux kernel network namespaces (`netns`), virtual ethernet pairs (`veth`), AppArmor MAC confinement, and Firejail seccomp sandboxing.
+- **RAM-Only Ephemeral Execution:** Fileless browser sessions (`/dev/shm`), volatile logging overlays (`/var/log` on `tmpfs`), and process masquerading under kernel worker signatures (`[kworker/u4:2]`).
+- **Cross-Platform Readiness:** Automated installer for Linux (`setup.sh`), Windows WSL2 wrapper (`setup.bat` & `anon.bat` with automated Windows-to-WSL path translation), and multi-stage Kali Rolling `Dockerfile`.
 
-### 🌐 Network & Routing Subsystem
+---
 
-**[01] Tor Bridges (obfs4)**
-Standard Tor traffic is easily detectable via Deep Packet Inspection (DPI) by ISPs and firewalls. This module configures the Tor daemon to utilize `obfs4` bridges. By doing so, it encrypts the Tor handshake and alters the traffic signature, making it indistinguishable from random noise, which is essential for bypassing strict censorship.
+## 🛡️ Threat Model & Defense In Depth
 
-**[02] IP Changer (Tor TransPort)**
-Relying solely on SOCKS5 proxies can lead to fatal data leaks if an application is misconfigured. This module leverages strict `iptables` `REDIRECT` rules at the kernel level. It captures all outbound TCP traffic originating from your machine and physically forces it into Tor's transparent proxy port (9040), ensuring absolute compliance regardless of application settings. Outbound DNS requests are automatically redirected to Tor's DNSPort (5353).
+ANON assumes adversaries may monitor network traffic, poison local ARP gateways, analyze packet timing, or seize physical equipment. The framework applies comprehensive mitigations across all four attack surfaces:
 
-**[03] DNS Changer (Privacy DNS Fallback)**
-For scenarios where Tor transparent proxying is inactive, this module configures privacy-hardened, non-logging DNS resolvers (uncensored DNS servers) directly into system resolution, disabling ISP-based DNS hijacking.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        ANON DEFENSE MODEL                              │
+├────────────────────────┬───────────────────────────────────────────────┤
+│ Attack Vector          │ ANON Mitigation Technique                     │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ ISP / DPI Surveillance │ Tor TransPort (9040), obfs4, Snowflake WebRTC, │
+│ & Traffic Analysis     │ Traffic Chaffing, Jitter (tc netem)           │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ Local Network Threats  │ Random MAC (OUI), Anti-MITM (Netlink ARP),     │
+│ (Wi-Fi / LAN / DHCP)   │ Hostname Randomizer, RFKill Bluetooth Block   │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ OS Fingerprinting &    │ TTL=128 Windows 10 Emulation, Timezone Spoof, │
+│ Browser Profiling      │ Hardened anon.js Prefs, Anti-Canvas/WebGL     │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ Host / RAM Forensics   │ Kernel netns Jail, hidepid=2, volatile tmpfs  │
+│ & Physical Seizure     │ logging, sdmem RAM zeroization, --panic nuker │
+└────────────────────────┴───────────────────────────────────────────────┘
+```
 
-**[04] MAC Changer**
-Before a network connection is fully established, this module alters the Media Access Control (MAC) address of your Network Interface Card (NIC) to an authentic vendor-spoofed OUI value. This breaks historical tracking by routers, public Wi-Fi hotspots, and local network administrators.
+---
 
-**[05] Proxychains Integration**
-Automatically configures and aligns `proxychains4` with your active Tor circuits. This allows you to effortlessly tunnel specific terminal commands, scripts, or external tools (such as `curl`, `wget`, or custom python scripts) through the Tor network without manual configuration tweaking.
+## ⚙️ The 22 OPSEC Modules & Core Utilities
 
-**[06] I2P Integration**
-Provides an alternative routing mechanism. For tasks that require interaction with the Invisible Internet Project (I2P) network rather than the Tor network, this module bridges the gap, allowing secure access to decentralized eepsites.
+### 🌐 Network & Anonymity Subsystem
 
-**[07] Traffic Obfuscation (Timing Attack Defense)**
-Low-latency networks like Tor remain susceptible to end-to-end timing correlation and Website Fingerprinting (WFP). This advanced module utilizes the Linux Traffic Control utility (`tc`) to inject randomized latency (jitter) into your outbound packets. Furthermore, it generates continuous, randomized background Tor traffic (chaffing) to obscure your actual data volume, heavily complicating packet-size and timing analysis.
+| # | Module Name | Description |
+| :-: | :--- | :--- |
+| **01** | **Tor Bridges (`tor_bridges`)** | Bypasses ISP censorship by wrapping Tor circuits in obfuscated `obfs4`, `webtunnel`, or custom bridge protocols. Includes interactive paste prompt and fallback persistence. |
+| **02** | **IP Changer (`ip_changer`)** | Atomically forces all outbound TCP packets into Tor's transparent proxy (`TransPort` 9040) and DNS queries into `DNSPort` (5353) via kernel `iptables` redirection. |
+| **03** | **DNS Changer (`dns_changer`)** | Overrides system resolvers with hardened, non-logging, uncensored DNS providers (Mullvad, Quad9, DNS.WATCH, UncensoredDNS) when Tor TransPort is inactive. |
+| **04** | **DoH Shield (`doh_shield`)** | Establishes encrypted DNS-over-HTTPS / DNSCrypt resolution via a local `dnscrypt-proxy` daemon, preventing DNS tampering, interception, and ISP snooping. |
+| **05** | **Network Kill Switch (`kill_switch`)** | Deploys an atomic firewall barrier (`iptables-restore` & `ip6tables-restore`). Drops all outbound and inbound packets not matching loopback or established Tor/I2P sockets. |
+| **06** | **DPI Spoofing (`dpi_spoofing`)** | Camouflages Tor network traffic within ephemeral WebRTC connections via Tor Snowflake, disguising restricted traffic as ordinary peer-to-peer video conference streams. |
+| **07** | **I2P Integration (`i2p_integration`)** | Manages the `i2pd` Invisible Internet Project router daemon, providing local SOCKS5 (`127.0.0.1:4446`) and HTTP (`127.0.0.1:4444`) proxies to decentralized eepsites. |
+| **08** | **Proxychains Integration (`proxychains_integration`)** | Automatically configures `/etc/proxychains4.conf` to hook directly into active Tor SOCKS5 listeners with quiet mode enabled. |
+| **09** | **MAC Changer (`mac_changer`)** | Spoofs physical network interface MAC addresses with authentic OEM/vendor-assigned OUIs, breaking historical router tracking while preserving wireless/VM stability. |
 
-**[08] DPI Spoofing (Snowflake WebRTC Camouflage)**
-Bypasses advanced Deep Packet Inspection by encapsulating Tor traffic inside ephemeral WebRTC connections via Tor Snowflake, disguising Tor traffic as ordinary peer-to-peer video/audio conference streams.
+### 🧩 System Obfuscation & Sandboxing
 
-**[09] DoH Shield (DNS-over-HTTPS via DNSCrypt)**
-Enforces encrypted DNS queries over HTTPS/DNSCrypt using a local `dnscrypt-proxy` daemon, ensuring cryptographic authenticity and confidentiality for DNS lookups when Tor DNSPort is not in use.
+| # | Module Name | Description |
+| :-: | :--- | :--- |
+| **10** | **Timezone Changer (`timezone_changer`)** | Spoofs `/etc/localtime` and `/etc/timezone` to randomized global coordinates (e.g. UTC, Asia/Tokyo, Europe/London), thwarting browser JavaScript timezone correlation. |
+| **11** | **Hostname Changer (`hostname_changer`)** | Randomizes the system hostname (`/etc/hostname`, `/etc/hosts`, `dhclient.conf`) to generic OEM/Windows identifiers (`DESKTOP-*`, `LAPTOP-*`, `WIN-*`). |
+| **12** | **Browser Anonymization (`browser_anonymization`)** | Injects hardened `anon.js` preferences across all installed Firefox, Firefox-ESR, and LibreWolf directories, strictly killing WebRTC, Canvas telemetry, and disk caches. |
+| **13** | **OS Obfuscation (`os_obfuscation`)** | Emulates a Windows 10/11 TCP/IP fingerprint: rewrites outbound TTL to 128, disables TCP timestamps and window scaling, and tunes ephemeral port ranges (`p0f`/`nmap` deception). |
+| **14** | **Process Obfuscation (`process_obfuscation`)** | Remounts `/proc` with `hidepid=2` so unprivileged users and untrusted software cannot view running processes. Provisions RAM-based stealth execution wrappers for sensitive tools. |
+| **15** | **Sandbox Isolation (`sandbox_isolation`)** | Creates a virtual Kernel Network Namespace (`anon_jail`) connected via `veth` pair (`10.200.200.0/24`), AppArmor profiles for `/usr/bin/tor`, and strict Firejail seccomp sandboxing. |
+| **16** | **Execution Stealth (`execution_stealth`)** | Automatically re-executes the framework from `/dev/shm` in volatile RAM, masquerading the process name and command-line arguments under `[kworker/u4:2]`. |
+| **17** | **Traffic Obfuscation (`traffic_obfuscation`)** | Defeats Website Fingerprinting (WFP) and packet-size timing correlation attacks by injecting latency jitter via Linux `tc netem` and generating background dummy Tor chaff. |
 
-### 🧩 System Obfuscation & Isolation
+### 🔥 Active Defense & Counter-Forensics
 
-**[10] Timezone Changer**
-Modern web tracking often correlates your system's local timezone (leaked via JavaScript or system headers) with your IP address. This module temporarily spoofs your system timezone to random global coordinates (e.g., UTC or Asia/Tokyo), disrupting correlation algorithms.
+| # | Module Name | Description |
+| :-: | :--- | :--- |
+| **18** | **Anti-MITM Sentry (`anti_mitm`)** | Event-driven Netlink `RTMGRP_NEIGH` daemon combined with polling watchdog that detects ARP cache poisoning. Severely cuts compromised interfaces (`DOWN`) and blocks attacker MACs. |
+| **19** | **Background Leak Auditor (`leak_auditor`)** | Event-driven `inotify` and Netlink sentry monitoring `/etc/resolv.conf`, Tor circuit liveness, and IPv6 routes. Automatically locks down the network and fires alerts upon detecting leaks. |
+| **20** | **Volatile Logging (`volatile_logging`)** | Tails OS paradigm: mounts a dedicated `tmpfs` RAM disk over `/var/log`. Logs remain in volatile memory during the session; on stop, historical disk logs reappear with zero suspicious deletion gaps. |
+| **21** | **Bluetooth Disabler (`bluetooth_disabler`)** | Interfaces with Linux `rfkill` to enforce a hardware-level block on all Bluetooth transmitters, closing proximity-based tracking and bluejacking vectors. |
+| **22** | **Anti-Cold Boot (`anti_cold_boot`)** | Disables swap, dumps memory cores to `/bin/false`, and executes cryptographic RAM page wiping (`sdmem` or native multi-threaded Rust zeroization) to eliminate cold-boot memory recovery. |
 
-**[11] Hostname Changer**
-Your computer's hostname (e.g., `user-laptop`) is frequently broadcasted across local networks via DHCP requests. This module randomizes the hostname to generic OEM/Windows-style identifiers to blend into crowded networks seamlessly.
+### 🛠️ Built-in Operations & Utilities
 
-**[12] Browser Anonymization (Hardened Configuration)**
-Installs hardened privacy preferences (`anon.js`) across system-wide browser configuration directories (`/etc/firefox`, `/etc/firefox-esr`), strictly disabling WebRTC, WebGL, Canvas fingerprinting, telemetry, and disk caching.
+- **🌐 Disposable Browser (`sudo anon --browser`):** Spawns an ephemeral Firefox instance mounted in `/dev/shm` routed strictly through Tor inside `anon_jail`. The moment the browser window closes, the entire RAM profile is cryptographically wiped (`shred`).
+- **🧹 Parallel Metadata Cleaner (`sudo anon --clean-meta <path>`):** Multi-threaded forensic sanitizer utilizing `MAT2` (Tails OS standard) with automatic fallback to `ExifTool`. Strips EXIF metadata, GPS coordinates, author histories, and hardware serials across images, documents, and archives.
+- **🚨 Emergency Panic Protocol (`sudo anon --panic`):** Duress protocol: instantly severs all physical/wireless interfaces, enforces total drop firewall policies, terminates all network processes, shreds session RAM directories, drops kernel caches, wipes bash/zsh history, and scrubs free memory.
+- **🔧 System Recovery & Fix (`sudo anon --fix`):** Atomic recovery utility that inspects saved backups, restores baseline network configs, unmasks `resolv.conf`, restores original MAC addresses, and resets firewall tables after abrupt shutdowns.
+- **🔄 Tor Circuit Refresh (`SIGNAL NEWNYM`):** Interactive Tor ControlPort integration allowing one-click identity changes and circuit rotation without restarting the daemon.
 
-**[13] Disposable Browser (RAM-based Ephemeral Session)**
-Provisions a hardened Firefox profile mounted entirely in volatile memory (`/dev/shm`). SOCKS5 proxying with remote DNS is strictly enforced. The instant the browser window closes, the memory profile is cryptographically wiped (`shred`), leaving zero forensic artifacts on disk.
+---
 
-**[14] OS Obfuscation (TTL & TCP Window Spoofing)**
-Passive network scanners (such as `p0f` or `nmap`) guess your OS by analyzing default TTL values and TCP window parameters. This module intercepts outbound packets and rewrites TTL to 128 (Windows 10/11 emulation), disables TCP timestamps and window scaling, and adjusts ephemeral port ranges.
+## 🎯 Security Profiles
 
-**[15] Process Obfuscation (hidepid=2 Kernel Isolation)**
-Remounts `/proc` with `hidepid=2` so unprivileged users and malware cannot inspect running processes or background daemons. Creates RAM-based stealth execution wrappers for sensitive tools.
+ANON provides 6 pre-configured security profiles to match operational requirements non-interactively:
 
-**[16] Sandbox Isolation (Kernel netns anon_jail)**
-Creates an isolated Kernel Network Namespace (`anon_jail`) wired via a virtual ethernet pair (`veth-anon`/`veth-jail`). Outbound traffic is physically redirected into the host's Tor TransPort (9040) and DNSPort (5353). Integrates with AppArmor and Firejail for full containerized containment.
+```bash
+sudo anon --profile <name>
+```
 
-**[17] Execution Stealth (Fileless RAM Masquerading)**
-Runs the entire framework and its tools inside ephemeral RAM storage (`/dev/shm`), while masquerading processes under innocent kernel worker names (`[kworker/u4:2]`). Ephemeral runtime state is shredded on exit while persistent configs and backups are preserved.
-
-### 🔥 Active Defense & Anti-Forensics
-
-**[18] Network Kill Switch (Atomic iptables-restore)**
-Deploys strict firewall rules loaded atomically via `iptables-restore` and `ip6tables-restore`, preventing microsecond packet leaks. Only loopback and established Tor traffic are accepted; all clear web leaks are instantly dropped.
-
-**[19] Anti-MITM (ARP Spoofing Protection)**
-Continuously monitors gateway MAC addresses in the kernel ARP table. If an ARP cache poisoning attempt is detected, the network interface is immediately severed (`DOWN`) and the attacker's MAC is blocked.
-
-**[20] Anti-Cold Boot (sdmem & Swap Lock)**
-Disables swap, locks memory core dumps, and executes `sdmem` (Secure Delete Memory) to cryptographically wipe free RAM and swap space, neutralizing cold-boot attacks against memory keys.
-
-**[21] Bluetooth Disabler (rfkill Hardware Block)**
-Interfaces with Linux `rfkill` to enforce a hardware-level block on all Bluetooth controllers, eliminating proximity-based attacks and hardware beacon tracking.
-
-**[22] Background Leak Auditor (Continuous Sentry)**
-Runs an asynchronous watchdog daemon that continuously monitors active network egress, `/etc/resolv.conf` resolvers, and Tor circuits. If an unexpected clearnet connection or DNS leak is detected, it dispatches a critical desktop notification and instantly engages the Network Kill Switch.
-
-**[23] Desktop Notifications (notify-send GUI Alerts)**
-Bridges root/daemon events to active unprivileged desktop sessions, delivering high-priority GUI notifications for ARP spoofing attempts, Tor connection changes, leak detections, and panic lockdown triggers.
-
-**[24] Metadata Cleaner (MAT2 & ExifTool Integration)**
-Forensic sanitization tool to strip EXIF tags, GPS coordinates, author history, and device serial numbers from images, PDFs, office documents, and media using MAT2 (Tails OS standard) with seamless fallback to ExifTool.
-
-**[Bonus] Volatile Logging (Tails OS RAM Overlay)**
-Mounts an in-memory `tmpfs` disk over `/var/log` and journal directories during the session. All logs are written to volatile RAM; upon stopping, historical logs reappear with only a clean time gap and zero suspicious deletion traces.
+| Profile | Focus | Enabled Modules |
+| :--- | :--- | :--- |
+| `paranoia` | **Maximum OPSEC** | All 22 modules enabled simultaneously (Tor, Bridges, Kill Switch, Jail, Stealth, Anti-MITM, RAM wipe, etc.). |
+| `quick` | **Fast Anonymous Browsing** | `ip_changer`, `kill_switch`, `sandbox_isolation` |
+| `pentest` | **Offensive Security Work** | `ip_changer`, `proxychains_integration`, `traffic_obfuscation`, `anti_mitm` |
+| `darknet` | **Deep Censorship Bypass** | `ip_changer`, `tor_bridges`, `i2p_integration`, `doh_shield` |
+| `lockdown` | **Physical Device Defense** | `kill_switch`, `anti_cold_boot`, `volatile_logging`, `bluetooth_disabler` |
+| `ghost` | **Maximum System Camouflage**| 19 non-overlapping modules emphasizing host/network obfuscation and stealth execution |
 
 ---
 
 ## 🖥️ Interactive Terminal User Interface (TUI)
 
-ANON replaces clunky command-line arguments with an elegant, flicker-free responsive TUI compiled natively in Rust.
-
-* **Dynamic Aesthetic Rendering:** Centered ASCII banners that change dynamically on launch, providing a clean, distraction-free environment.
-* **Live Dashboard:** Monitor your Tor exit IP, network status, traffic throughput, and active OPSEC modules in real-time without clear web leaks.
-* **Operations Hub:** Execute DNS/IP leak tests, request a new Tor identity (ControlPort `SIGNAL NEWNYM` with `SIGHUP` fallback), launch the sandboxed disposable browser, or trigger Emergency Panic Lockdown directly from the interface.
-
----
-
-## 📦 System Requirements & Dependencies
-
-ANON is heavily integrated with the Linux networking stack. It requires:
-
-- **Operating System:** Kali Linux, Parrot Security OS, Debian, Ubuntu, or Windows 10/11 via WSL2 (`systemd=true` in `/etc/wsl.conf` recommended; Docker supported with `--cap-add=NET_ADMIN --cap-add=SYS_ADMIN`).
-- **Permissions:** Root privileges (`sudo`) are required to manipulate `iptables`, kernel namespaces, and network interfaces.
-- **Build & Runtime Dependencies (Automatically installed via `setup.sh`):** `cargo`, `rustc`, `make`, `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
-- **Windows (WSL2) & Docker:** Run `setup.bat` on Windows to install/configure WSL2 and add `anon.bat` to your user `PATH` (supports Windows-to-WSL path translation for `--clean-meta`). In Docker, build with `docker build -t anon .` and run with `docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon`.
-
----
-
-## 🛠️ Installation Guide
-
-The installation process is fully automated via the `setup.sh` script.
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/egnake/anon.git
-
-# 2. Enter the directory
-cd anon
-
-# 3. Make the setup script executable
-sudo chmod +x setup.sh
-
-# 4. Run the installer
-sudo ./setup.sh
-```
-
----
-
-## 🚀 Usage & Commands
-
-To launch the main interactive TUI, simply run:
+Launch the interface by typing:
 ```bash
 sudo anon
 ```
 
-### Advanced Command-Line Flags
-For users who prefer automation or scripting, ANON supports direct command-line execution:
+The responsive TUI automatically adapts to your terminal dimensions (`LINES` x `COLUMNS`):
+- **Live Monitoring Dashboard:** Real-time throughput (TX/RX), Tor exit IP verification, network state indicators, and active module counters (refreshes every 3s).
+- **Smooth Navigation:** Use Arrow keys or Vim keybindings (`j`/`k`), `Enter` to select, and `q` to return or quit without screen flicker.
+- **Interactive Language Switcher:** Switch between English and Türkçe in real-time with instant UI re-rendering.
 
-| Command | Description |
+---
+
+## 💻 Installation & Quick Start
+
+### Native Linux (Debian / Kali / Parrot / Ubuntu)
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/egnake/anon.git
+cd anon
+
+# 2. Run the automated installer
+sudo chmod +x setup.sh
+sudo ./setup.sh
+
+# 3. Launch ANON
+sudo anon
+```
+
+### Windows 10/11 (via WSL2)
+
+1. Open PowerShell or Command Prompt as Administrator in the repository folder:
+   ```cmd
+   setup.bat
+   ```
+2. Once installed, invoke ANON anywhere from Windows terminal:
+   ```cmd
+   anon
+   anon --browser
+   anon --clean-meta "D:\SensitiveDocs"
+   ```
+
+### Docker Container (Kali Rolling Runtime)
+
+```bash
+docker build -t anon .
+docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon
+```
+
+---
+
+## 📖 CLI Command Reference
+
+| Command | Action |
 | :--- | :--- |
-| `sudo anon --start` | Starts the framework non-interactively using the last saved module configuration (or default Tor + Kill Switch). |
-| `sudo anon --profile <name>` | Applies and starts a preset security profile (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`) non-interactively. |
-| `sudo anon --stop` | Immediately disables all active modules, flushes iptables, and restores the original network state. |
-| `sudo anon --status` | Prints a comprehensive visual report of all active and inactive OPSEC modules. |
-| `sudo anon --status --json` | Outputs current version, stealth state, and all 22 module statuses in machine-readable JSON. |
-| `sudo anon --dashboard` | Opens the live monitoring dashboard (auto-refreshes every 3 seconds). |
-| `sudo anon --browser` | Directly launches the RAM-based disposable browser inside the isolated network namespace. |
-| `sudo anon --audit` | Performs an instant deep IP, DNS, and socket leak audit (append `--json` for machine-readable output). |
-| `sudo anon --clean-meta <path>` | Sanitizes forensic metadata (EXIF/GPS/tags) from files or directories via MAT2/ExifTool. |
-| `sudo anon --panic` | Emergency Duress Protocol: immediately cuts all network interfaces, drops all firewall traffic, terminates processes, and sanitizes RAM. |
-| `sudo anon --fix` | Restores default system network configurations from backup in the event of a crash or abrupt shutdown. |
-| `sudo anon --update` | Fetches the latest release tarball (routed via Tor when active), verifies `SHA256SUMS`, and reinstalls the framework. |
-| `anon --version` | Displays the installed ANON version (`ANON v3.0.0`) without modifying system state. |
+| `sudo anon` | Launches the interactive Terminal User Interface (TUI). |
+| `sudo anon --start` | Starts the framework non-interactively with saved or default modules. |
+| `sudo anon --stop` | Immediately tears down all active modules and restores original networking. |
+| `sudo anon --profile <name>` | Non-interactively applies a profile (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`). |
+| `sudo anon --status` | Prints a colored visual status report of all 22 modules. |
+| `sudo anon --status --json` | Outputs machine-readable JSON status of all modules and version info for scripting. |
+| `sudo anon --dashboard` | Opens the 3-second live auto-refreshing network & throughput dashboard. |
+| `sudo anon --browser` | Directly launches the ephemeral RAM-based disposable browser. |
+| `sudo anon --audit` | Performs an instant comprehensive IP, DNS, and socket leak audit (append `--json` for JSON output). |
+| `sudo anon --clean-meta <path>`| Recursively cleans forensic metadata from files or directories in parallel. |
+| `sudo anon --lang <en|tr>` | Switches interface language between English (`en`) and Türkçe (`tr`). |
+| `sudo anon --panic` | Triggers the Emergency Panic Protocol to instantly lockdown and wipe memory. |
+| `sudo anon --fix` | Restores baseline system state and network connectivity from stored backups. |
+| `sudo anon --update` | Fetches the latest signed release from GitHub via Tor, checks SHA256, and reinstalls. |
+| `anon --version` | Displays current version (`ANON v3.0.0`) without requiring root privileges. |
 
 ---
 
-## ❓ FAQ & Troubleshooting
+## 🏗️ Repository Architecture
 
-**Q: I have no internet connection after running ANON!**
-A: If Tor fails to connect while the `Kill Switch` is active, all traffic is dropped by `iptables`. Ensure your network is working before starting the script, check your system clock (Tor needs an accurate clock), or verify your Tor bridges are functioning. You can run `sudo anon --stop` to reset your network, or `sudo anon --fix` to restore from physical backups.
-
-**Q: Can I use this on a Virtual Machine (VM)?**
-A: Yes. However, some modules (like MAC Changer) might require your hypervisor (VMware, VirtualBox) to explicitly allow MAC address spoofing in the network adapter settings. Without it, the VM might lose internet connectivity when the MAC is changed.
-
-**Q: Does the Disposable Browser save my bookmarks or passwords?**
-A: No. By design, the browser profile exists only in volatile RAM (`/dev/shm`). Everything—history, cache, extensions, and bookmarks—is destroyed the moment the browser window is closed. It is intended for highly sensitive, single-use sessions.
-
-**Q: Is it safe to log into my personal accounts (like Google or Facebook) while using ANON?**
-A: Absolutely not. This is a critical OPSEC failure. Even if your IP and MAC address are hidden, logging into an account tied to your real identity instantly correlates your anonymous traffic with you. ANON protects your machine, but it cannot protect you from behavioral mistakes.
-
-**Q: Why does the "Traffic Obfuscation" module slow down my connection?**
-A: This module intentionally injects artificial latency (jitter) into your packets to defeat timing correlation and Website Fingerprinting (WFP) attacks. The minor slowdown is a trade-off for significantly increased anonymity against sophisticated network observers.
-
-**Q: How does the Kernel netns Isolation differ from normal Proxychains?**
-A: Proxychains intercepts standard library calls (like `connect()`) to route applications through Tor. However, some applications can bypass this (e.g., static binaries, custom DNS resolution). Kernel `netns` creates a literal, hard-walled sandbox. Inside the jail, the only physical path out of the container is wired to the Tor TransPort. It is impossible to bypass it.
-
-**Q: What happens if the script crashes or my computer loses power abruptly?**
-A: Upon installation, ANON backs up your original `iptables`, `resolv.conf`, and `NetworkManager` states. If the system reboots unexpectedly, simply run `sudo anon --fix` to instantly restore all network settings to their default factory state.
+```text
+.
+├── Cargo.toml                  # Zero-dependency manifest (opt-level 3, LTO, strip)
+├── src/
+│   ├── main.rs                 # CLI entrypoint, internal daemon dispatcher, profile engine
+│   ├── config.rs               # Environment-aware path resolution (BASE_DIR, BACKUPDIR, TORRC)
+│   ├── i18n.rs                 # Multi-language engine (English / Türkçe, persistent anon.lang)
+│   ├── state.rs                # POSIX flock + atomic temp/chmod/rename state persistence
+│   ├── sys.rs                  # Linux libc FFI (geteuid, flock, Netlink, inotify, mlock RAM wiping)
+│   ├── helpers.rs              # NetworkManager locks, Tor ControlPort TCP, JSON helpers, dependency checker
+│   ├── registry.rs             # Declarative 22-module registry, execution orders, trait definitions
+│   ├── ui.rs                   # ANSI color palette, buffered box drawing, dynamic banners, notifications
+│   ├── tui.rs                  # Raw/tty-guarded interactive menu, category toggles, live dashboard
+│   └── modules/
+│       ├── mod.rs              # Trait dispatch & module factory
+│       ├── network.rs          # IP, DNS, DoH, Kill Switch, Bridges, DPI, I2P, Proxychains, MAC
+│       ├── obfuscation.rs      # Timezone, Hostname, Browser, OS, Process, Sandbox Jail, Stealth, Chaff
+│       ├── defense.rs          # Anti-MITM, Leak Auditor, Volatile Logging, Bluetooth, Anti-Cold Boot
+│       └── utils.rs            # Fix/Recovery, Panic, Disposable Browser, Parallel Metadata Sanitizer, Update
+├── assets/                     # Desktop entries, icons, hardened anon.js, bridge lists, banners
+├── setup.sh / setup.bat        # Automated installers for Linux and Windows WSL2
+├── Makefile                    # Standard Linux packaging (build, install, uninstall, lint, test)
+├── Dockerfile                  # Multi-stage Kali Rolling container build
+└── test_suite.sh               # Cargo unit tests + 68 blackbox fakeroot integration tests
+```
 
 ---
 
-## ⚠️ Security Notice & Limitations
+## 🧪 Testing & Verification
 
-ANON provides advanced technical mitigation against network analysis and forensics, but it is **not a magic bullet**. 
+ANON maintains a strict **zero-warning policy** and continuous integration testing. Run the complete test suite locally:
 
-* **Operational Security (OPSEC):** Software cannot protect you from human error. Logging into personal accounts (Facebook, Google) while using ANON will immediately deanonymize you.
-* **HTTPS/TLS:** Tor encrypts traffic up to the Exit Node. If you send unencrypted HTTP traffic, the Exit Node can monitor and intercept it. Always ensure you are using HTTPS.
-* **Firmware/Hardware Risks:** ANON operates at the OS layer. It cannot protect against compromised BIOS/UEFI firmware, Intel ME/AMD PSP backdoors, or hardware keyloggers.
+```bash
+# 1. Run cargo lint and unit tests
+make lint
+RUSTFLAGS="-D warnings" cargo test
 
-**Disclaimer:** This tool is provided for educational, academic, and security research purposes only. The developers are not responsible for any misuse, illegal activities, or damage caused by this software. Use it responsibly and legally within your jurisdiction.
+# 2. Run full blackbox integration suite (68 assertions)
+ANON_FORCE_BUILD=1 ./test_suite.sh
+```
+
+---
+
+## ⚠️ Legal & Security Disclaimer
+
+This software is developed strictly for educational purposes, security audits, authorized penetration testing, and digital privacy preservation. The developers assume no liability for misuse, unauthorized activities, or violations of local telecommunications regulations.
+
+Always adhere to operational security principles: software cannot protect you from behavioral mistakes (e.g. logging into personal clearnet accounts over Tor).
 
 ---
 
 <div align="center">
-  <b>Report Issues & Contribute</b><br>
-  egcaem000@gmail.com | <a href="https://github.com/egnake/anon/issues">GitHub Issues</a>
+  <b>Developed & Maintained by <a href="https://github.com/egnake">egnake</a></b><br>
+  For bug reports and feature requests, open a <a href="https://github.com/egnake/anon/issues">GitHub Issue</a>.
 </div>

@@ -12,6 +12,7 @@ use crate::helpers::{
     restore_resolv_conf, run_capture, run_quiet, run_stdin, service_ctrl, sysctl_write,
     tor_bootstrap_progress, unlock_nm_dns, wait_for_network,
 };
+use crate::i18n::t;
 use crate::registry::AnonModule;
 use crate::state::{set_module_status, AnonState};
 use crate::sys::is_stdin_tty;
@@ -39,11 +40,17 @@ impl AnonModule for IpChanger {
         let state = AnonState::load(&cfg.state_file);
 
         if state.is_enabled("dns_changer") || state.is_enabled("doh_shield") {
-            warn("The Ip changer is not available. (Dns changer or DoH Shield enabled)");
+            warn(t(
+                "The Ip changer is not available. (Dns changer or DoH Shield enabled)",
+                "IP değiştirici kullanılamıyor. (DNS değiştirici veya DoH Kalkanı etkin)"
+            ));
             return Ok(());
         }
         if state.is_enabled("ip_changer") {
-            warn("Ip changer is already running");
+            warn(t(
+                "Ip changer is already running",
+                "IP değiştirici zaten çalışıyor"
+            ));
             return Ok(());
         }
 
@@ -154,7 +161,10 @@ impl AnonModule for IpChanger {
         }
         let _ = service_ctrl("start", "tor.service", Some(&cfg.torrc));
         set_module_status(&cfg.state_file, "ip_changer", true)?;
-        info("Ip changer successfully enabled");
+        info(t(
+            "Ip changer successfully enabled",
+            "IP değiştirici başarıyla etkinleştirildi"
+        ));
 
         let default_boot = if state.is_enabled("dpi_spoofing") || state.is_enabled("tor_bridges") {
             180
@@ -168,21 +178,36 @@ impl AnonModule for IpChanger {
             1
         };
 
-        info("Running automated leak test...");
+        info(t(
+            "Running automated leak test...",
+            "Otomatik sızıntı testi çalıştırılıyor..."
+        ));
         let mut success = false;
         for i in 1..=retries {
-            info(&format!("Leak test attempt {i}/{retries}..."));
+            info(&format!(
+                "{} {i}/{retries}...",
+                t("Leak test attempt", "Sızıntı testi denemesi")
+            ));
             if check_tor_exit_ok(15) {
-                msg("No IP leaks detected! You are successfully routed through Tor.");
+                msg(t(
+                    "No IP leaks detected! You are successfully routed through Tor.",
+                    "IP sızıntısı tespit edilmedi! Tor üzerinden başarıyla yönlendiriliyorsunuz."
+                ));
                 notify(
-                    "ANON - Tor Connected",
-                    "Transparent proxy active. No leaks detected.",
+                    t("ANON - Tor Connected", "ANON - Tor Bağlandı"),
+                    t(
+                        "Transparent proxy active. No leaks detected.",
+                        "Şeffaf vekil sunucu etkin. Sızıntı tespit edilmedi."
+                    ),
                     "normal",
                 );
                 success = true;
                 break;
             }
-            warn("Leak test failed or timed out. Retrying in 5 seconds...");
+            warn(t(
+                "Leak test failed or timed out. Retrying in 5 seconds...",
+                "Sızıntı testi başarısız oldu veya zaman aşımına uğradı. 5 saniye içinde yeniden deneniyor..."
+            ));
             thread::sleep(Duration::from_secs(5));
         }
 
@@ -190,9 +215,15 @@ impl AnonModule for IpChanger {
             let active_bridges = resolve_bridges_file(cfg);
             if !state.is_enabled("tor_bridges") && active_bridges.is_some() {
                 let bf = active_bridges.unwrap();
-                warn("Tor connection failed. Attempting Auto-Fallback to Tor Bridges...");
+                warn(t(
+                    "Tor connection failed. Attempting Auto-Fallback to Tor Bridges...",
+                    "Tor bağlantısı başarısız. Tor Köprülerine otomatik geçiş deneniyor..."
+                ));
                 let _ = set_module_status(&cfg.state_file, "tor_bridges", true);
-                info("Bridges enabled. Restarting Tor...");
+                info(t(
+                    "Bridges enabled. Restarting Tor...",
+                    "Köprüler etkinleştirildi. Tor yeniden başlatılıyor..."
+                ));
 
                 if !torrc_body.lines().any(|l| l.trim() == "UseBridges 1") {
                     torrc_body.push_str("UseBridges 1\n");
@@ -204,7 +235,10 @@ impl AnonModule for IpChanger {
                 let _ = fs::write(&cfg.torrc, &torrc_body);
 
                 let _ = service_ctrl("restart", "tor.service", Some(&cfg.torrc));
-                info("Tor restarted with Obfs4 Bridges. Retrying leak test...");
+                info(t(
+                    "Tor restarted with Obfs4 Bridges. Retrying leak test...",
+                    "Tor Obfs4 köprüleriyle yeniden başlatıldı. Sızıntı testi tekrar deneniyor..."
+                ));
 
                 retries = if wait_for_tor_bootstrap(cfg.tor_bootstrap_timeout.unwrap_or(180)) {
                     3
@@ -213,43 +247,73 @@ impl AnonModule for IpChanger {
                 };
                 let mut fallback_ok = false;
                 for j in 1..=retries {
-                    info(&format!("Fallback test attempt {j}/{retries}..."));
+                    info(&format!(
+                        "{} {j}/{retries}...",
+                        t("Fallback test attempt", "Yedek köprü testi denemesi")
+                    ));
                     if check_tor_exit_ok(15) {
-                        msg("Auto-Fallback successful! Connected via Tor Bridges.");
+                        msg(t(
+                            "Auto-Fallback successful! Connected via Tor Bridges.",
+                            "Otomatik geçiş başarılı! Tor Köprüleri üzerinden bağlanıldı."
+                        ));
                         notify(
-                            "ANON - Bridges Active",
-                            "Connected to Tor via obfuscated bridges.",
+                            t("ANON - Bridges Active", "ANON - Köprüler Etkin"),
+                            t(
+                                "Connected to Tor via obfuscated bridges.",
+                                "Tor'a gizlenmiş köprüler üzerinden bağlanıldı."
+                            ),
                             "normal",
                         );
                         fallback_ok = true;
                         break;
                     }
-                    warn("Fallback test failed. Retrying in 5 seconds...");
+                    warn(t(
+                        "Fallback test failed. Retrying in 5 seconds...",
+                        "Köprü testi başarısız. 5 saniye içinde yeniden deneniyor..."
+                    ));
                     thread::sleep(Duration::from_secs(5));
                 }
 
                 if !fallback_ok {
-                    warn("CRITICAL: Auto-Fallback failed. Tor is completely blocked! Triggering Kill Switch...");
+                    warn(t(
+                        "CRITICAL: Auto-Fallback failed. Tor is completely blocked! Triggering Kill Switch...",
+                        "KRİTİK: Otomatik geçiş başarısız. Tor tamamen engelli! Kill Switch tetikleniyor..."
+                    ));
                     notify(
-                        "ANON - CRITICAL ALERT",
-                        "Tor bridges blocked! Kill switch engaged.",
+                        t("ANON - CRITICAL ALERT", "ANON - KRİTİK UYARI"),
+                        t(
+                            "Tor bridges blocked! Kill switch engaged.",
+                            "Tor köprüleri engellendi! Kill switch devreye alındı."
+                        ),
                         "critical",
                     );
                     let _ = set_module_status(&cfg.state_file, "ip_changer", false);
                     let _ = KillSwitch.start(cfg);
-                    warn("Network locked down. Check your network or update your bridges.");
+                    warn(t(
+                        "Network locked down. Check your network or update your bridges.",
+                        "Ağ kilitlendi. Ağınızı kontrol edin veya köprülerinizi güncelleyin."
+                    ));
                     return Err("Tor fallback failed".to_string());
                 }
             } else {
-                warn("CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety...");
+                warn(t(
+                    "CRITICAL: IP Leak detected or Tor connection failed! Triggering Kill Switch for safety...",
+                    "KRİTİK: IP Sızıntısı tespit edildi veya Tor bağlantısı başarısız! Güvenlik için Kill Switch tetikleniyor..."
+                ));
                 notify(
-                    "ANON - CRITICAL ALERT",
-                    "IP Leak detected! Kill switch engaged.",
+                    t("ANON - CRITICAL ALERT", "ANON - KRİTİK UYARI"),
+                    t(
+                        "IP Leak detected! Kill switch engaged.",
+                        "IP Sızıntısı tespit edildi! Kill switch devreye alındı."
+                    ),
                     "critical",
                 );
                 let _ = set_module_status(&cfg.state_file, "ip_changer", false);
                 let _ = KillSwitch.start(cfg);
-                warn("Network locked down to prevent leaks. Please check your Tor connection and restart.");
+                warn(t(
+                    "Network locked down to prevent leaks. Please check your Tor connection and restart.",
+                    "Sızıntıları önlemek için ağ kilitlendi. Lütfen Tor bağlantınızı kontrol edip yeniden başlatın."
+                ));
                 return Err("Tor connection failed".to_string());
             }
         }
@@ -324,7 +388,10 @@ impl AnonModule for IpChanger {
         let _ = fs::remove_file(rules6_bak);
 
         set_module_status(&cfg.state_file, "ip_changer", false)?;
-        info("Ip changer successfully disabled");
+        info(t(
+            "Ip changer successfully disabled",
+            "IP değiştirici başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -338,7 +405,11 @@ pub fn check_tor_exit_ok(max_time_secs: u64) -> bool {
 }
 
 fn wait_for_tor_bootstrap(max_wait_secs: u64) -> bool {
-    info(&format!("Waiting for Tor to bootstrap (up to {max_wait_secs}s)..."));
+    info(&format!(
+        "{} ({} {max_wait_secs}s)...",
+        t("Waiting for Tor to bootstrap", "Tor bağlantısının kurulması bekleniyor"),
+        t("up to", "azami")
+    ));
     let mut elapsed = 0u64;
     let mut last: Option<u32> = None;
     let mut unreachable = 0u32;
@@ -347,7 +418,10 @@ fn wait_for_tor_bootstrap(max_wait_secs: u64) -> bool {
         if let Some(prog) = tor_bootstrap_progress() {
             unreachable = 0;
             if last != Some(prog) {
-                info(&format!("Tor bootstrap: {prog}%"));
+                info(&format!(
+                    "{}: {prog}%",
+                    t("Tor bootstrap", "Tor bağlantı durumu")
+                ));
                 last = Some(prog);
             }
             if prog >= 100 {
@@ -356,16 +430,26 @@ fn wait_for_tor_bootstrap(max_wait_secs: u64) -> bool {
         } else {
             unreachable += 1;
             if unreachable >= 5 {
-                warn("Tor ControlPort unreachable; skipping bootstrap wait.");
+                warn(t(
+                    "Tor ControlPort unreachable; skipping bootstrap wait.",
+                    "Tor ControlPort erişilemiyor; başlatma beklemesi atlanıyor."
+                ));
                 return false;
             }
         }
         thread::sleep(Duration::from_secs(3));
         elapsed += 3;
     }
-    let last_str = last.map(|v| v.to_string()).unwrap_or_else(|| "unknown".to_string());
+    let last_str = last
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| t("unknown", "bilinmiyor").to_string());
     warn(&format!(
-        "Tor did not finish bootstrapping within {max_wait_secs}s (last: {last_str}%)."
+        "{} {max_wait_secs}s ({}: {last_str}%).",
+        t(
+            "Tor did not finish bootstrapping within",
+            "Tor belirtilen sürede başlatılamadı:"
+        ),
+        t("last", "son")
     ));
     false
 }
@@ -598,7 +682,10 @@ impl AnonModule for KillSwitch {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("kill_switch") {
-            warn("Network Kill Switch is already running.");
+            warn(t(
+                "Network Kill Switch is already running.",
+                "Ağ Kill Switch zaten çalışıyor."
+            ));
             return Ok(());
         }
 
@@ -691,15 +778,24 @@ impl AnonModule for KillSwitch {
 
         if run_stdin("iptables-restore", &[], &rules) {
             set_module_status(&cfg.state_file, "kill_switch", true)?;
-            info("Network Kill Switch enabled (atomic IPv4+IPv6 iptables-restore). All non-Tor traffic blocked.");
+            info(t(
+                "Network Kill Switch enabled (atomic IPv4+IPv6 iptables-restore). All non-Tor traffic blocked.",
+                "Ağ Kill Switch etkinleştirildi (atomik IPv4+IPv6 iptables-restore). Tor dışı tüm trafik engellendi."
+            ));
             notify(
-                "ANON Kill Switch",
-                "Network Kill Switch active. All non-Tor traffic is blocked.",
+                t("ANON Kill Switch", "ANON Kill Switch"),
+                t(
+                    "Network Kill Switch active. All non-Tor traffic is blocked.",
+                    "Ağ Kill Switch etkin. Tor dışı tüm trafik engellendi."
+                ),
                 "normal",
             );
             Ok(())
         } else {
-            warn("Failed to apply Kill Switch rules. Restoring previous state...");
+            warn(t(
+                "Failed to apply Kill Switch rules. Restoring previous state...",
+                "Kill Switch kuralları uygulanamadı. Önceki durum geri yükleniyor..."
+            ));
             if let Some(r) = fs::read_to_string(&ks_bak).ok().filter(|s| !s.is_empty()) {
                 let _ = run_stdin("iptables-restore", &[], &r);
             }
@@ -719,7 +815,10 @@ impl AnonModule for KillSwitch {
         if let Some(r) = fs::read_to_string(&ks_bak).ok().filter(|s| !s.is_empty()) {
             let _ = run_stdin("iptables-restore", &[], &r);
         } else {
-            warn("No non-empty Kill Switch backup found; resetting filter policy to ACCEPT.");
+            warn(t(
+                "No non-empty Kill Switch backup found; resetting filter policy to ACCEPT.",
+                "Boş olmayan Kill Switch yedeği bulunamadı; filtre politikası ACCEPT olarak sıfırlanıyor."
+            ));
             for args in [
                 &["-F"][..],
                 &["-P", "INPUT", "ACCEPT"],
@@ -755,7 +854,10 @@ impl AnonModule for KillSwitch {
         }
 
         set_module_status(&cfg.state_file, "kill_switch", false)?;
-        info("Network Kill Switch disabled — original firewall rules restored.");
+        info(t(
+            "Network Kill Switch disabled — original firewall rules restored.",
+            "Ağ Kill Switch devre dışı bırakıldı — orijinal güvenlik duvarı kuralları geri yüklendi."
+        ));
         Ok(())
     }
 }
@@ -778,15 +880,24 @@ impl AnonModule for DnsChanger {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("ip_changer") {
-            warn("The Dns changer is not available while Ip changer is active.");
+            warn(t(
+                "The Dns changer is not available while Ip changer is active.",
+                "IP değiştirici etkinken DNS değiştirici kullanılamaz."
+            ));
             return Ok(());
         }
         if state.is_enabled("doh_shield") {
-            warn("The Dns changer is not available while DoH Shield is active.");
+            warn(t(
+                "The Dns changer is not available while DoH Shield is active.",
+                "DoH Kalkanı etkinken DNS değiştirici kullanılamaz."
+            ));
             return Ok(());
         }
         if state.is_enabled("dns_changer") {
-            warn("Dns changer is already running");
+            warn(t(
+                "Dns changer is already running",
+                "DNS değiştirici zaten çalışıyor"
+            ));
             return Ok(());
         }
 
@@ -805,7 +916,10 @@ impl AnonModule for DnsChanger {
 
         drop_ipv6_dns();
         set_module_status(&cfg.state_file, "dns_changer", true)?;
-        info("Dns changer successfully enabled (Mullvad/Quad9/DNS.WATCH/UncensoredDNS)");
+        info(t(
+            "Dns changer successfully enabled (Mullvad/Quad9/DNS.WATCH/UncensoredDNS)",
+            "DNS değiştirici başarıyla etkinleştirildi (Mullvad/Quad9/DNS.WATCH/UncensoredDNS)"
+        ));
         Ok(())
     }
 
@@ -814,7 +928,10 @@ impl AnonModule for DnsChanger {
         unlock_nm_dns(cfg);
         restore_resolv_conf(cfg, "dns");
         set_module_status(&cfg.state_file, "dns_changer", false)?;
-        info("Dns changer successfully disabled");
+        info(t(
+            "Dns changer successfully disabled",
+            "DNS değiştirici başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -837,21 +954,36 @@ impl AnonModule for DohShield {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("ip_changer") {
-            warn("DoH Shield is not available while Ip changer is active.");
+            warn(t(
+                "DoH Shield is not available while Ip changer is active.",
+                "IP değiştirici etkinken DoH Kalkanı kullanılamaz."
+            ));
             return Ok(());
         }
         if state.is_enabled("dns_changer") {
-            warn("DoH Shield is not available while Dns changer is active.");
+            warn(t(
+                "DoH Shield is not available while Dns changer is active.",
+                "DNS değiştirici etkinken DoH Kalkanı kullanılamaz."
+            ));
             return Ok(());
         }
         if state.is_enabled("doh_shield") {
-            warn("DoH Shield is already running.");
+            warn(t(
+                "DoH Shield is already running.",
+                "DoH Kalkanı zaten çalışıyor."
+            ));
             return Ok(());
         }
 
-        info("Starting DNS-over-HTTPS (DoH) Shield...");
+        info(t(
+            "Starting DNS-over-HTTPS (DoH) Shield...",
+            "DNS-over-HTTPS (DoH) Kalkanı başlatılıyor..."
+        ));
         if !cmd_exists("dnscrypt-proxy") {
-            info("Installing dnscrypt-proxy...");
+            info(t(
+                "Installing dnscrypt-proxy...",
+                "dnscrypt-proxy kuruluyor..."
+            ));
             if cmd_exists("apt-get") {
                 let ok = run_quiet("apt-get", &["update", "-qq"])
                     && Command::new("apt-get")
@@ -861,24 +993,36 @@ impl AnonModule for DohShield {
                         .map(|s| s.success())
                         .unwrap_or(false);
                 if !ok {
-                    warn("Failed to install dnscrypt-proxy. Please install it manually.");
+                    warn(t(
+                        "Failed to install dnscrypt-proxy. Please install it manually.",
+                        "dnscrypt-proxy kurulamadı. Lütfen manuel olarak kurun."
+                    ));
                     return Err("dnscrypt-proxy install failed".to_string());
                 }
             } else {
-                warn("dnscrypt-proxy is missing and apt-get is unavailable.");
+                warn(t(
+                    "dnscrypt-proxy is missing and apt-get is unavailable.",
+                    "dnscrypt-proxy eksik ve apt-get kullanılamıyor."
+                ));
                 return Err("dnscrypt-proxy missing".to_string());
             }
         }
 
         let _ = service_ctrl("unmask", "dnscrypt-proxy", None);
         if !service_ctrl("start", "dnscrypt-proxy", None) {
-            warn("Failed to start dnscrypt-proxy daemon. Check /etc/dnscrypt-proxy/dnscrypt-proxy.toml.");
+            warn(t(
+                "Failed to start dnscrypt-proxy daemon. Check /etc/dnscrypt-proxy/dnscrypt-proxy.toml.",
+                "dnscrypt-proxy servisi başlatılamadı. /etc/dnscrypt-proxy/dnscrypt-proxy.toml dosyasını kontrol edin."
+            ));
             return Err("dnscrypt-proxy start failed".to_string());
         }
 
         thread::sleep(Duration::from_secs(1));
         if !service_ctrl("is-active", "dnscrypt-proxy", None) {
-            warn("dnscrypt-proxy is not active after startup; aborting resolv.conf override to prevent DNS outage.");
+            warn(t(
+                "dnscrypt-proxy is not active after startup; aborting resolv.conf override to prevent DNS outage.",
+                "dnscrypt-proxy başlatma sonrası aktif değil; DNS kesintisini önlemek için resolv.conf değişikliği iptal ediliyor."
+            ));
             return Err("dnscrypt-proxy not active".to_string());
         }
 
@@ -894,18 +1038,27 @@ impl AnonModule for DohShield {
 
         drop_ipv6_dns();
         set_module_status(&cfg.state_file, "doh_shield", true)?;
-        msg("DNS-over-HTTPS (DoH) Shield activated.");
+        msg(t(
+            "DNS-over-HTTPS (DoH) Shield activated.",
+            "DNS-over-HTTPS (DoH) Kalkanı etkinleştirildi."
+        ));
         Ok(())
     }
 
     fn stop(&self, cfg: &AppConfig) -> Result<(), String> {
-        info("Stopping DNS-over-HTTPS (DoH) Shield...");
+        info(t(
+            "Stopping DNS-over-HTTPS (DoH) Shield...",
+            "DNS-over-HTTPS (DoH) Kalkanı durduruluyor..."
+        ));
         let _ = service_ctrl("stop", "dnscrypt-proxy", None);
         restore_ipv6_dns();
         unlock_nm_dns(cfg);
         restore_resolv_conf(cfg, "doh");
         set_module_status(&cfg.state_file, "doh_shield", false)?;
-        msg("DoH Shield deactivated.");
+        msg(t(
+            "DoH Shield deactivated.",
+            "DoH Kalkanı devre dışı bırakıldı."
+        ));
         Ok(())
     }
 }
@@ -962,22 +1115,37 @@ impl AnonModule for TorBridges {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("tor_bridges") {
-            warn("Tor bridges is already enabled");
+            warn(t(
+                "Tor bridges is already enabled",
+                "Tor köprüleri zaten etkin"
+            ));
             return Ok(());
         }
         if !cmd_exists("obfs4proxy") {
-            warn("obfs4proxy is not installed. Please run: sudo apt-get install obfs4proxy");
+            warn(t(
+                "obfs4proxy is not installed. Please run: sudo apt-get install obfs4proxy",
+                "obfs4proxy kurulu değil. Lütfen çalıştırın: sudo apt-get install obfs4proxy"
+            ));
             return Err("obfs4proxy missing".to_string());
         }
 
         if is_stdin_tty() {
             println!(
-                "\n {}ℹ INFO:{} Please paste your Tor Bridge lines (obfs4/webtunnel/snowflake) below.",
+                "\n {}ℹ {}:{} {}",
                 crate::ui::CYAN,
-                crate::ui::RESET
+                t("INFO", "BİLGİ"),
+                crate::ui::RESET,
+                t(
+                    "Please paste your Tor Bridge lines (obfs4/webtunnel/snowflake) below.",
+                    "Lütfen Tor Köprü (obfs4/webtunnel/snowflake) satırlarınızı aşağıya yapıştırın."
+                )
             );
             println!(
-                " {DIM}Press [ENTER] on an empty line when done (or immediately to use saved/default bridges).{RESET}\n"
+                " {DIM}{}{RESET}\n",
+                t(
+                    "Press [ENTER] on an empty line when done (or immediately to use saved/default bridges).",
+                    "Tamamlandığında boş satırda [ENTER]'a basın (veya kayıtlı/varsayılan köprüleri kullanmak için hemen basın)."
+                )
             );
             let stdin = io::stdin();
             let mut valid = String::new();
@@ -993,7 +1161,10 @@ impl AnonModule for TorBridges {
                     valid.push('\n');
                 } else {
                     invalid_count += 1;
-                    warn(&format!("Ignored malformed bridge line: {line}"));
+                    warn(&format!(
+                        "{}: {line}",
+                        t("Ignored malformed bridge line", "Geçersiz köprü satırı yoksayıldı")
+                    ));
                 }
             }
             if !valid.is_empty() {
@@ -1003,7 +1174,10 @@ impl AnonModule for TorBridges {
                 }
                 let _ = fs::write(target, valid);
             } else if invalid_count > 0 {
-                warn("No valid bridge lines provided.");
+                warn(t(
+                    "No valid bridge lines provided.",
+                    "Geçerli köprü satırı girilmedi."
+                ));
             }
         }
 
@@ -1023,18 +1197,29 @@ impl AnonModule for TorBridges {
                 .and_then(|s| s.to_str())
                 .unwrap_or("bridges");
             info(&format!(
-                "Tor bridges configured and enabled (Source: {src_name})"
+                "{} ({}: {src_name})",
+                t(
+                    "Tor bridges configured and enabled",
+                    "Tor köprüleri yapılandırıldı ve etkinleştirildi"
+                ),
+                t("Source", "Kaynak")
             ));
             Ok(())
         } else {
-            warn("No bridges were found or saved. Tor bridges module was NOT enabled.");
+            warn(t(
+                "No bridges were found or saved. Tor bridges module was NOT enabled.",
+                "Hiçbir köprü bulunamadı veya kaydedilmedi. Tor köprüleri modülü etkinleştirilmedi."
+            ));
             Err("No bridges available".to_string())
         }
     }
 
     fn stop(&self, cfg: &AppConfig) -> Result<(), String> {
         set_module_status(&cfg.state_file, "tor_bridges", false)?;
-        info("Tor bridges successfully disabled (Bridges saved for next use)");
+        info(t(
+            "Tor bridges successfully disabled (Bridges saved for next use)",
+            "Tor köprüleri başarıyla devre dışı bırakıldı (Köprüler sonraki kullanım için saklandı)"
+        ));
         Ok(())
     }
 }
@@ -1056,11 +1241,17 @@ impl AnonModule for DpiSpoofing {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("dpi_spoofing") {
-            warn("DPI Spoofing is already enabled.");
+            warn(t(
+                "DPI Spoofing is already enabled.",
+                "DPI Yanıltma zaten etkin."
+            ));
             return Ok(());
         }
         if !cmd_exists("snowflake-client") {
-            warn("snowflake-client is not installed. Attempting to install...");
+            warn(t(
+                "snowflake-client is not installed. Attempting to install...",
+                "snowflake-client kurulu değil. Kurulum deneniyor..."
+            ));
             if cmd_exists("apt-get") {
                 let ok = run_quiet("apt-get", &["update", "-qq"])
                     && Command::new("apt-get")
@@ -1070,19 +1261,31 @@ impl AnonModule for DpiSpoofing {
                         .map(|s| s.success())
                         .unwrap_or(false);
                 if !ok {
-                    warn("snowflake-client installation failed. Please run: sudo apt-get install snowflake-client");
+                    warn(t(
+                        "snowflake-client installation failed. Please run: sudo apt-get install snowflake-client",
+                        "snowflake-client kurulumu başarısız oldu. Lütfen çalıştırın: sudo apt-get install snowflake-client"
+                    ));
                     return Err("snowflake-client install failed".to_string());
                 }
             } else {
-                warn("snowflake-client is not installed and apt-get is unavailable.");
+                warn(t(
+                    "snowflake-client is not installed and apt-get is unavailable.",
+                    "snowflake-client kurulu değil ve apt-get kullanılamıyor."
+                ));
                 return Err("snowflake-client missing".to_string());
             }
         }
 
         set_module_status(&cfg.state_file, "dpi_spoofing", true)?;
-        info("DPI Spoofing (Snowflake WebRTC Camouflage) successfully enabled.");
+        info(t(
+            "DPI Spoofing (Snowflake WebRTC Camouflage) successfully enabled.",
+            "DPI Yanıltma (Snowflake WebRTC Kamufilajı) başarıyla etkinleştirildi."
+        ));
         if state.is_enabled("ip_changer") {
-            info("Refreshing Tor transparent proxy configuration...");
+            info(t(
+                "Refreshing Tor transparent proxy configuration...",
+                "Tor şeffaf vekil sunucu yapılandırması yenileniyor..."
+            ));
             let _ = IpChanger.stop(cfg);
             let _ = IpChanger.start(cfg);
         }
@@ -1092,9 +1295,15 @@ impl AnonModule for DpiSpoofing {
     fn stop(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         set_module_status(&cfg.state_file, "dpi_spoofing", false)?;
-        info("DPI Spoofing successfully disabled.");
+        info(t(
+            "DPI Spoofing successfully disabled.",
+            "DPI Yanıltma başarıyla devre dışı bırakıldı."
+        ));
         if state.is_enabled("ip_changer") {
-            info("Refreshing Tor transparent proxy configuration...");
+            info(t(
+                "Refreshing Tor transparent proxy configuration...",
+                "Tor şeffaf vekil sunucu yapılandırması yenileniyor..."
+            ));
             let _ = IpChanger.stop(cfg);
             let _ = IpChanger.start(cfg);
         }
@@ -1119,21 +1328,42 @@ impl AnonModule for I2pIntegration {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("i2p_integration") {
-            warn("I2P integration is already running");
+            warn(t(
+                "I2P integration is already running",
+                "I2P entegrasyonu zaten çalışıyor"
+            ));
             return Ok(());
         }
-        info("Starting I2P Router daemon (i2pd)...");
+        info(t(
+            "Starting I2P Router daemon (i2pd)...",
+            "I2P Yönlendirici servisi (i2pd) başlatılıyor..."
+        ));
         let _ = service_ctrl("start", "i2pd", None);
         thread::sleep(Duration::from_secs(2));
 
         if service_ctrl("is-active", "i2pd", None) {
             set_module_status(&cfg.state_file, "i2p_integration", true)?;
-            info("I2P Router successfully started.");
-            info("I2P SOCKS5 proxy available at 127.0.0.1:4446");
-            info("I2P HTTP proxy available at 127.0.0.1:4444");
-            info("I2P Web Console available at http://127.0.0.1:7070");
+            info(t(
+                "I2P Router successfully started.",
+                "I2P Yönlendirici başarıyla başlatıldı."
+            ));
+            info(t(
+                "I2P SOCKS5 proxy available at 127.0.0.1:4446",
+                "I2P SOCKS5 vekil sunucusu 127.0.0.1:4446 adresinde hazır"
+            ));
+            info(t(
+                "I2P HTTP proxy available at 127.0.0.1:4444",
+                "I2P HTTP vekil sunucusu 127.0.0.1:4444 adresinde hazır"
+            ));
+            info(t(
+                "I2P Web Console available at http://127.0.0.1:7070",
+                "I2P Web Konsolu http://127.0.0.1:7070 adresinde hazır"
+            ));
         } else {
-            warn("Failed to start i2pd service. Is it installed?");
+            warn(t(
+                "Failed to start i2pd service. Is it installed?",
+                "i2pd servisi başlatılamadı. Kurulu olduğundan emin misiniz?"
+            ));
         }
         Ok(())
     }
@@ -1141,7 +1371,10 @@ impl AnonModule for I2pIntegration {
     fn stop(&self, cfg: &AppConfig) -> Result<(), String> {
         let _ = service_ctrl("stop", "i2pd", None);
         set_module_status(&cfg.state_file, "i2p_integration", false)?;
-        info("I2P Router successfully disabled");
+        info(t(
+            "I2P Router successfully disabled",
+            "I2P Yönlendirici başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -1163,11 +1396,17 @@ impl AnonModule for ProxychainsIntegration {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("proxychains_integration") {
-            warn("Proxychains integration is already running");
+            warn(t(
+                "Proxychains integration is already running",
+                "Proxychains entegrasyonu zaten çalışıyor"
+            ));
             return Ok(());
         }
         if !cfg.proxychains_conf.is_file() {
-            warn("proxychains4.conf not found. Is proxychains4 installed?");
+            warn(t(
+                "proxychains4.conf not found. Is proxychains4 installed?",
+                "proxychains4.conf bulunamadı. proxychains4 kurulu mu?"
+            ));
             return Ok(());
         }
         let orig = fs::read_to_string(&cfg.proxychains_conf)
@@ -1195,7 +1434,10 @@ impl AnonModule for ProxychainsIntegration {
         fs::write(&cfg.proxychains_conf, updated)
             .map_err(|e| format!("write proxychains4.conf: {e}"))?;
         set_module_status(&cfg.state_file, "proxychains_integration", true)?;
-        info("Proxychains-ng successfully integrated with Tor Socks5");
+        info(t(
+            "Proxychains-ng successfully integrated with Tor Socks5",
+            "Proxychains-ng, Tor Socks5 ile başarıyla entegre edildi"
+        ));
         Ok(())
     }
 
@@ -1208,7 +1450,10 @@ impl AnonModule for ProxychainsIntegration {
             let _ = fs::remove_file(bak);
         }
         set_module_status(&cfg.state_file, "proxychains_integration", false)?;
-        info("Proxychains-ng integration successfully disabled");
+        info(t(
+            "Proxychains-ng integration successfully disabled",
+            "Proxychains-ng entegrasyonu başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }
@@ -1270,7 +1515,10 @@ impl AnonModule for MacChanger {
     fn start(&self, cfg: &AppConfig) -> Result<(), String> {
         let state = AnonState::load(&cfg.state_file);
         if state.is_enabled("mac_changer") {
-            warn("Mac changer is already running");
+            warn(t(
+                "Mac changer is already running",
+                "MAC değiştirici zaten çalışıyor"
+            ));
             return Ok(());
         }
 
@@ -1338,14 +1586,31 @@ impl AnonModule for MacChanger {
                     .unwrap_or_default();
                 if orig_mac.is_empty() || new_mac != orig_mac || new_mac == out {
                     *changed_flag = true;
-                    info(&format!("Mac changer enabled for {target} (Spoofed to: {out})"));
+                    info(&format!(
+                        "{} {target} ({}: {out})",
+                        t(
+                            "Mac changer enabled for",
+                            "MAC değiştirici etkinleştirildi:"
+                        ),
+                        t("Spoofed to", "Sahte MAC")
+                    ));
                 } else {
                     warn(&format!(
-                        "Driver ignored MAC change on {target} (remained {new_mac})"
+                        "{} {target} ({new_mac})",
+                        t(
+                            "Driver ignored MAC change on",
+                            "Sürücü bu arayüzde MAC değişikliğini yoksaydı:"
+                        )
                     ));
                 }
             } else {
-                warn(&format!("Failed to assign spoofed MAC on {target}"));
+                warn(&format!(
+                    "{} {target}",
+                    t(
+                        "Failed to assign spoofed MAC on",
+                        "Sahte MAC ataması başarısız:"
+                    )
+                ));
             }
         };
 
@@ -1360,7 +1625,10 @@ impl AnonModule for MacChanger {
                     }
                 }
             } else {
-                warn("Virtual machine (or WSL) detected. No suitable wireless interface found for safe MAC spoofing.");
+                warn(t(
+                    "Virtual machine (or WSL) detected. No suitable wireless interface found for safe MAC spoofing.",
+                    "Sanal makine (veya WSL) tespit edildi. Güvenli MAC değişikliği için uygun kablosuz arayüz bulunamadı."
+                ));
             }
         } else {
             for iface in &ifaces {
@@ -1372,7 +1640,10 @@ impl AnonModule for MacChanger {
             let _ = wait_for_network(4);
             set_module_status(&cfg.state_file, "mac_changer", true)?;
         } else {
-            warn("MAC Changer could not modify any physical interface.");
+            warn(t(
+                "MAC Changer could not modify any physical interface.",
+                "MAC Değiştirici hiçbir fiziksel arayüzü değiştiremedi."
+            ));
         }
         Ok(())
     }
@@ -1402,7 +1673,10 @@ impl AnonModule for MacChanger {
             let _ = wait_for_network(4);
         }
         set_module_status(&cfg.state_file, "mac_changer", false)?;
-        info("Mac changer successfully disabled");
+        info(t(
+            "Mac changer successfully disabled",
+            "MAC değiştirici başarıyla devre dışı bırakıldı"
+        ));
         Ok(())
     }
 }

@@ -450,6 +450,28 @@ BROWSER_OUT="$(run_anon_root --browser 2>&1)"
 assert_contains "$BROWSER_OUT" "Disposable profile completely wiped" "--browser launches and securely wipes disposable RAM profile"
 
 # ------------------------------------------------------------------------------
+# 8. Internationalization (--lang en|tr & persistence across --stop)
+# ------------------------------------------------------------------------------
+echo -e "\n${CYAN}=== 8. Language Switcher (English / Türkçe) ===${RESET}"
+HELP_LANG="$("${MOCK_DIR}/anon" --help 2>&1 || true)"
+assert_contains "$HELP_LANG" "--lang" "anon --help documents --lang"
+
+LANG_TR_OUT="$(run_anon_root --lang tr 2>&1)"
+assert_contains "$LANG_TR_OUT" "Türkçe" "--lang tr switches active UI language to Turkish"
+
+TR_STATUS="$(run_anon_root --status 2>&1)"
+assert_contains "$TR_STATUS" "IP Değiştirici" "--status renders localized Turkish module labels"
+
+run_anon_root --stop >/dev/null 2>&1
+TR_STATUS_AFTER_STOP="$(run_anon_root --status 2>&1)"
+assert_contains "$TR_STATUS_AFTER_STOP" "IP Değiştirici" "Language preference persists in anon.lang across --stop state resets"
+
+LANG_EN_OUT="$(run_anon_root --lang en 2>&1)"
+assert_contains "$LANG_EN_OUT" "English" "--lang en restores active UI language to English"
+EN_STATUS="$(run_anon_root --status 2>&1)"
+assert_contains "$EN_STATUS" "Ip changer" "--status renders default English module labels after --lang en"
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
 echo ""

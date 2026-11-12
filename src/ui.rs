@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use crate::config::AppConfig;
 use crate::helpers::rand_u64;
+use crate::i18n::t;
 use crate::sys::{is_stdout_tty, terminal_cols};
 
 pub const RESET: &str = "\x1b[0m";
@@ -23,21 +24,25 @@ pub const BG_BLUE: &str = "\x1b[44m";
 static CACHED_BANNER: OnceLock<Option<String>> = OnceLock::new();
 
 pub fn err(msg_text: &str) -> ! {
-    eprintln!("\n {BG_BLUE}{WHITE}{BOLD} ANON {RESET} {RED}✖ ERROR:{RESET} {msg_text}\n");
+    let lbl = t("ERROR:", "HATA:");
+    eprintln!("\n {BG_BLUE}{WHITE}{BOLD} ANON {RESET} {RED}✖ {lbl}{RESET} {msg_text}\n");
     crate::modules::obfuscation::cleanup_stealth_dir_if_active();
     std::process::exit(1);
 }
 
 pub fn warn(msg_text: &str) {
-    println!(" {YELLOW}⚠ WARNING:{RESET} {msg_text}");
+    let lbl = t("WARNING:", "UYARI:");
+    println!(" {YELLOW}⚠ {lbl}{RESET} {msg_text}");
 }
 
 pub fn msg(msg_text: &str) {
-    println!(" {GREEN}✔ SUCCESS:{RESET} {msg_text}");
+    let lbl = t("SUCCESS:", "BAŞARILI:");
+    println!(" {GREEN}✔ {lbl}{RESET} {msg_text}");
 }
 
 pub fn info(msg_text: &str) {
-    println!(" {CYAN}ℹ INFO:{RESET} {msg_text}");
+    let lbl = t("INFO:", "BİLGİ:");
+    println!(" {CYAN}ℹ {lbl}{RESET} {msg_text}");
 }
 
 pub fn clear_screen() {
@@ -183,9 +188,12 @@ pub fn render_banner_into(cfg: &AppConfig, out: &mut String, include_art: bool) 
     out.push_str(RESET);
     out.push('\n');
 
-    let sub = "Advanced OPSEC & Anonymity Framework";
+    let sub = t(
+        "Advanced OPSEC & Anonymity Framework",
+        "Gelişmiş OPSEC ve Anonimlik Çerçevesi",
+    );
     let ver = "v3.0";
-    let sub_len = sub.len() + 2 + ver.len();
+    let sub_len = sub.chars().count() + 2 + ver.len();
     let sub_pad = width.saturating_sub(sub_len) / 2;
     for _ in 0..sub_pad {
         out.push(' ');
@@ -199,8 +207,11 @@ pub fn render_banner_into(cfg: &AppConfig, out: &mut String, include_art: bool) 
     out.push_str(RESET);
     out.push('\n');
 
-    let contact = "github.com/egnake | egcaem000@gmail.com | Report Issue";
-    let contact_pad = width.saturating_sub(contact.len()) / 2;
+    let contact = t(
+        "github.com/egnake | egcaem000@gmail.com | Report Issue",
+        "github.com/egnake | egcaem000@gmail.com | Sorun Bildir",
+    );
+    let contact_pad = width.saturating_sub(contact.chars().count()) / 2;
     for _ in 0..contact_pad {
         out.push(' ');
     }

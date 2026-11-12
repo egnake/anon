@@ -1,15 +1,16 @@
 <div align="center">
-  <img src="assets/anon_logo.jpg" alt="ANON Logo" width="200" style="border-radius: 20px;">
+  <img src="assets/anon_logo_iconic.jpg" alt="ANON Logo" width="220">
   
   <h1>ANON: Gelişmiş OPSEC ve Anonimlik Çerçevesi</h1>
-  <p><b>Linux ortamları için kapsamlı, modüler bir anonimlik ve anti-adli bilişim (anti-forensics) araç seti.</b></p>
+  <p><b>Yerel Rust ile geliştirilmiş sıfır bağımlılıklı, yüksek performanslı Linux Operasyonel Güvenlik (OPSEC), adli bilişim karşıtı (anti-forensics) ve gizlilik motoru.</b></p>
   
   <p>
     <a href="https://github.com/egnake/anon/blob/main/LICENSE"><img src="https://img.shields.io/badge/Lisans-MIT-blue.svg?style=for-the-badge" alt="License"></a>
-    <a href="https://github.com/egnake/anon/releases"><img src="https://img.shields.io/badge/Sürüm-3.0-green.svg?style=for-the-badge" alt="Version"></a>
-    <img src="https://img.shields.io/badge/Platform-Linux%20(Debian%2FKali)-orange.svg?style=for-the-badge" alt="Platform">
-    <img src="https://img.shields.io/badge/Dil-Rust_(Sıfır_Bağımlılık)-yellow.svg?style=for-the-badge" alt="Language">
-    <img src="https://img.shields.io/badge/Mimari-Modüler-purple.svg?style=for-the-badge" alt="Architecture">
+    <a href="https://github.com/egnake/anon/releases"><img src="https://img.shields.io/badge/S%C3%BCr%C3%BCm-3.0.0-green.svg?style=for-the-badge" alt="Version"></a>
+    <img src="https://img.shields.io/badge/Platform-Debian%20%7C%20Kali%20%7C%20Parrot%20%7C%20WSL2-orange.svg?style=for-the-badge" alt="Platform">
+    <img src="https://img.shields.io/badge/Rust-S%C4%B1f%C4%B1r_Harici_Ba%C4%9F%C4%B1ml%C4%B1l%C4%B1k-yellow.svg?style=for-the-badge" alt="Language">
+    <img src="https://img.shields.io/badge/Mimari-22_Mod%C3%BCl-purple.svg?style=for-the-badge" alt="Architecture">
+    <img src="https://img.shields.io/badge/Dil_Deste%C4%9Fi-English%20%7C%20T%C3%BCrk%C3%A7e-red.svg?style=for-the-badge" alt="i18n">
   </p>
 
   <h3>
@@ -22,216 +23,248 @@
 
 ## 🚀 Genel Bakış
 
-**ANON**, siber güvenlik araştırmacıları, geliştiriciler ve gizlilik savunucuları için **sıfır harici bağımlılıklı Rust** ile geliştirilmiş titiz, açık kaynaklı bir anonimlik ve Operasyonel Güvenlik (OPSEC) çerçevesidir. Hızlı bir yerel ikili dosya (native binary) olarak derlenen ANON; sıkı ağ izolasyonu uygulayan, sistem parmak izlerini rastgele değiştiren, Netlink/inotify tabanlı aktif anti-adli bilişim (anti-forensics) ve paralel metaveri temizleme tedbirleri alan derinlemesine entegre edilmiş 22 durumlu OPSEC modülü sunar.
+**ANON (v3.0)**, güvenlik araştırmacıları, sızma testi uzmanları, araştırmacı gazeteciler ve gizlilik savunucuları için **sıfır harici bağımlılıklı yerel Rust ikili dosyası (native binary)** olarak sıfırdan tasarlanmış kurumsal düzeyde bir operasyonel güvenlik (OPSEC) ve adli bilişim karşıtı koruma çerçevesidir. Debian, Kali Linux, Parrot OS, Ubuntu ve Windows 10/11 (WSL2) sistemlerini katı bir şekilde yalıtılmış, sıkılaştırılmış anonim çalışma ortamlarına dönüştürür.
 
-ANON; Linux çekirdek ağ alanlarını (`netns`), trafik kontrolünü (`tc`) ve dinamik `iptables` yapılandırmalarını kullanarak standart bir Debian kurulumunu son derece kısıtlanmış ve güvenli bir ortama dönüştürür. Çıkan tüm trafiğin kesinlikle Tor ağı üzerinden yönlendirilmesini sağlarken, yaygın zamanlama saldırılarını ve yerel ağ tehditlerini hafifletir.
-
----
-
-## 🛡️ Tehdit Modeli ve Felsefe
-
-ANON, "Derinlemesine Savunma" (Defense in Depth) kavramı etrafında inşa edilmiştir. Düşmanların, iletişim zincirinizin birden fazla noktasında bulunabileceğini varsayar. Çerçeve, aşağıdaki spesifik vektörleri hafifletmeye çalışır:
-
-1. **Trafik Analizi ve İSS (ISP) Gözetimi:** Tüm TCP ve DNS trafiğini şeffaf olarak Tor'a zorlar. `obfs4` köprülerini, Snowflake WebRTC gizlemesini ve Website Fingerprinting (WFP) saldırılarını bozmak için aktif trafik karartma (sahte paketler ve jitter) kullanarak savunma yapar.
-2. **Yerel Ağ (LAN) Saldırıları:** MAC adresi rastgeleleştirme, ARP zehirlenmesi tespiti, bilgisayar adı (hostname) gizleme ve fiziksel ağ arayüzlerinden sıkı izolasyon yoluyla azaltılır.
-3. **Uç Nokta Zafiyetleri ve Adli Bilişim:** İzole edilmiş kernel ağ alanları (`anon_jail`), tarayıcılar ve sistem logları için geçici RAM tabanlı dosya sistemleri (`volatile_logging`), süreç gizleme (`execution_stealth`) ve Cold-Boot veri çıkarımına karşı kriptografik bellek temizleme (`sdmem`) kullanımı yoluyla engellenir.
+ANON; aktif ağ gözetimi, İSS derin paket incelemesi (DPI), yerel ağ saldırıları ve Cold-Boot fiziksel bellek analizlerine karşı tam gizlilik sağlamak için **22 durumlu güvenlik modülünü**, olay güdümlü **Netlink ve inotify çekirdek gözcülerini**, donanım engellemelerini, paralel çok iş parçacıklı metaveri temizliğini ve tamamen uçucu RAM tabanlı çalışmayı bir araya getirir.
 
 ---
 
-## ⚙️ 22 OPSEC Modülü ve Yardımcı Araçlar (Detaylı İnceleme)
+## ⚡ Öne Çıkan Özellikler (v3.0)
 
-ANON son derece modülerdir. Etkileşimli Terminal Kullanıcı Arayüzünü (TUI) veya hazır güvenlik profillerini kullanarak 22 durumlu modülü ayrı ayrı açıp kapatabilir, ayrıca yerleşik tek kullanımlık tarayıcı, metaveri temizleyici, acil durum panik ve kurtarma araçlarından yararlanabilirsiniz.
+- **Saf Yerel Rust Motoru (`src/`):** Harici crate bağımlılığı yoktur (`Cargo.toml` yalnızca standart kütüphane `std` ve `src/sys.rs` içindeki izole POSIX/Linux libc FFI arayüzüne dayanır). Tam LTO optimizasyonu ile ultra hızlı derlenir ve minimum ikili dosya boyutu sunar.
+- **Çift Dil Desteği (`English` & `Türkçe`):** Varsayılan olarak İngilizce başlar; doğrudan etkileşimli TUI menüsünden veya `--lang tr` / `--lang en` parametresiyle tüm arayüz anında Türkçe veya İngilizceye geçirilebilir. Tercih, `--stop` veya `--panic` sıfırlamalarından bağımsız olarak `${BACKUPDIR}/anon.lang` dosyasında kalıcı tutulur.
+- **Titreşimsiz (Flicker-Free) Etkileşimli TUI:** Terminal boyutlarına (`LINES` x `COLUMNS`) dinamik uyum sağlayan çift arabellekli UTF-8 çerçeve çizimi, tam ekran sıfırlamaları (`\x1b[2J`) olmadan pürüzsüz yön tuşu / Vim (`j`/`k`) navigasyonu ve 3 saniyede bir otomatik yenilenen canlı kontrol paneli.
+- **Bildirimsel Güvenlik Profilleri:** Tek komutla hazır güvenlik profillerini uygulayın: `--profile <isim>` (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`).
+- **Atomik Güvenlik Duvarı Yönlendirmesi:** Geçişler sırasında milisaniyelik paket sızıntılarını bile önleyen çekirdek düzeyinde `iptables-restore` / `ip6tables-restore` ağ kilidi (Kill Switch).
+- **Çekirdek Ağ Ad Alanı İzolasyonu (`anon_jail`):** Linux çekirdeği `netns`, sanal ethernet çiftleri (`veth`), AppArmor MAC profili ve Firejail seccomp koruması ile donanım düzeyinde süreç ve ağ ayrımı.
+- **Yalnızca RAM Üzerinde Uçucu Çalışma:** `/dev/shm` içerisinde iz bırakmayan tarayıcı oturumları, `tmpfs` tabanlı geçici günlük (log) katmanı ve `[kworker/u4:2]` çekirdek iş parçacığı imzasıyla süreç maskeleme.
+- **Çoklu Platform Uyumu:** Linux için tam otomatik kurucu (`setup.sh`), Windows WSL2 için otomatik yol çeviricili sarmalayıcı (`setup.bat` ve `anon.bat`) ve çok aşamalı Kali Rolling `Dockerfile`.
 
-### 🌐 Ağ ve Yönlendirme Alt Sistemi
+---
 
-**[01] Tor Bridges (obfs4)**
-Standart Tor trafiği, İSS'ler ve güvenlik duvarları tarafından Derin Paket İnceleme (DPI) yoluyla kolayca tespit edilebilir. Bu modül, Tor hizmetini `obfs4` köprülerini kullanacak şekilde yapılandırır. Böylece Tor el sıkışmasını (handshake) şifreler ve trafik imzasını değiştirerek rastgele veri gürültüsünden ayırt edilemez hale getirir. Sıkı sansürü atlatmak için esastır.
+## 🛡️ Tehdit Modeli ve Derinlemesine Savunma
 
-**[02] IP Changer (Tor TransPort)**
-Sadece SOCKS5 proxy'lerine güvenmek, bir uygulamanın yanlış yapılandırılması durumunda ölümcül veri sızıntılarına yol açabilir. Bu modül, kernel seviyesinde sıkı `iptables` `REDIRECT` kurallarından yararlanır. Makinenizden kaynaklanan tüm dışarı çıkan TCP trafiğini yakalar ve fiziksel olarak Tor'un şeffaf proxy portuna (9040) zorlar. DNS istekleri otomatik olarak Tor DNSPort'una (5353) yönlendirilir.
+ANON; saldırganların ağ trafiğini izleyebileceğini, yerel ağda ARP zehirlenmesi yapabileceğini, paket zamanlamasını analiz edebileceğini veya cihaza fiziksel erişim sağlayabileceğini varsayar. Tüm saldırı yüzeylerinde katmanlı savunma uygular:
 
-**[03] DNS Changer (Gizlilik Odaklı DNS)**
-Tor şeffaf proxy'sinin kullanılmadığı senaryolarda, İSS seviyesinde DNS takibini ve sansürünü engellemek için sistemi log tutmayan, şifresiz sansürsüz güvenli DNS sunucularına yönlendirir.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        ANON SAVUNMA MODELİ                             │
+├────────────────────────┬───────────────────────────────────────────────┤
+│ Saldırı Vektörü        │ ANON Savunma Tekniği                          │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ İSS / DPI Gözetimi ve  │ Tor TransPort (9040), obfs4, Snowflake WebRTC,│
+│ Trafik Analizi         │ Sahte Trafik (Chaffing), Jitter (tc netem)    │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ Yerel Ağ Tehditleri    │ Rastgele MAC (OUI), Anti-MITM (Netlink ARP),  │
+│ (Wi-Fi / LAN / DHCP)   │ Hostname Rastgeleleştirici, RFKill Bluetooth  │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ İşletim Sistemi ve     │ TTL=128 Windows 10 Taklidi, Saat Dilimi,      │
+│ Tarayıcı Parmak İzi    │ Sıkılaştırılmış anon.js, Anti-Canvas/WebGL   │
+├────────────────────────┼───────────────────────────────────────────────┤
+│ Sistem / RAM Adli      │ Kernel netns Jail, hidepid=2, Uçucu tmpfs     │
+│ Analizi ve El Koyma    │ loglama, sdmem RAM silme, --panic protokolü   │
+└────────────────────────┴───────────────────────────────────────────────┘
+```
 
-**[04] MAC Changer**
-Bir ağ bağlantısı tam olarak kurulmadan önce, bu modül Ağ Arayüz Kartınızın (NIC) Medya Erişim Kontrolü (MAC) adresini üretici onaylı rastgele bir OUI değerine değiştirir. Bu, yönlendiriciler, halka açık Wi-Fi noktaları ve yerel ağ yöneticileri tarafından yapılan tarihsel takibi kırar.
+---
 
-**[05] Proxychains Integration**
-`proxychains4` yapılandırmasını otomatik olarak düzenler ve aktif Tor devrelerinizle hizalar. Bu sayede terminal komutlarını, betikleri veya harici araçları (`curl`, `wget` veya özel python betikleri gibi) manuel yapılandırma ayarlarına gerek kalmadan doğrudan Tor ağı üzerinden tünellemenizi sağlar.
+## ⚙️ 22 OPSEC Modülü ve Çekirdek Araçlar
 
-**[06] I2P Integration**
-Alternatif bir yönlendirme mekanizması sağlar. Tor ağı yerine Görünmez İnternet Projesi (I2P) ağıyla etkileşim gerektiren görevler için bu modül köprü kurarak merkezi olmayan eepsite'lara güvenli erişim sağlar.
+### 🌐 Ağ ve Anonimlik Alt Sistemi
 
-**[07] Traffic Obfuscation (Zamanlama Saldırısı Savunması)**
-Tor gibi düşük gecikmeli ağlar, uçtan uca zamanlama korelasyonuna ve Website Fingerprinting (WFP) saldırılarına karşı hassastır. Bu gelişmiş modül, dışarı çıkan paketlerinize rastgele gecikme (jitter) enjekte etmek için Linux Trafik Kontrolü yardımcı programını (`tc`) kullanır. Ayrıca, gerçek veri hacminizi gizlemek için sürekli, rastgele arka plan Tor trafiği (chaffing) üretir.
-
-**[08] DPI Spoofing (Snowflake WebRTC Gizlemesi)**
-Gelişmiş DPI sansürünü atlatmak için Tor trafiğini geçici WebRTC bağlantıları içerisine kapsüller; Tor trafiğini sıradan eşler arası (P2P) görüntülü/sesli görüşme akışı gibi gösterir.
-
-**[09] DoH Shield (DNSCrypt ile DNS-over-HTTPS)**
-Sistem genelindeki DNS çözümlemesini yerel `dnscrypt-proxy` servisi üzerinden şifreli DoH / DNSCrypt protokollerine zorlar. Tor DNSPort aktif olmadığında dahi DNS sorgularının manipüle edilmesini ve dinlenmesini önler.
+| # | Modül Adı | Açıklama |
+| :-: | :--- | :--- |
+| **01** | **Tor Köprüleri (`tor_bridges`)** | Tor trafiğini `obfs4`, `webtunnel` veya özel köprü protokolleriyle gizleyerek İSS sansürünü aşar. Etkileşimli köprü yapıştırma ve kalıcı yedekleme içerir. |
+| **02** | **IP Değiştirici (`ip_changer`)** | Çıkan tüm TCP paketlerini atomik `iptables` kurallarıyla Tor şeffaf vekil sunucusuna (`TransPort` 9040) ve DNS sorgularını `DNSPort` (5353) portuna zorlar. |
+| **03** | **DNS Değiştirici (`dns_changer`)** | Tor TransPort aktif değilken sistem DNS çözümlemesini kayıt tutmayan, sansürsüz güvenli sağlayıcılara (Mullvad, Quad9, DNS.WATCH, UncensoredDNS) kilitler. |
+| **04** | **DoH Kalkanı (`doh_shield`)** | Yerel `dnscrypt-proxy` servisi üzerinden şifreli DNS-over-HTTPS / DNSCrypt koruması kurarak DNS manipülasyonunu ve dinlemeyi engeller. |
+| **05** | **Ağ Kilidi (`kill_switch`)** | Atomik güvenlik duvarı bariyeri (`iptables-restore` & `ip6tables-restore`) kurar. Loopback ve Tor/I2P soketleri dışındaki tüm trafiği kesin olarak düşürür. |
+| **06** | **DPI Atlama (`dpi_spoofing`)** | Tor Snowflake aracılığıyla trafiği geçici WebRTC bağlantıları içine kapsüller; kısıtlı trafiği sıradan eşler arası (P2P) görüntülü görüşme gibi gösterir. |
+| **07** | **I2P Entegrasyonu (`i2p_integration`)** | `i2pd` Görünmez İnternet Projesi yönlendiricisini yönetir; merkezi olmayan `.i2p` siteleri için yerel SOCKS5 (`127.0.0.1:4446`) ve HTTP (`127.0.0.1:4444`) proxy sağlar. |
+| **08** | **Proxychains Entegrasyonu (`proxychains_integration`)** | `/etc/proxychains4.conf` dosyasını sessiz modda doğrudan aktif Tor SOCKS5 dinleyicisine bağlanacak şekilde otomatik yapılandırır. |
+| **09** | **MAC Değiştirici (`mac_changer`)** | Fiziksel ağ arayüzlerinin MAC adreslerini gerçekçi OEM/üretici OUI değerleriyle değiştirir; sanal makine ve kablosuz arayüz uyumluluğunu korur. |
 
 ### 🧩 Sistem Gizleme ve İzolasyon
 
-**[10] Timezone Changer**
-Modern web takibi, sisteminizin yerel saat dilimini genellikle IP adresinizle ilişkilendirir. Bu modül, sisteminizin saat dilimini geçici olarak rastgele küresel koordinatlara (örneğin UTC veya Asya/Tokyo) değiştirerek korelasyon algoritmalarını bozar.
+| # | Modül Adı | Açıklama |
+| :-: | :--- | :--- |
+| **10** | **Saat Dilimi Değiştirici (`timezone_changer`)** | JavaScript saat dilimi korelasyonunu bozmak için `/etc/localtime` ve `/etc/timezone` ayarlarını rastgele küresel koordinatlara (UTC, Tokyo, Londra vb.) taşır. |
+| **11** | **Cihaz Adı Değiştirici (`hostname_changer`)** | DHCP yayınlarında sızan cihaz adını (`/etc/hostname`, `/etc/hosts`, `dhclient.conf`) jenerik Windows/OEM adlarına (`DESKTOP-*`, `LAPTOP-*`, `WIN-*`) dönüştürür. |
+| **12** | **Tarayıcı Anonimleştirme (`browser_anonymization`)** | Kurulu Firefox, Firefox-ESR ve LibreWolf dizinlerine WebRTC, Canvas telemetrisi ve disk önbelleğini kapatan sıkılaştırılmış `anon.js` ayarlarını uygular. |
+| **13** | **İşletim Sistemi İz Gizleme (`os_obfuscation`)** | Pasif ağ analizlerini (`p0f`/`nmap`) yanıltmak için Windows 10/11 TCP/IP parmak izini taklit eder: çıkış TTL değerini 128 yapar, TCP zaman damgalarını kapatır. |
+| **14** | **Süreç Gizleme (`process_obfuscation`)** | `/proc` dosya sistemini `hidepid=2` ile yeniden bağlayarak yetkisiz kullanıcıların çalışan süreçleri görmesini engeller ve hassas araçları RAM'den çalıştırır. |
+| **15** | **Sandbox İzolasyonu (`sandbox_isolation`)** | Çekirdek düzeyinde izole `anon_jail` ağ ad alanı, sanal `veth` köprüsü (`10.200.200.0/24`), `/usr/bin/tor` için AppArmor profili ve Firejail seccomp kısıtlaması kurar. |
+| **16** | **Çalışma Gizliliği (`execution_stealth`)** | Aracı geçici RAM belleği (`/dev/shm`) üzerinden dosyasız çalıştırır; süreç adını ve argümanlarını çekirdek iş parçacığı olarak (`[kworker/u4:2]`) maskeler. |
+| **17** | **Trafik Karartma (`traffic_obfuscation`)** | Linux `tc netem` ile paketlere yapay gecikme/titreme (jitter) ekleyerek ve arka planda sahte Tor trafiği üreterek Website Fingerprinting (WFP) saldırılarını bozar. |
 
-**[11] Hostname Changer**
-Bilgisayarınızın adı (ör. `kullanici-laptop`), DHCP istekleri aracılığıyla yerel ağlarda sıkça yayınlanır. Bu modül, kalabalık ağlara sorunsuzca karışmak için hostname değerini tanımlanamayan jenerik OEM/Windows formatıyla rastgeleleştirir.
+### 🔥 Aktif Savunma ve Adli Bilişim Karşıtı Koruma
 
-**[12] Browser Anonymization (Sıkılaştırılmış Firefox Yapılandırması)**
-Sistem genelindeki Firefox yapılandırma dizinlerine WebRTC, WebGL, Canvas parmak izi, telemetri ve disk önbelleğini devre dışı bırakan son derece sıkılaştırılmış bir profil (`anon.js`) enjekte eder.
+| # | Modül Adı | Açıklama |
+| :-: | :--- | :--- |
+| **18** | **ARP/MITM Koruması (`anti_mitm`)** | Olay güdümlü Netlink `RTMGRP_NEIGH` gözcüsü ve yoklama motoru ile ARP önbellek zehirlenmesini yakalar; saldırı anında ağ arayüzünü kapatıp saldırgan MAC'i engeller. |
+| **19** | **Sızıntı Denetçisi (`leak_auditor`)** | `/etc/resolv.conf`, Tor devre sağlığı ve IPv6 rotalarını `inotify`/Netlink ile izler. Açık ağ sızıntısı tespitinde anında ağı kilitler ve uyarı verir. |
+| **20** | **Uçucu RAM Günlükleri (`volatile_logging`)** | Tails OS yaklaşımı: `/var/log` üzerine geçici RAM (`tmpfs`) bağlar. Oturum sonlandığında geçmiş sistem kayıtları şüpheli silme izi olmadan geri yüklenir. |
+| **21** | **Bluetooth Devre Dışı (`bluetooth_disabler`)** | Linux `rfkill` ile tüm Bluetooth donanımını alt seviyede bloke ederek yakınlık tabanlı izleme ve saldırı vektörlerini kapatır. |
+| **22** | **Cold-Boot Bellek Kilidi (`anti_cold_boot`)** | Takas alanını (swap) kapatır, core dump çıktılarını engeller ve bellek kurtarma saldırılarına karşı `sdmem` veya çok iş parçacıklı Rust sıfırlaması ile RAM'i temizler. |
 
-**[13] Disposable Browser (RAM Tabanlı Tek Kullanımlık Oturum)**
-Tüm profilini geçici bellekte (`/dev/shm`) oluşturan tek kullanımlık bir Firefox oturumu başlatır. Uzak DNS çözümlü SOCKS5 proxy zorlanır. Tarayıcı kapatıldığı an profil kriptografik olarak silinir (`shred`) ve diskte sıfır adli iz bırakır.
+### 🛠️ Yerleşik Operasyonlar ve Yardımcı Araçlar
 
-**[14] OS Obfuscation (TTL & TCP Pencere Sahtelemesi)**
-Pasif ağ tarayıcıları (`p0f` veya `nmap`), TTL değerlerini ve TCP parametrelerini analiz ederek İşletim Sisteminizi tahmin edebilir. Bu modül, giden paketlerin TTL değerini 128 (Windows 10/11 taklidi) yapar, TCP timestamps ve window scaling özelliklerini düzenler.
+- **🌐 Tek Kullanımlık Tarayıcı (`sudo anon --browser`):** Profilini tamamen `/dev/shm` RAM diskinde oluşturan ve `anon_jail` içinden Tor'a yönlendirilen Firefox oturumu başlatır. Pencere kapatıldığı an tüm profil kriptografik olarak silinir (`shred`).
+- **🧹 Paralel Metaveri Temizleyici (`sudo anon --clean-meta <yol>`):** `MAT2` (Tails OS standardı) ve `ExifTool` yedeklemesi kullanan çok iş parçacıklı adli temizleyici. Görsellerden, PDF'lerden ve belgelerden EXIF, GPS ve cihaz izlerini topluca kazır.
+- **🚨 Acil Panik Protokolü (`sudo anon --panic`):** Tüm fiziksel/kablosuz ağ arayüzlerini anında keser, tam DROP güvenlik duvarı uygular, ağ süreçlerini sonlandırır, oturum dizinlerini `shred` ile siler, önbellekleri boşaltır ve bash/zsh geçmişini yok eder.
+- **🔧 Sistem Kurtarma ve Onarım (`sudo anon --fix`):** Çökme veya ani güç kesintisi sonrası alınan yedeklerden temel ağ yapılandırmasını, `resolv.conf` kilidini, orijinal MAC adreslerini ve güvenlik duvarını onarır.
+- **🔄 Tor Devre Yenileme (`SIGNAL NEWNYM`):** Servisi yeniden başlatmadan Tor ControlPort üzerinden tek tuşla yeni çıkış IP'si ve kimlik talep eder.
 
-**[15] Process Obfuscation (hidepid=2 Kernel İzolasyonu)**
-`/proc` dosya sistemini `hidepid=2` ile yeniden bağlayarak yetkisiz kullanıcıların ve zararlı yazılımların ANON arka plan süreçlerini veya diğer işlemleri görmesini engeller.
+---
 
-**[16] Sandbox Isolation (Kernel netns anon_jail)**
-Yalıtılmış bir Çekirdek Ağ Alanı (`anon_jail`) yaratır. Sanal ethernet çifti (`veth-anon`/`veth-jail`) üzerinden içerideki tüm trafiği host makinenin Tor TransPort (9040) ve DNSPort (5353) portlarına yönlendirir. AppArmor ve Firejail ile entegre çalışır.
+## 🎯 Hazır Güvenlik Profilleri
 
-**[17] Execution Stealth (Dosyasız RAM Çalışması & Süreç Maskeleme)**
-ANON çerçevesini doğrudan geçici RAM diskinde (`/dev/shm`) çalıştırır ve süreç adını kernel iş parçacığı formatında (`[kworker/u4:2]`) maskeler. Çıkışta bellek temizlenirken kalıcı konfigürasyon ve yedekler güvenle saklanır.
+Operasyon ihtiyacınıza göre tek komutla etkileşimsiz profil başlatabilirsiniz:
 
-### 🔥 Aktif Savunma ve Anti-Adli Bilişim
+```bash
+sudo anon --profile <isim>
+```
 
-**[18] Network Kill Switch (Atomik iptables-restore)**
-Tor bağlantısı kesilirse trafiğin açık ağa sızmasını engellemek için `iptables-restore` ve `ip6tables-restore` aracılığıyla atomik olarak tüm trafiği düşüren (`DROP`) güvenlik duvarı kuralları uygular.
-
-**[19] Anti-MITM (ARP Spoofing Koruması)**
-Yerel ARP tablosunu sürekli izler. Ağ geçidi MAC adresinde olağan dışı bir değişiklik tespit edilirse ağ arayüzünü derhal kapatır (`DOWN`) ve saldırganı engeller.
-
-**[20] Anti-Cold Boot (sdmem & Takas Kilidi)**
-Cihaz kapatılırken veya oturum sonlandırılırken swap alanını kapatır, bellek dökümlerini kilitler ve tüm boş RAM alanını `sdmem` ile kriptografik olarak rastgele verilerle temizler.
-
-**[21] Bluetooth Disabler (rfkill Donanım Bloğu)**
-`rfkill` aracılığıyla cihazdaki tüm Bluetooth denetleyicilerine donanım düzeyinde tam blok uygular; yakınlık tabanlı izleme ve saldırıları önler.
-
-**[22] Arka Plan Sızıntı Denetleyicisi (Background Leak Auditor)**
-Arka planda asenkron olarak çalışan nöbetçi daemon; ağ çıkışlarını, `/etc/resolv.conf` DNS sunucularını ve Tor devresini periyodik denetler. Sızıntı durumunda masaüstü bildirimi basıp anında Kill Switch'i devreye sokar.
-
-**[23] Masaüstü Bildirimleri (notify-send GUI Uyarıları)**
-Root/daemon olaylarını aktif masaüstü oturumuna aktararak ARP spoofing tespiti, Tor bağlantı durumu, sızıntı uyarıları ve acil durum panik kilitlenmelerinde anlık GUI bildirimleri iletir.
-
-**[24] Metadata Temizleyici (MAT2 & ExifTool Entegrasyonu)**
-Resimler, PDF'ler, ofis belgeleri ve medyadan EXIF, GPS konumları, yazar bilgileri ve cihaz seri numaralarını MAT2 (Tails OS standardı) veya ExifTool ile adli bilişime karşı temizler.
-
-**[Ekstra] Volatile Logging (Tails OS RAM Loglama)**
-`/var/log` dizini üzerine bir RAM diski (`tmpfs`) bağlar. Oturum boyunca tüm loglar geçici RAM'e yazılır; oturum kapandığında eski loglar bozulmadan geri gelir ve şüpheli log silme izi bırakmaz.
+| Profil | Odak Noktası | Etkinleştirilen Modüller |
+| :--- | :--- | :--- |
+| `paranoia` | **Maksimum OPSEC** | Tüm 22 modül aynı anda etkin (Tor, Köprüler, Kill Switch, Jail, Stealth, Anti-MITM, RAM silme vb.). |
+| `quick` | **Hızlı Anonim Gezinme** | `ip_changer`, `kill_switch`, `sandbox_isolation` |
+| `pentest` | **Ofansif Güvenlik Testi** | `ip_changer`, `proxychains_integration`, `traffic_obfuscation`, `anti_mitm` |
+| `darknet` | **Derin Sansür Aşma** | `ip_changer`, `tor_bridges`, `i2p_integration`, `doh_shield` |
+| `lockdown` | **Fiziksel Cihaz Kilidi** | `kill_switch`, `anti_cold_boot`, `volatile_logging`, `bluetooth_disabler` |
+| `ghost` | **Maksimum Sistem Gizleme** | Çakışmayan 19 gizlilik, parmak izi sahteleme ve dosyasız çalışma modülü |
 
 ---
 
 ## 🖥️ Etkileşimli Terminal Kullanıcı Arayüzü (TUI)
 
-ANON, hantal komut satırı parametrelerini Rust ile yerel olarak derlenen hızlı ve titreşimsiz bir TUI ile değiştirir.
-
-* **Dinamik Estetik Oluşturma:** TUI, her başlatıldığında dinamik olarak değişen, güzel biçimlendirilmiş, ortalanmış ASCII banner'lara sahiptir.
-* **Canlı Kontrol Paneli (Live Dashboard):** Çıkış IP'nizi, aktif devre durumunuzu, anlık ağ trafiğini ve çalışan OPSEC modüllerini sızıntı olmadan gerçek zamanlı izleyin.
-* **Operasyon Merkezi:** Yön tuşlarınızı kullanarak doğrudan DNS/IP sızıntı testi yapın, Tor ControlPort (`SIGNAL NEWNYM` ve `SIGHUP` yedeği) üzerinden yeni bir Tor kimliği talep edin veya tek kullanımlık tarayıcıyı başlatın.
-
----
-
-## 📦 Sistem Gereksinimleri ve Bağımlılıklar
-
-ANON, Linux ağ yığınına derinden entegredir. Gereksinimleri:
-
-- **İşletim Sistemi:** Kali Linux, Parrot Security OS, Debian, Ubuntu veya Windows 10/11 üzerinde WSL2 (`/etc/wsl.conf` içinde `systemd=true` önerilir; Docker üzerinde `--cap-add=NET_ADMIN --cap-add=SYS_ADMIN` ile desteklenir).
-- **İzinler:** `iptables`, kernel ağ alanlarını (namespaces) ve ağ arayüzlerini manipüle etmek için Root ayrıcalıkları (`sudo`) gereklidir.
-- **Derleme ve Çalışma Zamanı Bağımlılıkları (`setup.sh` ile otomatik kurulur):** `cargo`, `rustc`, `make`, `tor`, `obfs4proxy`, `snowflake-client`, `dnscrypt-proxy`, `macchanger`, `proxychains4`, `secure-delete` (`sdmem`), `rfkill`, `firejail`, `apparmor-utils`, `iproute2`, `iptables`, `i2pd`, `mat2`, `libimage-exiftool-perl`, `libnotify-bin`, `psmisc`, `unzip`, `curl`, `ca-certificates`.
-- **Windows (WSL2) ve Docker:** Windows'ta WSL2 kurulumu ve kullanıcı `PATH` ayarı için `setup.bat` dosyasını çalıştırın (`anon.bat`, `--clean-meta` için Windows yollarını `wslpath` ile çevirir). Docker imajını `docker build -t anon .` ile derleyip `docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon` komutuyla başlatabilirsiniz.
-
----
-
-## 🛠️ Kurulum Rehberi
-
-Kurulum işlemi `setup.sh` betiği aracılığıyla tamamen otomatiktir.
-
-```bash
-# 1. Depoyu klonlayın
-git clone https://github.com/egnake/anon.git
-
-# 2. Dizine girin
-cd anon
-
-# 3. Kurulum betiğini çalıştırılabilir yapın
-sudo chmod +x setup.sh
-
-# 4. Yükleyiciyi çalıştırın
-sudo ./setup.sh
-```
-
----
-
-## 🚀 Kullanım ve Komutlar
-
-Ana etkileşimli arayüzü başlatmak için şunu çalıştırmanız yeterlidir:
+Ana arayüzü başlatmak için:
 ```bash
 sudo anon
 ```
 
-### Gelişmiş Komut Satırı Bayrakları
-Otomasyon veya komut dosyası oluşturmayı tercih eden kullanıcılar için ANON, doğrudan komut satırı yürütmesini destekler:
+Duyarlı TUI, terminal pencere boyutunuza (`LINES` x `COLUMNS`) otomatik uyum sağlar:
+- **Canlı İzleme Paneli:** Anlık veri akışı (TX/RX), Tor çıkış IP doğrulaması, ağ durumu göstergeleri ve aktif modül sayısı (3 saniyede bir güncellenir).
+- **Pürüzsüz Gezinme:** Yön tuşları veya Vim (`j`/`k`) ile gezinin, `Enter` ile seçin ve `q` ile geri dönün veya çıkın.
+- **Anlık Dil Değiştirme:** Tek seçimle arayüzü İngilizce ve Türkçe arasında anında değiştirin.
 
-| Komut | Açıklama |
+---
+
+## 💻 Kurulum ve Hızlı Başlangıç
+
+### Yerel Linux (Debian / Kali / Parrot / Ubuntu)
+
+```bash
+# 1. Depoyu klonlayın
+git clone https://github.com/egnake/anon.git
+cd anon
+
+# 2. Otomatik kurulumu başlatın
+sudo chmod +x setup.sh
+sudo ./setup.sh
+
+# 3. ANON'u çalıştırın
+sudo anon
+```
+
+### Windows 10/11 (WSL2 Üzerinden)
+
+1. Depo klasöründe Yönetici yetkili PowerShell veya CMD açın:
+   ```cmd
+   setup.bat
+   ```
+2. Kurulum tamamlandıktan sonra herhangi bir Windows terminalinden çağırın:
+   ```cmd
+   anon
+   anon --browser
+   anon --clean-meta "D:\HassasBelgeler"
+   ```
+
+### Docker Konteyneri (Kali Rolling Ortamı)
+
+```bash
+docker build -t anon .
+docker run --rm -it --cap-add=NET_ADMIN --cap-add=SYS_ADMIN anon
+```
+
+---
+
+## 📖 Komut Satırı Referansı (CLI)
+
+| Komut | İşlev |
 | :--- | :--- |
-| `sudo anon --start` | Aracı, en son kaydedilen modül yapılandırmasını (veya varsayılan Tor + Kill Switch) kullanarak doğrudan başlatır. |
-| `sudo anon --profile <isim>` | Hazır güvenlik profillerinden birini (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`) etkileşimsiz uygular ve başlatır. |
-| `sudo anon --stop` | Tüm aktif modülleri anında devre dışı bırakır, iptables'ı temizler ve orijinal ağ durumunu geri yükler. |
-| `sudo anon --status` | Tüm aktif ve pasif OPSEC modülünün kapsamlı bir görsel raporunu yazdırır. |
-| `sudo anon --status --json` | Sürüm bilgisini, gizlilik durumunu ve tüm 22 modülün durumunu makine tarafından okunabilir JSON olarak döndürür. |
-| `sudo anon --dashboard` | Canlı izleme panelini açar (her 3 saniyede bir otomatik yenilenir). |
-| `sudo anon --browser` | RAM tabanlı tek kullanımlık tarayıcıyı doğrudan izole edilmiş ağ alanı (namespace) içinde başlatır. |
-| `sudo anon --audit` | Anlık derinlemesine IP, DNS ve soket sızıntı denetimi yürütür (makine okunabilir çıktı için `--json` eklenebilir). |
-| `sudo anon --clean-meta <hedef>` | Dosya veya klasörlerdeki adli metaverileri (EXIF/GPS/etiketler) MAT2 veya ExifTool ile temizler. |
-| `sudo anon --panic` | Acil Durum / Panik Protokolü: Tüm ağ arayüzlerini anında kapatır, güvenlik duvarını kilitler, süreçleri sonlandırır ve RAM'i temizler. |
-| `sudo anon --fix` | Çökme veya ani kapanma durumunda varsayılan sistem ağ yapılandırmalarını yedeklerden geri yükler. |
-| `sudo anon --update` | En son sürüm paketini GitHub'dan indirir (Tor aktifse Tor üzerinden), `SHA256SUMS` ile doğrular ve yeniden kurar. |
-| `anon --version` | Sistem durumunu değiştirmeden kurulu ANON sürümünü (`ANON v3.0.0`) gösterir. |
+| `sudo anon` | Etkileşimli Terminal Kullanıcı Arayüzünü (TUI) başlatır. |
+| `sudo anon --start` | Kaydedilmiş son yapılandırma veya varsayılan kurallarla etkileşimsiz başlatır. |
+| `sudo anon --stop` | Tüm aktif modülleri durdurur ve orijinal ağ yapılandırmasını geri yükler. |
+| `sudo anon --profile <isim>` | Hazır güvenlik profillerinden birini (`paranoia`, `quick`, `pentest`, `darknet`, `lockdown`, `ghost`) uygular. |
+| `sudo anon --status` | 22 modülün tamamı için renkli görsel durum raporu yazdırır. |
+| `sudo anon --status --json` | Otomasyon ve betikler için tüm modül durumlarını JSON formatında döndürür. |
+| `sudo anon --dashboard` | Her 3 saniyede bir otomatik güncellenen canlı ağ ve trafik panelini açar. |
+| `sudo anon --browser` | İzole ağ ad alanı içinde RAM tabanlı tek kullanımlık tarayıcıyı başlatır. |
+| `sudo anon --audit` | Anlık IP, DNS ve soket sızıntı denetimi yapar (JSON için `--json` eklenebilir). |
+| `sudo anon --clean-meta <yol>` | Dosya veya klasörlerdeki adli metaverileri paralel olarak temizler. |
+| `sudo anon --lang <en\|tr>` | Arayüz dilini İngilizce (`en`) veya Türkçe (`tr`) olarak ayarlar. |
+| `sudo anon --panic` | Acil Panik Protokolünü tetikleyerek ağı keser ve RAM kalıntılarını temizler. |
+| `sudo anon --fix` | Kayıtlı yedeklerden temel sistem durumunu ve ağ bağlantısını kurtarır. |
+| `sudo anon --update` | GitHub'dan en güncel imzalı sürümü (Tor üzerinden) indirir, SHA256 doğrular ve günceller. |
+| `anon --version` | Root yetkisi gerektirmeden sürüm bilgisini (`ANON v3.0.0`) görüntüler. |
 
 ---
 
-## ❓ SSS ve Sorun Giderme
+## 🏗️ Depo Mimarisi
 
-**S: ANON'u çalıştırdıktan sonra internet bağlantım yok!**
-C: `Kill Switch` aktifken Tor bağlanamazsa tüm trafik `iptables` tarafından düşürülür (DROP). Betiği başlatmadan önce internetinizin çalıştığından emin olun, sistem saatinizi kontrol edin (Tor doğru bir saate ihtiyaç duyar) veya Tor köprülerinizin çalıştığından emin olun. Ağınızı sıfırlamak için her zaman `sudo anon --stop` veya fiziksel yedeklerden geri yüklemek için `sudo anon --fix` çalıştırabilirsiniz.
-
-**S: Bunu Sanal Makinede (VM) kullanabilir miyim?**
-C: Evet. Ancak MAC Changer gibi bazı modüller, Hipervizörünüzün (VMware, VirtualBox) ağ bağdaştırıcısı ayarlarında MAC adresi sahtekarlığına (spoofing) açıkça izin vermesini gerektirebilir. Bu izin olmadan MAC değiştirildiğinde VM internet bağlantısını kaybedebilir.
-
-**S: Tek Kullanımlık Tarayıcı yer imlerimi veya şifrelerimi kaydeder mi?**
-C: Hayır. Tasarım gereği, tarayıcı profili yalnızca geçici RAM'de (`/dev/shm`) bulunur. Geçmiş, önbellek, eklentiler ve yer imleri dahil olmak üzere her şey, tarayıcı penceresi kapatıldığı an yok edilir. Yalnızca son derece hassas, tek kullanımlık oturumlar için tasarlanmıştır.
-
-**S: ANON kullanırken kişisel hesaplarıma (Google veya Facebook gibi) giriş yapmam güvenli mi?**
-C: Kesinlikle hayır. Bu çok kritik bir OPSEC (Operasyonel Güvenlik) hatasıdır. IP ve MAC adresiniz gizlenmiş olsa bile, gerçek kimliğinize bağlı bir hesaba giriş yapmak, anonim trafiğinizi anında sizinle ilişkilendirir. ANON makinenizi korur, ancak sizi davranışsal hatalarınızdan koruyamaz.
-
-**S: "Traffic Obfuscation" modülü bağlantımı neden yavaşlatıyor?**
-C: Bu modül, zamanlama korelasyonunu ve Website Fingerprinting (WFP) saldırılarını bozmak için paketlerinize bilinçli olarak yapay bir gecikme (jitter) enjekte eder. Bu küçük yavaşlama, gelişmiş ağ izleyicilerine karşı anonimliği büyük ölçüde artırmanın bir bedelidir.
-
-**S: Kernel netns İzolasyonu normal Proxychains'ten nasıl farklıdır?**
-C: Proxychains, uygulamaları Tor üzerinden yönlendirmek için standart kütüphane çağrılarını (örneğin `connect()`) ele geçirir. Ancak bazı uygulamalar (statik derlenmiş dosyalar veya özel DNS istekleri) bunu atlayabilir. Kernel `netns` ise kelimenin tam anlamıyla aşılmaz, fiziksel bir sanal alan (sandbox) yaratır. Bu hapishane içinden çıkmanın tek fiziksel yolu Tor TransPort'a bağlıdır. Atlanması imkansızdır.
-
-**S: Script çökerse veya bilgisayarımın gücü aniden kesilirse ne olur?**
-C: Kurulum sırasında ANON, orijinal `iptables`, `resolv.conf` ve `NetworkManager` durumlarınızı yedekler. Sistem beklenmedik şekilde yeniden başlarsa, tüm ağ ayarlarınızı saniyeler içinde fabrika varsayılanlarına geri döndürmek için `sudo anon --fix` komutunu çalıştırmanız yeterlidir.
+```text
+.
+├── Cargo.toml                  # Sıfır bağımlılıklı manifest (opt-level 3, LTO, strip)
+├── src/
+│   ├── main.rs                 # CLI giriş noktası, arka plan servis yöneticisi, profil motoru
+│   ├── config.rs               # Ortam değişkeni destekli yol çözümleme (BASE_DIR, BACKUPDIR, TORRC)
+│   ├── i18n.rs                 # Çoklu dil motoru (İngilizce / Türkçe, kalıcı anon.lang)
+│   ├── state.rs                # POSIX flock + atomik geçici dosya/chmod/rename durum yönetimi
+│   ├── sys.rs                  # Linux libc FFI (geteuid, flock, Netlink, inotify, mlock RAM silme)
+│   ├── helpers.rs              # NetworkManager kilitleri, Tor ControlPort TCP, JSON ve bağımlılık kontrolü
+│   ├── registry.rs             # Bildirimsel 22 modüllü kayıt defteri, çalışma sıraları ve trait yapısı
+│   ├── ui.rs                   # ANSI renk paleti, çift arabellekli çerçeve çizimi, dinamik afişler
+│   ├── tui.rs                  # Ham terminal korumalı etkileşimli menü, modül seçici, canlı panel
+│   └── modules/
+│       ├── mod.rs              # Trait yönlendirici ve modül fabrikası
+│       ├── network.rs          # IP, DNS, DoH, Kill Switch, Köprüler, DPI, I2P, Proxychains, MAC
+│       ├── obfuscation.rs      # Saat Dilimi, Hostname, Tarayıcı, OS, Süreç, Jail, Stealth, Chaff
+│       ├── defense.rs          # Anti-MITM, Sızıntı Denetçisi, Uçucu Günlükler, Bluetooth, Anti-Cold Boot
+│       └── utils.rs            # Kurtarma (--fix), Panik, Tek Kullanımlık Tarayıcı, Metaveri, Güncelleme
+├── assets/                     # Masaüstü başlatıcı, simgeler, anon.js profili, köprü listeleri, afişler
+├── setup.sh / setup.bat        # Linux ve Windows WSL2 için otomatik kurulum betikleri
+├── Makefile                    # Standart Linux derleme hedefleri (build, install, uninstall, lint, test)
+├── Dockerfile                  # Çok aşamalı Kali Rolling konteyner imajı
+└── test_suite.sh               # Cargo birim testleri + 68 izolasyonlu fakeroot kara kutu testi
+```
 
 ---
 
-## ⚠️ Güvenlik Uyarısı ve Sınırlamalar
+## 🧪 Test ve Doğrulama
 
-ANON, ağ analizi ve adli bilişime karşı gelişmiş teknik azaltma sağlar, ancak **sihirli bir değnek değildir**.
+ANON katı bir **sıfır uyarı (zero-warning)** politikası izler ve sürekli entegrasyon testleriyle doğrulanır:
 
-* **Operasyonel Güvenlik (OPSEC):** Yazılım sizi insan hatasından koruyamaz. ANON kullanırken kişisel hesaplarınıza (Facebook, Google) giriş yapmak sizi anında deşifre edecektir.
-* **HTTPS/TLS:** Tor, trafiği Çıkış Düğümüne (Exit Node) kadar şifreler. Şifrelenmemiş HTTP trafiği gönderirseniz, Çıkış Düğümü bunu izleyebilir ve engelleyebilir. Her zaman HTTPS kullandığınızdan emin olun.
-* **Yazılım/Donanım Riskleri:** ANON, İşletim Sistemi katmanında çalışır. Güvenliği ihlal edilmiş BIOS/UEFI donanım yazılımına, Intel ME/AMD PSP arka kapılarına veya donanım keylogger'larına karşı koruma sağlayamaz.
+```bash
+# 1. Cargo lint ve birim testlerini çalıştırın
+make lint
+RUSTFLAGS="-D warnings" cargo test
 
-**Sorumluluk Reddi:** Bu araç yalnızca eğitim, akademik ve güvenlik araştırması amacıyla sağlanmıştır. Geliştiriciler, bu yazılımın neden olduğu herhangi bir kötüye kullanım, yasa dışı faaliyet veya hasardan sorumlu değildir. Kendi yargı bölgeniz içinde sorumlu ve yasal bir şekilde kullanın.
+# 2. Tam kara kutu entegrasyon paketini çalıştırın (68 doğrulama)
+ANON_FORCE_BUILD=1 ./test_suite.sh
+```
+
+---
+
+## ⚠️ Yasal ve Güvenlik Uyarısı
+
+Bu yazılım yalnızca eğitim, yetkili güvenlik denetimleri, sızma testleri ve dijital gizliliğin korunması amacıyla geliştirilmiştir. Geliştiriciler; kötüye kullanımdan, yetkisiz faaliyetlerden veya yerel yasal düzenlemelerin ihlalinden sorumlu tutulamaz.
+
+Operasyonel güvenlik kurallarını her zaman uygulayın: hiçbir yazılım sizi davranışsal hatalardan (örneğin Tor üzerinden gerçek kimliğinize bağlı kişisel hesaplara giriş yapmaktan) koruyamaz.
 
 ---
 
 <div align="center">
-  <b>Hata Bildirimi & Katkı Sağlama</b><br>
-  egcaem000@gmail.com | <a href="https://github.com/egnake/anon/issues">GitHub Issues</a>
+  <b>Geliştiren ve Sürdüren: <a href="https://github.com/egnake">egnake</a></b><br>
+  Hata bildirimleri ve özellik talepleri için <a href="https://github.com/egnake/anon/issues">GitHub Issues</a> sayfasını kullanabilirsiniz.
 </div>
