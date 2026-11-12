@@ -364,25 +364,50 @@ impl Drop for InotifyWatcher {
     }
 }
 
+fn available_ram_bytes() -> Option<usize> {
+    let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+    for line in meminfo.lines() {
+        if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            let kb: usize = rest.split_whitespace().next()?.parse().ok()?;
+            return kb.checked_mul(1024);
+        }
+    }
+    None
+}
+
 /// Fast native RAM wipe of bounded free memory chunks using mlock + volatile writes.
 /// Complements or replaces external `sdmem` safely without triggering OOM killer.
 pub fn wipe_free_ram_native(max_mb: usize) {
     let chunk_size: usize = 16 * 1024 * 1024; // 16 MiB chunks
-    let target_bytes = max_mb.saturating_mul(1024 * 1024);
+    let requested = max_mb.saturating_mul(1024 * 1024);
+    let safe_cap = available_ram_bytes()
+        .map(|avail| {
+            let half = avail / 2;
+            if half < chunk_size {
+                0
+            } else {
+                half
+            }
+        })
+        .unwrap_or(requested);
+    let target_bytes = requested.min(safe_cap);
+    let words_per_chunk = chunk_size / core::mem::size_of::<u64>();
     let mut wiped = 0usize;
 
-    while wiped < target_bytes {
-        let mut buf = vec![0u8; chunk_size];
-        let locked = unsafe { mlock(buf.as_ptr() as *const core::ffi::c_void, buf.len()) == 0 };
-        for byte in buf.iter_mut() {
+    while wiped + chunk_size <= target_bytes {
+        let mut buf = vec![0u64; words_per_chunk];
+        let byte_len = buf.len() * core::mem::size_of::<u64>();
+        let locked = unsafe { mlock(buf.as_ptr().cast::<core::ffi::c_void>(), byte_len) == 0 };
+        for word in buf.iter_mut() {
             unsafe {
-                core::ptr::write_volatile(byte, 0xAA);
-                core::ptr::write_volatile(byte, 0x00);
+                core::ptr::write_volatile(word, 0xAAAA_AAAA_AAAA_AAAA);
+                core::ptr::write_volatile(word, 0);
             }
         }
+        core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
         if locked {
             unsafe {
-                munlock(buf.as_ptr() as *const core::ffi::c_void, buf.len());
+                munlock(buf.as_ptr().cast::<core::ffi::c_void>(), byte_len);
             }
         }
         wiped += chunk_size;

@@ -139,7 +139,13 @@ create_mock_bin "timedatectl" "if [[ \"\$1\" == \"show\" ]]; then echo 'Europe/I
 create_mock_bin "hostnamectl" "exit 0"
 create_mock_bin "hostname" "if [[ \$# -eq 0 ]]; then echo 'testhost'; fi; exit 0"
 create_mock_bin "macchanger" "exit 0"
+create_mock_bin "proxychains4" "exit 0"
 create_mock_bin "sdmem" "exit 0"
+create_mock_bin "sswap" "exit 0"
+create_mock_bin "nmcli" "exit 0"
+create_mock_bin "xhost" "exit 0"
+create_mock_bin "apparmor_parser" "exit 0"
+create_mock_bin "firefox-esr" "exit 0"
 create_mock_bin "rfkill" "echo '0: hci0: Bluetooth'; echo 'Soft blocked: no'; exit 0"
 create_mock_bin "swapoff" "exit 0"
 create_mock_bin "swapon" "exit 0"
@@ -178,6 +184,7 @@ export ANON_PROXYCHAINS_CONF="${MOCK_DIR}/etc/proxychains4.conf"
 export APPARMOR_TOR_PROFILE="${MOCK_DIR}/apparmor.tor"
 export NETNS_ETC_DIR="${MOCK_DIR}/netns_etc"
 export WRAPPER_DIR="${MOCK_DIR}/wrappers"
+unset SUDO_USER
 export ANON_SKIP_STEALTH=1
 export ANON_TOR_BOOTSTRAP_TIMEOUT=1
 
@@ -233,17 +240,13 @@ assert_contains "$AUDIT_OK_OUT" "No leaks detected" "--audit reports clean state
 printf 'ip_changer_status="Enable"\n' > "$ANON_STATE_FILE"
 printf 'nameserver 1.1.1.1\n' > "$ANON_RESOLV_CONF"
 
-set +e
 AUDIT_LEAK_OUT="$(run_anon_root --audit 2>&1)"
 AUDIT_LEAK_RC=$?
-set -e
 assert_eq "$AUDIT_LEAK_RC" "2" "--audit returns exit 2 on clearnet DNS leak"
 assert_contains "$AUDIT_LEAK_OUT" "CRITICAL LEAK DETECTED" "--audit prints leak warning"
 
-set +e
 AUDIT_LEAK_JSON="$(run_anon_root --audit --json 2>&1)"
 AUDIT_LEAK_JSON_RC=$?
-set -e
 assert_eq "$AUDIT_LEAK_JSON_RC" "2" "--audit --json returns exit 2 on DNS leak"
 assert_contains "$AUDIT_LEAK_JSON" '"status":"leak_detected"' "--audit --json reports leak_detected"
 
@@ -264,10 +267,8 @@ META_RC=$?
 assert_eq "$META_RC" "0" "--clean-meta succeeds on directory with files"
 assert_contains "$META_OUT" "(2/2 file(s))" "--clean-meta sanitized both files in parallel"
 
-set +e
 run_anon_root --clean-meta "${MOCK_DIR}/does_not_exist" >/dev/null 2>&1
 MISSING_RC=$?
-set -e
 if [[ "$MISSING_RC" -ne 0 ]]; then
     pass "--clean-meta fails on nonexistent path"
 else
@@ -279,10 +280,8 @@ fi
 # ------------------------------------------------------------------------------
 echo -e "${CYAN}=== 5. Profiles, Start/Stop & torrc.bak Sandbox Recovery ===${RESET}"
 
-set +e
 BAD_PROF_OUT="$(run_anon_root --profile nonexistent_profile 2>&1)"
 BAD_PROF_RC=$?
-set -e
 if [[ "$BAD_PROF_RC" -ne 0 ]]; then
     pass "--profile rejects unknown profile name"
 else
@@ -352,10 +351,8 @@ assert_contains "$JSON_AFTER_PANIC" '"active_count":0' "--panic clears module st
 echo -e "${CYAN}=== 7. Daemons, Remaining Profiles, Stealth, Browser & Edge Cases ===${RESET}"
 
 # Invalid CLI flag should exit non-zero
-set +e
 INVALID_OUT="$(run_anon_root --not-a-real-flag 2>&1)"
 INVALID_RC=$?
-set -e
 if [[ "$INVALID_RC" -ne 0 ]]; then
     pass "Invalid CLI flag exits non-zero ($INVALID_RC)"
 else
