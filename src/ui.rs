@@ -146,32 +146,32 @@ pub fn strip_ansi(input: &str) -> String {
     out
 }
 
-pub fn banner(cfg: &AppConfig) {
-    clear_screen();
+pub fn render_banner_into(cfg: &AppConfig, out: &mut String, include_art: bool) {
     let width = terminal_cols();
     let bar_len = (56usize).min(width.saturating_sub(2)).max(10);
     let bar_pad = width.saturating_sub(bar_len) / 2;
 
-    let mut out = String::with_capacity(2048);
-    out.push('\n');
-    out.push_str(BOLD);
-    out.push_str(CYAN);
+    if include_art {
+        out.push('\n');
+        out.push_str(BOLD);
+        out.push_str(CYAN);
 
-    if let Some(banner_txt) = load_session_banner(&cfg.src_dir) {
-        for raw_line in banner_txt.lines() {
-            let line = raw_line.trim_end_matches('\r');
-            let stripped = strip_ansi(line);
-            let line_len = stripped.chars().count();
-            let line_pad = width.saturating_sub(line_len) / 2;
-            for _ in 0..line_pad {
-                out.push(' ');
+        if let Some(banner_txt) = load_session_banner(&cfg.src_dir) {
+            for raw_line in banner_txt.lines() {
+                let line = raw_line.trim_end_matches('\r');
+                let stripped = strip_ansi(line);
+                let line_len = stripped.chars().count();
+                let line_pad = width.saturating_sub(line_len) / 2;
+                for _ in 0..line_pad {
+                    out.push(' ');
+                }
+                out.push_str(line);
+                out.push('\n');
             }
-            out.push_str(line);
-            out.push('\n');
         }
+        out.push_str(RESET);
+        out.push('\n');
     }
-    out.push_str(RESET);
-    out.push('\n');
 
     out.push_str(DIM);
     for _ in 0..bar_pad {
@@ -217,7 +217,46 @@ pub fn banner(cfg: &AppConfig) {
         out.push('═');
     }
     out.push_str(RESET);
-    out.push_str("\n\n");
+    out.push('\n');
+}
+
+pub fn banner(cfg: &AppConfig) {
+    clear_screen();
+    let mut out = String::with_capacity(2048);
+    render_banner_into(cfg, &mut out, true);
+    out.push('\n');
+
+    let mut stdout = io::stdout().lock();
+    let _ = stdout.write_all(out.as_bytes());
+    let _ = stdout.flush();
+}
+
+/// Renders a complete TUI frame atomically in-place without clearing to blank first.
+/// Prevents screen flashing on Windows Terminal / ConPTY / tmux during rapid arrow navigation.
+pub fn render_tui_frame(frame: &str) {
+    if !is_stdout_tty() {
+        let mut stdout = io::stdout().lock();
+        let _ = stdout.write_all(frame.as_bytes());
+        if !frame.ends_with('\n') {
+            let _ = stdout.write_all(b"\n");
+        }
+        let _ = stdout.flush();
+        return;
+    }
+
+    let trimmed = frame.trim_end_matches('\n');
+    let mut out = String::with_capacity(trimmed.len() + 256);
+    out.push_str("\x1b[?2026h\x1b[H");
+    let mut first = true;
+    for line in trimmed.split('\n') {
+        if !first {
+            out.push('\n');
+        }
+        first = false;
+        out.push_str(line);
+        out.push_str("\x1b[K");
+    }
+    out.push_str("\x1b[J\x1b[?2026l");
 
     let mut stdout = io::stdout().lock();
     let _ = stdout.write_all(out.as_bytes());

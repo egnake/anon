@@ -101,20 +101,36 @@ pub fn is_stdin_tty() -> bool {
     unsafe { isatty(STDIN_FILENO) == 1 }
 }
 
-pub fn terminal_cols() -> usize {
+pub fn terminal_size() -> (usize, usize) {
     let mut ws = WinSize::default();
     let rc = unsafe { ioctl(STDOUT_FILENO, TIOCGWINSZ, &mut ws as *mut WinSize) };
-    if rc == 0 && ws.ws_col >= 20 {
-        return ws.ws_col as usize;
-    }
-    if let Ok(cols) = std::env::var("COLUMNS") {
-        if let Ok(n) = cols.trim().parse::<usize>() {
-            if n >= 20 {
-                return n;
-            }
-        }
-    }
-    80
+    let cols = if rc == 0 && ws.ws_col >= 20 {
+        ws.ws_col as usize
+    } else {
+        std::env::var("COLUMNS")
+            .ok()
+            .and_then(|c| c.trim().parse::<usize>().ok())
+            .filter(|&n| n >= 20)
+            .unwrap_or(80)
+    };
+    let rows = if rc == 0 && ws.ws_row >= 10 {
+        ws.ws_row as usize
+    } else {
+        std::env::var("LINES")
+            .ok()
+            .and_then(|r| r.trim().parse::<usize>().ok())
+            .filter(|&n| n >= 10)
+            .unwrap_or(24)
+    };
+    (cols, rows)
+}
+
+pub fn terminal_cols() -> usize {
+    terminal_size().0
+}
+
+pub fn terminal_rows() -> usize {
+    terminal_size().1
 }
 
 pub fn send_signal(pid: i32, sig: i32) -> bool {

@@ -21,16 +21,19 @@ use crate::registry::{
     profile_indices, ALL_MODULES, DEF_CAT_INDICES, EXEC_ORDER, NET_CAT_INDICES, OBF_CAT_INDICES,
 };
 use crate::state::AnonState;
-use crate::sys::{poll_fd, read_fd_byte, TuiTermGuard, STDIN_FILENO};
+use crate::sys::{poll_fd, read_fd_byte, terminal_rows, TuiTermGuard, STDIN_FILENO};
 use crate::ui::{
     banner, boxline, clear_screen, draw_end, draw_line, draw_sep, emptybox, hide_cursor, info,
-    msg, show_cursor, warn, BLUE, BOLD, CYAN, DIM, GREEN, MAGENTA, RED, RESET, WHITE, YELLOW,
+    msg, render_banner_into, render_tui_frame, show_cursor, warn, BLUE, BOLD, CYAN, DIM, GREEN,
+    MAGENTA, RED, RESET, WHITE, YELLOW,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum NavKey {
     Up,
     Down,
+    PageUp,
+    PageDown,
     Select,
     All,
     Esc,
@@ -38,15 +41,39 @@ enum NavKey {
     Other,
 }
 
-fn read_nav_key() -> Option<NavKey> {
-    if !poll_fd(STDIN_FILENO, -1) {
+fn read_nav_key_timeout(timeout_ms: i32) -> Option<NavKey> {
+    if !poll_fd(STDIN_FILENO, timeout_ms) {
         return None;
     }
     let b = read_fd_byte(STDIN_FILENO)?;
     if b == 0x1b {
-        if poll_fd(STDIN_FILENO, 50) {
+        if poll_fd(STDIN_FILENO, 25) {
             if let Some(b1) = read_fd_byte(STDIN_FILENO) {
-                if b1 == b'[' && poll_fd(STDIN_FILENO, 50) {
+                if b1 == b'[' && poll_fd(STDIN_FILENO, 25) {
+                    if let Some(b2) = read_fd_byte(STDIN_FILENO) {
+                        if b2.is_ascii_digit() {
+                            // Consume multi-byte CSI sequence such as PgUp (\x1b[5~) / PgDn (\x1b[6~)
+                            while poll_fd(STDIN_FILENO, 10) {
+                                let Some(next) = read_fd_byte(STDIN_FILENO) else {
+                                    break;
+                                };
+                                if next == b'~' || next.is_ascii_alphabetic() {
+                                    break;
+                                }
+                            }
+                            return Some(match b2 {
+                                b'5' => NavKey::PageUp,
+                                b'6' => NavKey::PageDown,
+                                _ => NavKey::Esc,
+                            });
+                        }
+                        return Some(match b2 {
+                            b'A' => NavKey::Up,
+                            b'B' => NavKey::Down,
+                            _ => NavKey::Esc,
+                        });
+                    }
+                } else if b1 == b'O' && poll_fd(STDIN_FILENO, 25) {
                     if let Some(b2) = read_fd_byte(STDIN_FILENO) {
                         return Some(match b2 {
                             b'A' => NavKey::Up,
@@ -69,6 +96,35 @@ fn read_nav_key() -> Option<NavKey> {
     })
 }
 
+fn read_nav_key() -> Option<NavKey> {
+    read_nav_key_timeout(-1)
+}
+
+/// Prepends the full banner, a compact banner, or no banner depending on terminal height
+/// so frames fit cleanly inside the viewport without vertical scrolling flicker.
+fn compose_banner_and_body(cfg: &AppConfig, body: &str) -> String {
+    let rows = terminal_rows();
+    let body_lines = body.lines().count();
+
+    let mut full_ban = String::with_capacity(1536);
+    render_banner_into(cfg, &mut full_ban, true);
+    full_ban.push('\n');
+    if full_ban.lines().count() + body_lines <= rows {
+        full_ban.push_str(body);
+        return full_ban;
+    }
+
+    let mut compact_ban = String::with_capacity(512);
+    render_banner_into(cfg, &mut compact_ban, false);
+    compact_ban.push('\n');
+    if compact_ban.lines().count() + body_lines <= rows {
+        compact_ban.push_str(body);
+        return compact_ban;
+    }
+
+    body.to_string()
+}
+
 fn wait_any_key(prompt: &str) {
     print!("{prompt}");
     let _ = io::stdout().flush();
@@ -78,11 +134,12 @@ fn wait_any_key(prompt: &str) {
 
 fn interactive_menu(cfg: &AppConfig, title: &str, opts: &[&str], stat_msg: &str) -> Option<usize> {
     let mut selected = 0usize;
+    let active_count = AnonState::load(&cfg.state_file).count_active();
     let _guard = TuiTermGuard::enter();
     hide_cursor();
+    clear_screen();
 
     loop {
-        banner(cfg);
         let mut buf = String::with_capacity(2048);
         draw_line(&mut buf);
         emptybox(&mut buf);
@@ -103,7 +160,6 @@ fn interactive_menu(cfg: &AppConfig, title: &str, opts: &[&str], stat_msg: &str)
         if !stat_msg.is_empty() {
             boxline(&mut buf, &format!("{YELLOW}  ◆ {stat_msg}{RESET}"));
         }
-        let active_count = AnonState::load(&cfg.state_file).count_active();
         if active_count > 0 {
             boxline(
                 &mut buf,
@@ -114,8 +170,8 @@ fn interactive_menu(cfg: &AppConfig, title: &str, opts: &[&str], stat_msg: &str)
         emptybox(&mut buf);
         draw_end(&mut buf);
 
-        print!("{buf}");
-        let _ = io::stdout().flush();
+        let frame = compose_banner_and_body(cfg, &buf);
+        render_tui_frame(&frame);
 
         let Some(key) = read_nav_key() else {
             continue;
@@ -130,6 +186,12 @@ fn interactive_menu(cfg: &AppConfig, title: &str, opts: &[&str], stat_msg: &str)
             }
             NavKey::Down => {
                 selected = (selected + 1) % opts.len().max(1);
+            }
+            NavKey::PageUp => {
+                selected = 0;
+            }
+            NavKey::PageDown => {
+                selected = opts.len().saturating_sub(1);
             }
             NavKey::Select => {
                 show_cursor();
@@ -152,18 +214,96 @@ fn interactive_toggles(cfg: &AppConfig, choices: &mut [bool; 22]) -> bool {
     visual_order.extend_from_slice(&DEF_CAT_INDICES);
     let total_items = visual_order.len();
     let mut cursor = 0usize;
+    let mut scroll_offset = 0usize;
 
     let _guard = TuiTermGuard::enter();
     hide_cursor();
+    clear_screen();
+
+    enum ToggleRow {
+        Header(&'static str),
+        Spacer,
+        Module { mod_idx: usize, item_pos: usize },
+        Back { item_pos: usize },
+    }
+
+    let mut rows_model: Vec<ToggleRow> = Vec::with_capacity(32);
+    let mut item_to_row = Vec::with_capacity(total_items + 1);
+    let mut item_pos = 0usize;
+
+    let mut push_cat = |heading: &'static str, indices: &[usize]| {
+        rows_model.push(ToggleRow::Header(heading));
+        for &idx in indices {
+            item_to_row.push(rows_model.len());
+            rows_model.push(ToggleRow::Module {
+                mod_idx: idx,
+                item_pos,
+            });
+            item_pos += 1;
+        }
+        rows_model.push(ToggleRow::Spacer);
+    };
+    push_cat("  ── Network & Routing ──", &NET_CAT_INDICES);
+    push_cat("  ── System Obfuscation ──", &OBF_CAT_INDICES);
+    push_cat("  ── Active Defense ──", &DEF_CAT_INDICES);
+    item_to_row.push(rows_model.len());
+    rows_model.push(ToggleRow::Back { item_pos });
 
     loop {
-        let current_idx = if cursor < total_items {
-            Some(visual_order[cursor])
-        } else {
-            None
+        let term_rows = terminal_rows();
+        let compact_banner_rows = {
+            let mut b = String::with_capacity(512);
+            render_banner_into(cfg, &mut b, false);
+            b.push('\n');
+            b.lines().count()
         };
+        let full_banner_rows = {
+            let mut b = String::with_capacity(1536);
+            render_banner_into(cfg, &mut b, true);
+            b.push('\n');
+            b.lines().count()
+        };
+        // Static chrome inside box: top border + empty + title + empty + sep + sep + empty + footer + empty + end = 10 lines
+        let box_chrome = 10usize;
+        let need_full = full_banner_rows + box_chrome + rows_model.len();
+        let need_compact = compact_banner_rows + box_chrome + rows_model.len();
 
-        banner(cfg);
+        let (visible_start, visible_end, show_top_ind, show_bot_ind) =
+            if term_rows >= need_full || term_rows >= need_compact {
+                scroll_offset = 0;
+                (0usize, rows_model.len(), false, false)
+            } else {
+                // Viewport scroll mode: reserve space for compact banner if it still leaves >=10 list rows
+                let banner_reserve = if term_rows >= compact_banner_rows + box_chrome + 10 {
+                    compact_banner_rows
+                } else {
+                    0
+                };
+                let avail_list = term_rows
+                    .saturating_sub(banner_reserve + box_chrome + 2)
+                    .max(6)
+                    .min(rows_model.len());
+                let cur_row = item_to_row[cursor];
+                // Keep category header right above top item visible when cursor hits first item in a category
+                let focus_top = if cur_row > 0 {
+                    match rows_model[cur_row - 1] {
+                        ToggleRow::Header(_) => cur_row - 1,
+                        _ => cur_row,
+                    }
+                } else {
+                    cur_row
+                };
+                if focus_top < scroll_offset {
+                    scroll_offset = focus_top;
+                } else if cur_row >= scroll_offset + avail_list {
+                    scroll_offset = cur_row + 1 - avail_list;
+                }
+                let max_off = rows_model.len().saturating_sub(avail_list);
+                scroll_offset = scroll_offset.min(max_off);
+                let end = (scroll_offset + avail_list).min(rows_model.len());
+                (scroll_offset, end, scroll_offset > 0, end < rows_model.len())
+            };
+
         let mut buf = String::with_capacity(4096);
         draw_line(&mut buf);
         emptybox(&mut buf);
@@ -174,49 +314,51 @@ fn interactive_toggles(cfg: &AppConfig, choices: &mut [bool; 22]) -> bool {
         emptybox(&mut buf);
         draw_sep(&mut buf);
 
-        let render_cat = |buf: &mut String, heading: &str, indices: &[usize]| {
-            boxline(buf, heading);
-            for &idx in indices {
-                let mark = if choices[idx] {
-                    format!("{GREEN}✓{RESET}")
-                } else {
-                    format!("{RED}✗{RESET}")
-                };
-                let label = ALL_MODULES[idx].label;
-                if current_idx == Some(idx) {
-                    boxline(
-                        buf,
-                        &format!("{BOLD}{CYAN}  ▸ [{mark}{BOLD}{CYAN}] {label}{RESET}"),
-                    );
-                } else {
-                    boxline(buf, &format!("    [{mark}] {label}"));
+        if show_top_ind {
+            boxline(&mut buf, &format!("{DIM}    ▲ Scroll up for more modules{RESET}"));
+        }
+
+        for row in &rows_model[visible_start..visible_end] {
+            match *row {
+                ToggleRow::Header(heading) => {
+                    let color = if heading.contains("Network") {
+                        BLUE
+                    } else if heading.contains("Obfuscation") {
+                        MAGENTA
+                    } else {
+                        RED
+                    };
+                    boxline(&mut buf, &format!("{BOLD}{color}{heading}{RESET}"));
+                }
+                ToggleRow::Spacer => emptybox(&mut buf),
+                ToggleRow::Module { mod_idx, item_pos } => {
+                    let mark = if choices[mod_idx] {
+                        format!("{GREEN}✓{RESET}")
+                    } else {
+                        format!("{RED}✗{RESET}")
+                    };
+                    let label = ALL_MODULES[mod_idx].label;
+                    if cursor == item_pos {
+                        boxline(
+                            &mut buf,
+                            &format!("{BOLD}{CYAN}  ▸ [{mark}{BOLD}{CYAN}] {label}{RESET}"),
+                        );
+                    } else {
+                        boxline(&mut buf, &format!("    [{mark}] {label}"));
+                    }
+                }
+                ToggleRow::Back { item_pos } => {
+                    if cursor == item_pos {
+                        boxline(&mut buf, &format!("{BOLD}{YELLOW}  ▸ ◀ BACK TO MAIN MENU{RESET}"));
+                    } else {
+                        boxline(&mut buf, &format!("{DIM}    ◀ BACK TO MAIN MENU{RESET}"));
+                    }
                 }
             }
-        };
+        }
 
-        render_cat(
-            &mut buf,
-            &format!("{BOLD}{BLUE}  ── Network & Routing ──{RESET}"),
-            &NET_CAT_INDICES,
-        );
-        emptybox(&mut buf);
-        render_cat(
-            &mut buf,
-            &format!("{BOLD}{MAGENTA}  ── System Obfuscation ──{RESET}"),
-            &OBF_CAT_INDICES,
-        );
-        emptybox(&mut buf);
-        render_cat(
-            &mut buf,
-            &format!("{BOLD}{RED}  ── Active Defense ──{RESET}"),
-            &DEF_CAT_INDICES,
-        );
-
-        emptybox(&mut buf);
-        if cursor == total_items {
-            boxline(&mut buf, &format!("{BOLD}{YELLOW}  ▸ ◀ BACK TO MAIN MENU{RESET}"));
-        } else {
-            boxline(&mut buf, &format!("{DIM}    ◀ BACK TO MAIN MENU{RESET}"));
+        if show_bot_ind {
+            boxline(&mut buf, &format!("{DIM}    ▼ Scroll down for more modules{RESET}"));
         }
 
         draw_sep(&mut buf);
@@ -228,8 +370,8 @@ fn interactive_toggles(cfg: &AppConfig, choices: &mut [bool; 22]) -> bool {
         emptybox(&mut buf);
         draw_end(&mut buf);
 
-        print!("{buf}");
-        let _ = io::stdout().flush();
+        let frame = compose_banner_and_body(cfg, &buf);
+        render_tui_frame(&frame);
 
         let Some(key) = read_nav_key() else {
             continue;
@@ -244,6 +386,12 @@ fn interactive_toggles(cfg: &AppConfig, choices: &mut [bool; 22]) -> bool {
             }
             NavKey::Down => {
                 cursor = if cursor >= total_items { 0 } else { cursor + 1 };
+            }
+            NavKey::PageUp => {
+                cursor = cursor.saturating_sub(6);
+            }
+            NavKey::PageDown => {
+                cursor = (cursor + 6).min(total_items);
             }
             NavKey::Select => {
                 if cursor == total_items {
@@ -290,6 +438,7 @@ pub fn print_status_pretty(cfg: &AppConfig) {
 pub fn run_dashboard(cfg: &AppConfig) {
     let _guard = TuiTermGuard::enter();
     hide_cursor();
+    clear_screen();
 
     let net_status = Arc::new(Mutex::new((
         "WAITING".to_string(),
@@ -350,7 +499,6 @@ pub fn run_dashboard(cfg: &AppConfig) {
     });
 
     loop {
-        banner(cfg);
         let mut buf = String::with_capacity(2048);
         draw_line(&mut buf);
         emptybox(&mut buf);
@@ -439,15 +587,11 @@ pub fn run_dashboard(cfg: &AppConfig) {
         emptybox(&mut buf);
         draw_end(&mut buf);
 
-        print!("{buf}");
-        let _ = io::stdout().flush();
+        let frame = compose_banner_and_body(cfg, &buf);
+        render_tui_frame(&frame);
 
-        if poll_fd(STDIN_FILENO, 3000) {
-            if let Some(b) = read_fd_byte(STDIN_FILENO) {
-                if b == b'q' || b == b'Q' {
-                    break;
-                }
-            }
+        if matches!(read_nav_key_timeout(3000), Some(NavKey::Quit | NavKey::Esc)) {
+            break;
         }
     }
 
