@@ -1,0 +1,280 @@
+#!/bin/bash
+
+# ═══════════════════════════════════════════════════════════════════
+# ANON Shared Helpers — State, Services, DNS, Network & Trap Utilities
+# ═══════════════════════════════════════════════════════════════════
+# Sourced by assets/sources/config; never enable set -e/-u/-o pipefail here.
+
+is_wsl() {
+    grep -qi "microsoft" /proc/version 2>/dev/null
+}
+
+has_systemd() {
+    command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]
+}
+
+# Unified service control: tries systemctl first (compatible with mocks & systemd),
+# falling back to sysvinit `service` or direct daemon management in containers/WSL.
+service_ctrl() {
+    local action="$1"
+    local svc="$2"
+    local base_svc="${svc%.service}"
+
+    if command -v systemctl &>/dev/null; then
+        if systemctl "$action" "$svc" &>/dev/null; then
+            return 0
+        fi
+        # If systemd actually booted, return real systemctl failure; otherwise fall back
+        if [[ -d /run/systemd/system ]]; then
+            return 1
+        fi
+    fi
+
+    if command -v service &>/dev/null; then
+        case "$action" in
+            is-active)
+                service "$base_svc" status &>/dev/null && return 0
+                pgrep -x "$base_svc" &>/dev/null && return 0
+                return 1
+                ;;
+            unmask)
+                return 0
+                ;;
+            daemon-reload)
+                return 0
+                ;;
+            *)
+                service "$base_svc" "$action" &>/dev/null && return 0
+                ;;
+        esac
+    fi
+
+    # Minimal container fallback (e.g., Kali Docker without systemd/sysvinit running)
+    case "$base_svc:$action" in
+        tor:start|tor:restart)
+            if command -v tor &>/dev/null; then
+                pkill -x tor &>/dev/null || true
+                sleep 1
+                tor -f "${TORRC:-/etc/tor/torrc}" --RunAsDaemon 1 &>/dev/null && return 0
+            fi
+            ;;
+        tor:stop)
+            pkill -x tor &>/dev/null && return 0
+            ;;
+        tor:is-active)
+            pgrep -x tor &>/dev/null && return 0
+            ;;
+        i2pd:start|i2pd:restart)
+            if command -v i2pd &>/dev/null; then
+                pkill -x i2pd &>/dev/null || true
+                i2pd --daemon &>/dev/null && return 0
+            fi
+            ;;
+        i2pd:stop)
+            pkill -x i2pd &>/dev/null && return 0
+            ;;
+        i2pd:is-active)
+            pgrep -x i2pd &>/dev/null && return 0
+            ;;
+        dnscrypt-proxy:start|dnscrypt-proxy:restart)
+            if command -v dnscrypt-proxy &>/dev/null; then
+                pkill -x dnscrypt-proxy &>/dev/null || true
+                local cfg="/etc/dnscrypt-proxy/dnscrypt-proxy.toml"
+                if [[ -f "$cfg" ]]; then
+                    nohup dnscrypt-proxy -config "$cfg" >/dev/null 2>&1 &
+                    return 0
+                fi
+            fi
+            ;;
+        dnscrypt-proxy:stop)
+            pkill -x dnscrypt-proxy &>/dev/null && return 0
+            ;;
+        dnscrypt-proxy:is-active)
+            pgrep -x dnscrypt-proxy &>/dev/null && return 0
+            ;;
+    esac
+    return 1
+}
+
+_write_state_kv() {
+    local key="$1"
+    local val="$2"
+    local state_file="$3"
+    local state_dir
+    state_dir="$(dirname "$state_file")"
+    mkdir -p "$state_dir" 2>/dev/null || return 1
+
+    local tmp_file
+    tmp_file="$(mktemp -p "$state_dir" .anon_state_XXXXXX 2>/dev/null)" || return 1
+    if [[ -f "$state_file" ]]; then
+        grep -vE "^${key}=" "$state_file" > "$tmp_file" 2>/dev/null || true
+    fi
+    printf '%s="%s"\n' "$key" "$val" >> "$tmp_file"
+    chmod 600 "$tmp_file" 2>/dev/null || true
+    mv -f "$tmp_file" "$state_file"
+}
+
+set_module_state() {
+    local key="$1"
+    local val="$2"
+    local state_file="${ANON_STATE_FILE:-${BACKUPDIR}/anon.state}"
+
+    # Strictly validate variable identifier and strip unsafe characters
+    if [[ ! "$key" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        return 1
+    fi
+    val="${val//\"/}"
+    val="${val//$'\n'/}"
+
+    printf -v "$key" '%s' "$val"
+
+    if command -v flock &>/dev/null; then
+        mkdir -p "$(dirname "$state_file")" 2>/dev/null || true
+        (
+            flock -x 200
+            _write_state_kv "$key" "$val" "$state_file"
+        ) 200>"${state_file}.lock" 2>/dev/null || _write_state_kv "$key" "$val" "$state_file"
+    else
+        _write_state_kv "$key" "$val" "$state_file"
+    fi
+}
+
+set_module_status() {
+    set_module_state "${1}_status" "$2"
+}
+
+set_module_pid() {
+    set_module_state "${1}_pid" "$2"
+}
+
+reload_state() {
+    local state_file="${ANON_STATE_FILE:-${BACKUPDIR}/anon.state}"
+    if [[ -f "$state_file" ]]; then
+        # shellcheck disable=SC1090
+        source "$state_file" 2>/dev/null || true
+    fi
+}
+
+reset_all_module_states() {
+    local state_file="${ANON_STATE_FILE:-${BACKUPDIR}/anon.state}"
+    local mod
+    for mod in anti_mitm volatile_logging ip_changer dns_changer mac_changer \
+               timezone_changer hostname_changer browser_anonymization \
+               os_obfuscation bluetooth_disabler process_obfuscation \
+               proxychains_integration anti_cold_boot tor_bridges kill_switch \
+               i2p_integration traffic_obfuscation sandbox_isolation \
+               dpi_spoofing doh_shield execution_stealth leak_auditor; do
+        printf -v "${mod}_status" '%s' "Disable"
+    done
+    anti_mitm_pid="0"
+    traffic_obfuscation_pid="0"
+    leak_auditor_pid="0"
+
+    rm -f "$state_file" "${state_file}.lock" 2>/dev/null || true
+    # Clean legacy status mutations inside config if any existed
+    if [[ -n "${SRCDIR:-}" && -w "${SRCDIR}/sources/config" ]]; then
+        sed -i 's/_status="Enable"/_status="Disable"/g' "${SRCDIR}/sources/config" 2>/dev/null || true
+        sed -i 's/anti_mitm_pid="[^"]*"/anti_mitm_pid="0"/g; s/traffic_obfuscation_pid="[^"]*"/traffic_obfuscation_pid="0"/g; s/leak_auditor_pid="[^"]*"/leak_auditor_pid="0"/g' "${SRCDIR}/sources/config" 2>/dev/null || true
+    fi
+}
+
+count_active_modules() {
+    reload_state
+    local count=0
+    local mod var_name
+    for mod in anti_mitm volatile_logging ip_changer dns_changer mac_changer \
+               timezone_changer hostname_changer browser_anonymization \
+               os_obfuscation bluetooth_disabler process_obfuscation \
+               proxychains_integration anti_cold_boot tor_bridges kill_switch \
+               i2p_integration traffic_obfuscation sandbox_isolation \
+               dpi_spoofing doh_shield execution_stealth leak_auditor; do
+        var_name="${mod}_status"
+        if [[ "${!var_name:-Disable}" == "Enable" ]]; then
+            ((count++))
+        fi
+    done
+    echo "$count"
+}
+
+lock_nm_dns() {
+    if [[ -d /etc/NetworkManager/conf.d ]]; then
+        printf '[main]\ndns=none\n' > /etc/NetworkManager/conf.d/anon-dns-lock.conf 2>/dev/null || true
+    fi
+    # Guard against systemd-resolved bypassing /etc/resolv.conf via nsswitch `resolve`
+    if [[ -f /etc/nsswitch.conf ]] && [[ ! -f "${BACKUPDIR}/nsswitch.conf.bak" ]]; then
+        if grep -qE '^hosts:.*\bresolve\b' /etc/nsswitch.conf 2>/dev/null; then
+            cp -a /etc/nsswitch.conf "${BACKUPDIR}/nsswitch.conf.bak" 2>/dev/null || true
+            sed -i -E '/^hosts:/s/\bresolve(\s+\[!UNAVAIL=return\])?\s*//g' /etc/nsswitch.conf 2>/dev/null || true
+        fi
+    fi
+}
+
+unlock_nm_dns() {
+    if [[ -f /etc/NetworkManager/conf.d/anon-dns-lock.conf ]]; then
+        rm -f /etc/NetworkManager/conf.d/anon-dns-lock.conf 2>/dev/null || true
+        service_ctrl reload NetworkManager || true
+    fi
+    if [[ -f "${BACKUPDIR}/nsswitch.conf.bak" ]]; then
+        cat "${BACKUPDIR}/nsswitch.conf.bak" > /etc/nsswitch.conf 2>/dev/null || true
+        rm -f "${BACKUPDIR}/nsswitch.conf.bak" 2>/dev/null || true
+    fi
+}
+
+backup_resolv_conf() {
+    local tag="${1:-default}"
+    local sym_bak="${BACKUPDIR}/resolv.${tag}.symlink.bak"
+    local file_bak="${BACKUPDIR}/resolv.${tag}.bak"
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if [[ -L /etc/resolv.conf ]]; then
+        cp -a /etc/resolv.conf "$sym_bak" 2>/dev/null || true
+        cat /etc/resolv.conf > "$file_bak" 2>/dev/null || true
+        rm -f /etc/resolv.conf 2>/dev/null || true
+    elif [[ -f /etc/resolv.conf ]]; then
+        cat /etc/resolv.conf > "$file_bak" 2>/dev/null || true
+    fi
+}
+
+restore_resolv_conf() {
+    local tag="${1:-default}"
+    local sym_bak="${BACKUPDIR}/resolv.${tag}.symlink.bak"
+    local file_bak="${BACKUPDIR}/resolv.${tag}.bak"
+    chattr -i /etc/resolv.conf 2>/dev/null || true
+    if [[ -f "$sym_bak" || -L "$sym_bak" ]]; then
+        rm -f /etc/resolv.conf 2>/dev/null || true
+        mv -f "$sym_bak" /etc/resolv.conf 2>/dev/null || true
+    elif [[ -f "$file_bak" ]]; then
+        cat "$file_bak" > /etc/resolv.conf 2>/dev/null || true
+    fi
+    rm -f "$file_bak" "$sym_bak" 2>/dev/null || true
+}
+
+get_default_iface() {
+    ip route 2>/dev/null | awk '/^default/{print $5; exit}' | cut -d'@' -f1
+}
+
+get_gateway_ip() {
+    ip route 2>/dev/null | awk '/^default/{print $3; exit}'
+}
+
+wait_for_network() {
+    local max_wait="${1:-6}"
+    local elapsed=0
+    while [[ $elapsed -lt $max_wait ]]; do
+        if [[ -n "$(get_default_iface)" ]]; then
+            return 0
+        fi
+        sleep 1
+        ((elapsed++))
+    done
+    return 1
+}
+
+resolve_bridges_file() {
+    if [[ -s "${SRCDIR}/sources/bridges.txt" ]]; then
+        echo "${SRCDIR}/sources/bridges.txt"
+    elif [[ -s "${SRCDIR}/sources/bridges.default.txt" ]]; then
+        echo "${SRCDIR}/sources/bridges.default.txt"
+    else
+        echo ""
+    fi
+}

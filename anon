@@ -5,20 +5,21 @@
 export HISTFILE=/dev/null
 set +o history 2>/dev/null || true
 
-#check source files
-if [[ -z "${BASE_DIR}" ]]; then
+# Check and resolve BASE_DIR
+export BASE_DIR
+if [[ -z "${BASE_DIR:-}" ]]; then
     if [[ -d "$(dirname "$(realpath "$0")")/assets" ]]; then
-        export BASE_DIR="$(dirname "$(realpath "$0")")"
+        BASE_DIR="$(dirname "$(realpath "$0")")"
     elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
-        export BASE_DIR="/usr/share/anon"
+        BASE_DIR="/usr/share/anon"
     else
-        clear; echo -e "\e[31m [-] FATAL ERROR: Installation directory not found!\e[0m"; exit 1;
+        clear; echo -e "\e[31m [-] FATAL ERROR: Installation directory not found!\e[0m"; exit 1
     fi
 fi
-source "${BASE_DIR}/assets/sources/config" 2> /dev/null || { clear;echo -e "\e[31m [-] FATAL ERROR: MAIN CONFIG COULD NOT BE SOURCED!\e[0m";exit 1;}
+source "${BASE_DIR}/assets/sources/config" 2> /dev/null || { clear; echo -e "\e[31m [-] FATAL ERROR: MAIN CONFIG COULD NOT BE SOURCED!\e[0m"; exit 1; }
 
 # Execution Stealth (Process Masquerading and Fileless RAM execution)
-if [[ "$execution_stealth_status" == "Enable" && -z "$ANON_STEALTH_ACTIVE" ]]; then
+if [[ "${execution_stealth_status:-Disable}" == "Enable" && -z "${ANON_STEALTH_ACTIVE:-}" ]]; then
     export ANON_STEALTH_ACTIVE=1
     export ANON_PERSIST_DIR="$BASE_DIR"
     if [[ "$BASE_DIR" != "/dev/shm/"* ]]; then
@@ -37,49 +38,221 @@ if [[ "$execution_stealth_status" == "Enable" && -z "$ANON_STEALTH_ACTIVE" ]]; t
     fi
 fi
 
-# Ensure ephemeral RAM execution directory is wiped cleanly on exit without touching persistent config/backups
-if [[ -n "$ANON_STEALTH_ACTIVE" && -n "${ANON_STEALTH_DIR:-}" ]]; then
-    trap 'if [[ -d "$ANON_STEALTH_DIR" && "$ANON_STEALTH_DIR" == /dev/shm/.kworker_* ]]; then rm -f "$ANON_STEALTH_DIR/assets/sources" "$ANON_STEALTH_DIR/backups"; if command -v shred &>/dev/null; then find -P "$ANON_STEALTH_DIR" -type f -exec shred -u {} + 2>/dev/null; fi; rm -rf "$ANON_STEALTH_DIR"; fi' EXIT INT TERM
-fi
+_anon_global_cleanup() {
+    tput cnorm 2>/dev/null || true
+    if [[ -n "${ANON_STEALTH_ACTIVE:-}" && -n "${ANON_STEALTH_DIR:-}" && -d "$ANON_STEALTH_DIR" && "$ANON_STEALTH_DIR" == /dev/shm/.kworker_* ]]; then
+        rm -f "$ANON_STEALTH_DIR/assets/sources" "$ANON_STEALTH_DIR/backups"
+        if command -v shred &>/dev/null; then
+            find -P "$ANON_STEALTH_DIR" -type f -exec shred -u {} + 2>/dev/null || true
+        fi
+        rm -rf "$ANON_STEALTH_DIR"
+    fi
+}
+trap _anon_global_cleanup EXIT INT TERM
 
 banner
-# run with a root privilege
-[[ "$EUID" -ne 0 ]] && err "Anon must be run as root. ${GREEN}'sudo $(basename "${0}")'${RESET}" 
+# Run with root privilege (keep exact [[ "$EUID" -ne 0 ]] pattern for test harness compatibility)
+[[ "$EUID" -ne 0 ]] && err "Anon must be run as root. ${GREEN}'sudo $(basename "${0}")'${RESET}"
 
 src_check() {
-
-        check_status="1"
-        for module in "$@"; do
-                if [[ -f "$SRCDIR/scripts/$module" ]]; then
-			source "$SRCDIR/scripts/$module" 
-		else
-			warn "The source file could not be found. Please re-install the tool. (Module: $module)"
-			check_status="0"
-                fi
-        done
-        for standalone in anti_mitm traffic_obfuscation sandbox_isolation disposable_browser leak_auditor metadata_cleaner; do
-                if [[ ! -f "$SRCDIR/scripts/$standalone" ]]; then
-			warn "The source file could not be found. Please re-install the tool. (Module: $standalone)"
-			check_status="0"
-                fi
-        done
-        if [ "${check_status}" = "0" ] ; then
-                err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
+    local check_status="1"
+    local module standalone
+    for module in "$@"; do
+        if [[ -f "$SRCDIR/scripts/$module" ]]; then
+            source "$SRCDIR/scripts/$module"
+        else
+            warn "The source file could not be found. Please re-install the tool. (Module: $module)"
+            check_status="0"
         fi
+    done
+    for standalone in anti_mitm traffic_obfuscation sandbox_isolation disposable_browser leak_auditor metadata_cleaner; do
+        if [[ ! -f "$SRCDIR/scripts/$standalone" ]]; then
+            warn "The source file could not be found. Please re-install the tool. (Module: $standalone)"
+            check_status="0"
+        fi
+    done
+    if [[ "$check_status" == "0" ]]; then
+        err "Please run this command:\n'${GREEN}sudo make reinstall${RESET}'"
+    fi
 }
 src_check fix kill_switch volatile_logging ip_changer dns_changer mac_changer anti_cold_boot hostname_changer timezone_changer browser_anonymization os_obfuscation bluetooth_disabler process_obfuscation proxychains_integration tor_bridges i2p_integration dpi_spoofing doh_shield execution_stealth emergency_panic
 
-#check dependences function
+# ══════════════════════════════════════════════════════════════════
+#  DECLARATIVE MODULE REGISTRY (Single Source of Truth)
+# ══════════════════════════════════════════════════════════════════
+MOD_NAMES=(
+    "anti_mitm"               # 0
+    "volatile_logging"        # 1
+    "ip_changer"              # 2
+    "dns_changer"             # 3
+    "mac_changer"             # 4
+    "timezone_changer"        # 5
+    "hostname_changer"        # 6
+    "browser_anonymization"   # 7
+    "os_obfuscation"          # 8
+    "bluetooth_disabler"      # 9
+    "process_obfuscation"     # 10
+    "proxychains_integration" # 11
+    "anti_cold_boot"          # 12
+    "tor_bridges"             # 13
+    "kill_switch"             # 14
+    "i2p_integration"         # 15
+    "traffic_obfuscation"     # 16
+    "sandbox_isolation"       # 17
+    "dpi_spoofing"            # 18
+    "doh_shield"              # 19
+    "execution_stealth"       # 20
+    "leak_auditor"            # 21
+)
+
+MOD_LABELS=(
+    "Anti Mitm"               # 0
+    "Volatile logging"        # 1
+    "Ip changer"              # 2
+    "Dns changer"             # 3
+    "Mac changer"             # 4
+    "Timezone changer"        # 5
+    "Hostname changer"        # 6
+    "Browser anonymization"   # 7
+    "OS Obfuscation"          # 8
+    "Bluetooth disabler"      # 9
+    "Process obfuscation"     # 10
+    "Proxychains integration" # 11
+    "Anti cold boot"          # 12
+    "Tor bridges"             # 13
+    "Kill switch"             # 14
+    "I2P Integration"         # 15
+    "Traffic Obfuscation"     # 16
+    "Sandbox Isolation"       # 17
+    "DPI Spoofing"            # 18
+    "DoH Shield"              # 19
+    "Execution Stealth"       # 20
+    "Leak Auditor"            # 21
+)
+
+MOD_TAGS=(
+    "MITM " "VLOG " "IP   " "DNS  " "MAC  " "TZ   " "HOST " "BRWS "
+    "OS   " "BT   " "PROC " "PRXY " "COLD " "TOR  " "KILL " "I2P  "
+    "TRAFF" "JAIL " "DPI  " "DOH  " "STLTH" "AUDIT"
+)
+
+# Visual TUI category groupings (every index 0..21 included exactly once)
+NET_CAT_INDICES=(2 3 4 13 11 15 16 18 19)
+OBF_CAT_INDICES=(5 6 7 8 10 17 20)
+DEF_CAT_INDICES=(0 1 9 12 14 21)
+
+# Deterministic start and teardown order
+EXEC_ORDER=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7 21)
+STOP_ORDER=(21 17 14 16 0 1 2 3 19 4 5 6 7 8 9 10 11 13 18 12 15 20)
+
+_is_pid_alive() {
+    local pid="$1"
+    [[ -n "$pid" && "$pid" != "0" && "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null
+}
+
+_is_module_live() {
+    local mod_name="$1"
+    case "$mod_name" in
+        anti_mitm) _is_pid_alive "${anti_mitm_pid:-0}" ;;
+        leak_auditor) _is_pid_alive "${leak_auditor_pid:-0}" ;;
+        traffic_obfuscation) _is_pid_alive "${traffic_obfuscation_pid:-0}" ;;
+        ip_changer) [[ -f "$BACKUPDIR/torrc.bak" ]] ;;
+        kill_switch) [[ -f "$BACKUPDIR/iptables_killswitch.bak" ]] ;;
+        dns_changer) [[ -f "$BACKUPDIR/resolv.dns.bak" || -f "$BACKUPDIR/resolv.conf.bak" ]] ;;
+        doh_shield) [[ -f "$BACKUPDIR/resolv.doh.bak" || -f "$BACKUPDIR/resolv.conf.doh.bak" ]] ;;
+        mac_changer) [[ -d "$BACKUPDIR/mac_addresses" ]] ;;
+        hostname_changer) [[ -f "$BACKUPDIR/hostname.bak" ]] ;;
+        timezone_changer) [[ -f "$BACKUPDIR/timezone.bak" ]] ;;
+        os_obfuscation) [[ -f "$BACKUPDIR/ip_default_ttl.bak" ]] ;;
+        anti_cold_boot) [[ -f "$BACKUPDIR/min_free_kbytes.bak" ]] ;;
+        proxychains_integration) [[ -f "$BACKUPDIR/proxychains4.conf.bak" ]] ;;
+        sandbox_isolation) ip netns list 2>/dev/null | grep -qw "anon_jail" ;;
+        *) return 1 ;;
+    esac
+}
+
+_start_module() {
+    local mod_name="$1"
+    case "$mod_name" in
+        anti_mitm)
+            if _is_pid_alive "${anti_mitm_pid:-0}"; then
+                warn "Anti mitm is already running (PID: $anti_mitm_pid)"
+                return 0
+            fi
+            "${BASE_DIR}/assets/scripts/anti_mitm" &
+            local antimitmpid="$!"
+            set_module_pid "anti_mitm" "$antimitmpid"
+            set_module_status "anti_mitm" "Enable"
+            info "Anti mitm successfully enabled"
+            ;;
+        leak_auditor)
+            if _is_pid_alive "${leak_auditor_pid:-0}"; then
+                warn "Background leak auditor is already running (PID: $leak_auditor_pid)"
+                return 0
+            fi
+            "${BASE_DIR}/assets/scripts/leak_auditor" &
+            local leakauditpid="$!"
+            set_module_pid "leak_auditor" "$leakauditpid"
+            set_module_status "leak_auditor" "Enable"
+            info "Background leak auditor successfully enabled"
+            ;;
+        traffic_obfuscation)
+            "${BASE_DIR}/assets/scripts/traffic_obfuscation" start
+            ;;
+        sandbox_isolation)
+            "${BASE_DIR}/assets/scripts/sandbox_isolation" start
+            ;;
+        *)
+            if declare -F "start_${mod_name}" >/dev/null 2>&1; then
+                "start_${mod_name}"
+            fi
+            ;;
+    esac
+}
+
+_stop_module() {
+    local mod_name="$1"
+    case "$mod_name" in
+        leak_auditor)
+            if _is_pid_alive "${leak_auditor_pid:-0}"; then
+                kill "$leak_auditor_pid" 2>/dev/null || true
+            fi
+            set_module_pid "leak_auditor" "0"
+            set_module_status "leak_auditor" "Disable"
+            info "Background leak auditor successfully disabled"
+            ;;
+        anti_mitm)
+            if _is_pid_alive "${anti_mitm_pid:-0}"; then
+                kill "$anti_mitm_pid" 2>/dev/null || true
+            fi
+            set_module_pid "anti_mitm" "0"
+            set_module_status "anti_mitm" "Disable"
+            info "Anti mitm successfully disabled"
+            ;;
+        traffic_obfuscation)
+            "${BASE_DIR}/assets/scripts/traffic_obfuscation" stop
+            ;;
+        sandbox_isolation)
+            "${BASE_DIR}/assets/scripts/sandbox_isolation" stop
+            ;;
+        *)
+            if declare -F "stop_${mod_name}" >/dev/null 2>&1; then
+                "stop_${mod_name}"
+            fi
+            ;;
+    esac
+}
+
+# Check dependencies function
 dep_check() {
     local missing_pkgs=()
     local apt_pkgs=""
+    local cmd
 
     for cmd in "$@"; do
         if ! command -v "$cmd" &> /dev/null; then
             warn "$cmd: could not be found."
-            
-            # Map commands to actual Debian/Kali package names
-            if [ "$cmd" == "sdmem" ]; then
+            if [[ "$cmd" == "sdmem" ]]; then
                 apt_pkgs="$apt_pkgs secure-delete"
             else
                 apt_pkgs="$apt_pkgs $cmd"
@@ -88,627 +261,545 @@ dep_check() {
         fi
     done
 
-    if [ ${#missing_pkgs[@]} -gt 0 ]; then
-        echo -ne "
- ${CYAN}ℹ INFO:${RESET} Some required dependencies are missing: ${BOLD}${missing_pkgs[*]}${RESET}
-"
+    if [[ ${#missing_pkgs[@]} -gt 0 ]]; then
+        echo -ne "\n ${CYAN}ℹ INFO:${RESET} Some required dependencies are missing: ${BOLD}${missing_pkgs[*]}${RESET}\n"
         local choice="Y"
-        if [ -t 0 ]; then
+        if [[ -t 0 ]]; then
             echo -ne " ${YELLOW}➤ Do you want Anon to automatically install them for you? (Y/n): ${RESET}"
             read -r choice
         fi
-        case "$choice" in 
-          y|Y|"" ) 
-            echo -e "
- ${CYAN}ℹ INFO:${RESET} Installing missing packages..."
-            apt-get update
-            apt-get install -y $apt_pkgs
-            
-            # Re-check after installation
+        case "$choice" in
+          y|Y|"" )
+            echo -e "\n ${CYAN}ℹ INFO:${RESET} Installing missing packages..."
+            if command -v apt-get &>/dev/null; then
+                apt-get update
+                DEBIAN_FRONTEND=noninteractive apt-get install -y $apt_pkgs
+            else
+                err "apt-get is unavailable. Please install missing packages manually: ${missing_pkgs[*]}"
+            fi
             for cmd in "$@"; do
                 if ! command -v "$cmd" &> /dev/null; then
                     err "Failed to install $cmd. Please install it manually."
                 fi
             done
-            msg "All dependencies installed successfully!
-"
+            msg "All dependencies installed successfully!\n"
             ;;
-          * ) 
+          * )
             err "Dependencies are required to run Anon. Exiting."
             ;;
         esac
     fi
 }
 
-start(){
-
-#check dependences
-dep_check tar tor curl sdmem obfs4proxy macchanger proxychains4 rfkill i2pd
-
-#get a backup to fix it in case of a possible error 
-if [ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
-	get_backups
-fi
-
-options=("Anti Mitm" "Volatile logging" "Ip changer" "Dns changer" "Mac changer" "Timezone changer" "Hostname changer" "Browser anonymization" "OS Obfuscation" "Bluetooth disabler" "Process obfuscation" "Proxychains integration" "Anti cold boot" "Tor bridges" "Kill switch" "I2P Integration" "Traffic Obfuscation" "Sandbox Isolation" "DPI Spoofing" "DoH Shield" "Execution Stealth" "Leak Auditor")
-
-
 # ══════════════════════════════════════════════════════════════════
 #  ANON TUI - Interactive Terminal User Interface
 # ══════════════════════════════════════════════════════════════════
 
-# ── Centering helper ──
-center() {
-    local text="$1"
-    local width
+_tui_dims() {
+    local width inner pad
     width=$(tput cols 2>/dev/null || echo 80)
-    # Strip ANSI codes for length calculation
-    local stripped
-    stripped=$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')
-    local len=${#stripped}
-    local pad=$(( (width - len) / 2 ))
+    (( width < 20 )) && width=20
+    inner=$(( width - 4 ))
+    (( inner > 72 )) && inner=72
+    (( inner < 16 )) && inner=16
+    pad=$(( (width - inner - 2) / 2 ))
     (( pad < 0 )) && pad=0
-    printf "%${pad}s" ""
-    echo -e "$text"
+    echo "$width $inner $pad"
 }
 
-# ── Box drawing ──
 draw_line() {
-    local width
-    width=$(tput cols 2>/dev/null || echo 80)
-    local inner=$(( width - 4 ))
-    (( inner > 72 )) && inner=72
-    local pad=$(( (width - inner - 2) / 2 ))
-    (( pad < 0 )) && pad=0
-    printf "%${pad}s" ""
-    printf "${DIM}"
-    printf "╔"
-    printf '═%.0s' $(seq 1 $inner)
-    printf "╗"
-    printf "${RESET}\n"
-}
-
-draw_mid() {
-    local width
-    width=$(tput cols 2>/dev/null || echo 80)
-    local inner=$(( width - 4 ))
-    (( inner > 72 )) && inner=72
-    local pad=$(( (width - inner - 2) / 2 ))
-    (( pad < 0 )) && pad=0
-    printf "%${pad}s" ""
-    printf "${DIM}"
-    printf "╠"
-    printf '═%.0s' $(seq 1 $inner)
-    printf "╣"
-    printf "${RESET}\n"
+    local width inner pad
+    read -r width inner pad <<< "$(_tui_dims)"
+    printf "%${pad}s${DIM}╔" ""
+    printf '═%.0s' $(seq 1 "$inner")
+    printf "╗${RESET}\n"
 }
 
 draw_end() {
-    local width
-    width=$(tput cols 2>/dev/null || echo 80)
-    local inner=$(( width - 4 ))
-    (( inner > 72 )) && inner=72
-    local pad=$(( (width - inner - 2) / 2 ))
-    (( pad < 0 )) && pad=0
-    printf "%${pad}s" ""
-    printf "${DIM}"
-    printf "╚"
-    printf '═%.0s' $(seq 1 $inner)
-    printf "╝"
-    printf "${RESET}\n"
+    local width inner pad
+    read -r width inner pad <<< "$(_tui_dims)"
+    printf "%${pad}s${DIM}╚" ""
+    printf '═%.0s' $(seq 1 "$inner")
+    printf "╝${RESET}\n"
 }
 
 draw_sep() {
-    local width
-    width=$(tput cols 2>/dev/null || echo 80)
-    local inner=$(( width - 4 ))
-    (( inner > 72 )) && inner=72
-    local pad=$(( (width - inner - 2) / 2 ))
-    (( pad < 0 )) && pad=0
-    printf "%${pad}s" ""
-    printf "${DIM}"
-    printf "║"
-    printf '─%.0s' $(seq 1 $inner)
-    printf "║"
-    printf "${RESET}\n"
+    local width inner pad
+    read -r width inner pad <<< "$(_tui_dims)"
+    printf "%${pad}s${DIM}║" ""
+    printf '─%.0s' $(seq 1 "$inner")
+    printf "║${RESET}\n"
 }
 
 boxline() {
     local text="$1"
-    local width
-    width=$(tput cols 2>/dev/null || echo 80)
-    local inner=$(( width - 4 ))
-    (( inner > 72 )) && inner=72
-    local pad=$(( (width - inner - 2) / 2 ))
-    (( pad < 0 )) && pad=0
-    
+    local width inner pad
+    read -r width inner pad <<< "$(_tui_dims)"
+
     local stripped
     stripped=$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')
     local tlen=${#stripped}
+    local max_tlen=$(( inner - 1 ))
+    if (( tlen > max_tlen )); then
+        # Fallback truncation without breaking ANSI reset
+        text="${stripped:0:$((max_tlen - 1))}…"
+        tlen=${#text}
+    fi
     local rpad=$(( inner - tlen - 1 ))
     (( rpad < 0 )) && rpad=0
-    
-    printf "%${pad}s" ""
-    printf "${DIM}║${RESET} "
+
+    printf "%${pad}s${DIM}║${RESET} " ""
     echo -ne "$text"
-    printf "%${rpad}s" ""
-    printf "${DIM}║${RESET}\n"
+    printf "%${rpad}s${DIM}║${RESET}\n" ""
 }
 
 emptybox() {
-    local width
-    width=$(tput cols 2>/dev/null || echo 80)
-    local inner=$(( width - 4 ))
-    (( inner > 72 )) && inner=72
-    local pad=$(( (width - inner - 2) / 2 ))
-    (( pad < 0 )) && pad=0
-    printf "%${pad}s" ""
-    printf "${DIM}║${RESET}"
-    printf "%${inner}s" ""
-    printf "${DIM}║${RESET}\n"
+    local width inner pad
+    read -r width inner pad <<< "$(_tui_dims)"
+    printf "%${pad}s${DIM}║%${inner}s║${RESET}\n" "" ""
 }
 
-# ── Arrow-key interactive menu ──
-interactive_menu() {
-    local title="$1"
-    shift
-    local opts=("$@")
-    local selected=0
-    local key
+_read_nav_key() {
+    local key="" seq=""
+    IFS= read -rsn1 key || return 1
+    if [[ "$key" == $'\x1b' ]]; then
+        IFS= read -rsn2 -t 0.05 seq || seq=""
+        case "$seq" in
+            "[A") echo "UP" ;;
+            "[B") echo "DOWN" ;;
+            *) echo "ESC" ;;
+        esac
+    elif [[ "$key" == "" || "$key" == " " ]]; then
+        echo "SELECT"
+    elif [[ "$key" == "k" || "$key" == "K" ]]; then
+        echo "UP"
+    elif [[ "$key" == "j" || "$key" == "J" ]]; then
+        echo "DOWN"
+    elif [[ "$key" == "a" || "$key" == "A" ]]; then
+        echo "ALL"
+    elif [[ "$key" == "q" || "$key" == "Q" ]]; then
+        echo "QUIT"
+    else
+        echo "OTHER"
+    fi
+}
 
-    tput civis 2>/dev/null
-    while true; do
-        clear
-        banner
-        draw_line
-        emptybox
-        boxline "${BOLD}${CYAN}  $title${RESET}"
-        emptybox
-        draw_sep
+start(){
+    dep_check tar tor curl sdmem obfs4proxy macchanger proxychains4 rfkill i2pd
 
-        for i in "${!opts[@]}"; do
-            if [[ $i -eq $selected ]]; then
-                boxline "${BOLD}${GREEN}  ▸ ${opts[$i]}${RESET}"
-            else
-                boxline "${DIM}    ${opts[$i]}${RESET}"
-            fi
-        done
+    if [[ ! -f "$BACKUPDIR/anon_fix_backups.tar.gz" ]]; then
+        get_backups
+    fi
 
-        draw_sep
-        emptybox
-        [[ -n "$stat" ]] && boxline "${YELLOW}  ◆ $stat${RESET}"
-        # Show active module count if config is loaded
-        if [[ -f "$SRCDIR/sources/config" ]]; then
-            local active_count=0
-            active_count=$(grep -c 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null) || true
+    local -a choices=()
+
+    interactive_menu() {
+        local title="$1"
+        shift
+        local opts=("$@")
+        local selected=0
+        local action active_count
+
+        tput civis 2>/dev/null || true
+        while true; do
+            clear
+            banner
+            draw_line
+            emptybox
+            boxline "${BOLD}${CYAN}  $title${RESET}"
+            emptybox
+            draw_sep
+
+            local i
+            for i in "${!opts[@]}"; do
+                if [[ $i -eq $selected ]]; then
+                    boxline "${BOLD}${GREEN}  ▸ ${opts[$i]}${RESET}"
+                else
+                    boxline "${DIM}    ${opts[$i]}${RESET}"
+                fi
+            done
+
+            draw_sep
+            emptybox
+            [[ -n "$stat" ]] && boxline "${YELLOW}  ◆ $stat${RESET}"
+            active_count="$(count_active_modules)"
             if [[ "$active_count" -gt 0 ]] 2>/dev/null; then
                 boxline "${GREEN}  ● ${active_count} module(s) active${RESET}"
             fi
-        fi
-        boxline "${DIM}  ↑↓ Navigate  ⏎ Select  q Quit${RESET}"
-        emptybox
-        draw_end
+            boxline "${DIM}  ↑↓/jk Navigate  ⏎ Select  q Quit${RESET}"
+            emptybox
+            draw_end
 
-        read -rsn1 key
-        if [[ "$key" == $'\x1b' ]]; then
-            read -rsn2 key
-            if [[ "$key" == "[A" ]]; then
-                ((selected--))
-                (( selected < 0 )) && selected=$((${#opts[@]} - 1))
-            elif [[ "$key" == "[B" ]]; then
-                ((selected++))
-                (( selected >= ${#opts[@]} )) && selected=0
+            action=$(_read_nav_key) || continue
+            case "$action" in
+                UP)
+                    ((selected--))
+                    (( selected < 0 )) && selected=$((${#opts[@]} - 1))
+                    ;;
+                DOWN)
+                    ((selected++))
+                    (( selected >= ${#opts[@]} )) && selected=0
+                    ;;
+                SELECT) break ;;
+                QUIT)
+                    tput cnorm 2>/dev/null || true
+                    clear
+                    exit 0
+                    ;;
+            esac
+        done
+        tput cnorm 2>/dev/null || true
+        SELECTED_INDEX=$selected
+    }
+
+    interactive_toggles() {
+        local -a visual_order=("${NET_CAT_INDICES[@]}" "${OBF_CAT_INDICES[@]}" "${DEF_CAT_INDICES[@]}")
+        local total_items=${#visual_order[@]}
+        local cursor=0
+        local action
+
+        tput civis 2>/dev/null || true
+        while true; do
+            local current_idx=-1
+            if [[ $cursor -lt $total_items ]]; then
+                current_idx=${visual_order[$cursor]}
             fi
-        elif [[ "$key" == "" ]]; then
-            break
-        elif [[ "$key" == "q" || "$key" == "Q" ]]; then
-            tput cnorm 2>/dev/null
+
             clear
-            exit 0
-        fi
-    done
-    tput cnorm 2>/dev/null
-    SELECTED_INDEX=$selected
-}
+            banner
+            draw_line
+            emptybox
+            boxline "${BOLD}${CYAN}  CUSTOM MODULE CONFIGURATION (${total_items} Modules)${RESET}"
+            emptybox
+            draw_sep
 
-# ── Arrow-key toggle menu for modules ──
-interactive_toggles() {
-    local selected=0
-    local key
-    local total=${#options[@]}
+            _render_cat() {
+                local heading="$1"
+                shift
+                boxline "$heading"
+                local idx mark
+                for idx in "$@"; do
+                    mark="${RED}✗${RESET}"
+                    [[ "${choices[$idx]:-}" == "✓" ]] && mark="${GREEN}✓${RESET}"
+                    if [[ $idx -eq $current_idx ]]; then
+                        boxline "${BOLD}${CYAN}  ▸ [${mark}${BOLD}${CYAN}] ${MOD_LABELS[$idx]}${RESET}"
+                    else
+                        boxline "    [${mark}] ${MOD_LABELS[$idx]}"
+                    fi
+                done
+            }
 
-    tput civis 2>/dev/null
-    while true; do
+            _render_cat "${BOLD}${BLUE}  ── Network & Routing ──${RESET}" "${NET_CAT_INDICES[@]}"
+            emptybox
+            _render_cat "${BOLD}${MAGENTA}  ── System Obfuscation ──${RESET}" "${OBF_CAT_INDICES[@]}"
+            emptybox
+            _render_cat "${BOLD}${RED}  ── Active Defense ──${RESET}" "${DEF_CAT_INDICES[@]}"
+
+            emptybox
+            if [[ $cursor -eq $total_items ]]; then
+                boxline "${BOLD}${YELLOW}  ▸ ◀ BACK TO MAIN MENU${RESET}"
+            else
+                boxline "${DIM}    ◀ BACK TO MAIN MENU${RESET}"
+            fi
+
+            draw_sep
+            emptybox
+            boxline "${DIM}  ↑↓/jk Navigate  ⏎/Space Toggle  a All/None  q Quit${RESET}"
+            emptybox
+            draw_end
+
+            action=$(_read_nav_key) || continue
+            case "$action" in
+                UP)
+                    ((cursor--))
+                    (( cursor < 0 )) && cursor=$total_items
+                    ;;
+                DOWN)
+                    ((cursor++))
+                    (( cursor > total_items )) && cursor=0
+                    ;;
+                SELECT)
+                    if [[ $cursor -eq $total_items ]]; then
+                        break
+                    else
+                        local mod_i=${visual_order[$cursor]}
+                        if [[ "${choices[$mod_i]:-}" == "✓" ]]; then
+                            choices[$mod_i]=""
+                        else
+                            choices[$mod_i]="✓"
+                        fi
+                    fi
+                    ;;
+                ALL)
+                    local any_unchecked=0 idx_chk
+                    for idx_chk in "${visual_order[@]}"; do
+                        if [[ "${choices[$idx_chk]:-}" != "✓" ]]; then
+                            any_unchecked=1
+                            break
+                        fi
+                    done
+                    for idx_chk in "${visual_order[@]}"; do
+                        if [[ $any_unchecked -eq 1 ]]; then
+                            choices[$idx_chk]="✓"
+                        else
+                            choices[$idx_chk]=""
+                        fi
+                    done
+                    ;;
+                ESC)
+                    break
+                    ;;
+                QUIT)
+                    tput cnorm 2>/dev/null || true
+                    clear
+                    exit 0
+                    ;;
+            esac
+        done
+        tput cnorm 2>/dev/null || true
+    }
+
+    execute_modules() {
         clear
         banner
         draw_line
         emptybox
-        boxline "${BOLD}${CYAN}  CUSTOM MODULE CONFIGURATION${RESET}"
-        emptybox
-        draw_sep
-        
-        # Network & Routing
-        boxline "${BOLD}${BLUE}  ── Network & Routing ──${RESET}"
-        for i in 2 3 4 13 11 15 16 18 19; do
-            local mark="${RED}✗${RESET}"
-            [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
-            if [[ $i -eq $selected ]]; then
-                boxline "${BOLD}${CYAN}  ▸ [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
-            else
-                boxline "    [${mark}] ${options[$i]}"
-            fi
-        done
-        
-        emptybox
-        boxline "${BOLD}${MAGENTA}  ── System Obfuscation ──${RESET}"
-        for i in 5 6 7 8 10 17; do
-            local mark="${RED}✗${RESET}"
-            [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
-            if [[ $i -eq $selected ]]; then
-                boxline "${BOLD}${CYAN}  ▸ [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
-            else
-                boxline "    [${mark}] ${options[$i]}"
-            fi
-        done
-        
-        emptybox
-        boxline "${BOLD}${RED}  ── Active Defense ──${RESET}"
-        for i in 0 1 9 12 14 20; do
-            local mark="${RED}✗${RESET}"
-            [[ "${choices[$i]}" == "✓" ]] && mark="${GREEN}✓${RESET}"
-            if [[ $i -eq $selected ]]; then
-                boxline "${BOLD}${CYAN}  ▸ [${mark}${BOLD}${CYAN}] ${options[$i]}${RESET}"
-            else
-                boxline "    [${mark}] ${options[$i]}"
-            fi
-        done
-        
-        emptybox
-        if [[ $selected -eq $total ]]; then
-            boxline "${BOLD}${YELLOW}  ▸ ◀ BACK TO MAIN MENU${RESET}"
-        else
-            boxline "${DIM}    ◀ BACK TO MAIN MENU${RESET}"
-        fi
-
-        draw_sep
-        emptybox
-        boxline "${DIM}  ↑↓ Navigate  ⏎ Toggle  q Quit${RESET}"
+        boxline "${BOLD}${CYAN}  APPLYING CONFIGURATION...${RESET}"
         emptybox
         draw_end
+        echo ""
 
-        read -rsn1 key
-        if [[ "$key" == $'\x1b' ]]; then
-            read -rsn2 key
-            if [[ "$key" == "[A" ]]; then
-                ((selected--))
-                (( selected < 0 )) && selected=$total
-            elif [[ "$key" == "[B" ]]; then
-                ((selected++))
-                (( selected > total )) && selected=0
+        local idx
+        for idx in "${EXEC_ORDER[@]}"; do
+            if [[ -n "${choices[$idx]:-}" ]]; then
+                _start_module "${MOD_NAMES[$idx]}"
             fi
-        elif [[ "$key" == "" ]]; then
-            if [[ $selected -eq $total ]]; then
-                break
-            else
-                if [[ "${choices[$selected]}" == "✓" ]]; then
-                    choices[$selected]=""
-                else
-                    choices[$selected]="✓"
-                fi
-            fi
-        elif [[ "$key" == "q" || "$key" == "Q" ]]; then
-            tput cnorm 2>/dev/null
-            clear
-            exit 0
-        fi
-    done
-    tput cnorm 2>/dev/null
-}
+        done
 
-# ── Execute selected modules ──
-execute_modules() {
-    clear
-    banner
-    draw_line
-    emptybox
-    boxline "${BOLD}${CYAN}  APPLYING CONFIGURATION...${RESET}"
-    emptybox
-    draw_end
-    echo ""
-
-    start_anti_mitm(){
-        "${BASE_DIR}/assets/scripts/anti_mitm" &
-        local antimitmpid="$!"
-        sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' "$SRCDIR/sources/config"
-        info "Anti mitm successfully enabled"
+        echo ""
+        draw_line
+        emptybox
+        boxline "${GREEN}${BOLD}  ✓ All selected modules have been activated.${RESET}"
+        emptybox
+        draw_end
+        echo ""
+        echo -e "  ${DIM}Press any key to continue to Operations Menu...${RESET}"
+        read -rsn1
     }
 
-    start_traffic_obfuscation(){
-        "${BASE_DIR}/assets/scripts/traffic_obfuscation" start
+    operations_loop() {
+        while true; do
+            local ops_opts=("Live Dashboard" "System Status" "New Tor Identity" "IP Leak Test" "Secure Browser" "Metadata Sanitizer" "Emergency Panic Lockdown" "Stop All Modules" "Back to Configuration" "Exit Anon")
+            interactive_menu "OPERATIONS:" "${ops_opts[@]}"
+            case $SELECTED_INDEX in
+                0) dashboard ;;
+                1)
+                    clear
+                    banner
+                    reload_state
+                    draw_line
+                    emptybox
+                    boxline "${BOLD}${MAGENTA}  SYSTEM STATUS${RESET}"
+                    emptybox
+                    draw_sep
+                    status
+                    draw_end
+                    echo ""
+                    echo -e "  ${DIM}Press any key to return...${RESET}"
+                    read -rsn1
+                    ;;
+                2)
+                    clear
+                    banner
+                    info "Requesting new Tor circuit..."
+                    if command -v tor &>/dev/null; then
+                        killall -HUP tor 2>/dev/null || pkill -HUP -x tor 2>/dev/null || true
+                        sleep 2
+                        local new_ip
+                        new_ip=$(curl -s --max-time 8 --socks5-hostname 127.0.0.1:9050 https://api.ipify.org 2>/dev/null || echo "Unknown")
+                        msg "New Tor circuit established!"
+                        info "New Exit IP: ${YELLOW}${new_ip}${RESET}"
+                    else
+                        warn "Tor is not running."
+                    fi
+                    echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                    read -rsn1
+                    ;;
+                3)
+                    clear
+                    banner
+                    info "Running IP Leak Test..."
+                    local leak_result
+                    leak_result=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
+                    if echo "$leak_result" | grep -q '"IsTor":true'; then
+                        local exit_ip
+                        exit_ip=$(echo "$leak_result" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
+                        msg "No leaks detected! Routing through Tor."
+                        info "Exit Node IP: ${YELLOW}${exit_ip}${RESET}"
+                    else
+                        warn "Possible leak or Tor not active!"
+                    fi
+                    info "Checking DNS via Mullvad..."
+                    local dns_check
+                    dns_check=$(curl -s --max-time 8 --socks5-hostname 127.0.0.1:9050 https://am.i.mullvad.net/json 2>/dev/null)
+                    if [[ -n "$dns_check" ]]; then
+                        local m_ip m_country
+                        m_ip=$(echo "$dns_check" | grep -o '"ip":"[^"]*"' | cut -d'"' -f4)
+                        m_country=$(echo "$dns_check" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
+                        info "Mullvad: IP=${YELLOW}${m_ip}${RESET} Country=${CYAN}${m_country}${RESET}"
+                    fi
+                    echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                    read -rsn1
+                    ;;
+                4)
+                    clear
+                    banner
+                    if [[ -f "${BASE_DIR}/assets/scripts/disposable_browser" ]]; then
+                        source "${BASE_DIR}/assets/scripts/disposable_browser"
+                        start_disposable_browser
+                    else
+                        warn "Disposable browser module not found."
+                    fi
+                    echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                    read -rsn1
+                    ;;
+                5)
+                    clear
+                    banner
+                    info "Metadata Sanitizer (MAT2 / ExifTool)"
+                    echo -ne "  ${YELLOW}Enter file or directory path to sanitize:${RESET} "
+                    local target_path
+                    read -r target_path
+                    if [[ -n "$target_path" ]]; then
+                        "${BASE_DIR}/assets/scripts/metadata_cleaner" "$target_path"
+                    else
+                        warn "No target path entered."
+                    fi
+                    echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                    read -rsn1
+                    ;;
+                6) panic ;;
+                7)
+                    clear
+                    banner
+                    stop "non_fatal"
+                    echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                    read -rsn1
+                    ;;
+                8) return 1 ;;
+                9) clear; exit 0 ;;
+            esac
+        done
     }
-    
-    start_sandbox_isolation(){
-        "${BASE_DIR}/assets/scripts/sandbox_isolation" start
-    }
 
-    start_leak_auditor(){
-        "${BASE_DIR}/assets/scripts/leak_auditor" &
-        local leakauditpid="$!"
-        sed -i 's/leak_auditor_pid="0"/leak_auditor_pid="'$leakauditpid'"/g;s/leak_auditor_status="Disable"/leak_auditor_status="Enable"/g' "$SRCDIR/sources/config"
-        info "Background leak auditor successfully enabled"
-    }
-
-    # Deterministic, secure execution order:
-    # 1. Hardware/System fingerprint spoofing (MAC, Hostname, TZ, OS, Logging, Cold-boot, Stealth)
-    # 2. Bridge / DPI camouflage
-    # 3. Network Namespace sandbox
-    # 4. Tor Transparent Proxy or alternative DNS
-    # 5. I2P, Proxychains, Traffic Obfuscation
-    # 6. Active defense: Anti-MITM, Kill Switch, Browser hardening, Leak Auditor
-    local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7 21)
-
-    for idx in "${exec_order[@]}"; do
-        if [[ -n "${choices[$idx]:-}" ]]; then
-            local mod_fn
-            mod_fn="start_$(echo "${options[$idx]}" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')"
-            if declare -F "$mod_fn" >/dev/null 2>&1; then
-                "$mod_fn"
-            fi
-        fi
-    done
-    
-    echo ""
-    draw_line
-    emptybox
-    boxline "${GREEN}${BOLD}  ✓ All selected modules have been activated.${RESET}"
-    emptybox
-    draw_end
-    echo ""
-    echo -e "  ${DIM}Press any key to continue to Operations Menu...${RESET}"
-    read -rsn1
-}
-
-# ── Post-execution operations menu ──
-operations_loop() {
+    local stat=""
     while true; do
-        local ops_opts=("Live Dashboard" "System Status" "New Tor Identity" "IP Leak Test" "Secure Browser" "Metadata Sanitizer" "Emergency Panic Lockdown" "Stop All Modules" "Back to Configuration" "Exit Anon")
-        interactive_menu "OPERATIONS:" "${ops_opts[@]}"
+        local main_opts=("Load Security Profile" "Custom Module Configuration" "Live Dashboard" "System Status" "System Update" "APPLY & START" "Exit")
+        interactive_menu "MAIN MENU:" "${main_opts[@]}"
+        stat=""
         case $SELECTED_INDEX in
-            0) dashboard ;;
-            1) 
-                clear
-                banner
-                source $SRCDIR/sources/config
-                draw_line
-                emptybox
-                boxline "${BOLD}${MAGENTA}  SYSTEM STATUS${RESET}"
-                emptybox
-                draw_sep
-                status
-                draw_end
-                echo ""
-                echo -e "  ${DIM}Press any key to return...${RESET}"
-                read -rsn1
+            0)
+                local prof_opts=("Paranoia Mode  ─  Max Security" "Quick Surf  ─  Fast Anonymity" "Pentest Mode  ─  Offensive" "Darknet Explorer  ─  Tor + I2P" "Physical Lockdown  ─  Anti-Forensics" "The Ghost  ─  Ultimate (All Features)" "◀ Back")
+                interactive_menu "SELECT SECURITY PROFILE:" "${prof_opts[@]}"
+                local i
+                for i in "${!choices[@]}"; do choices[i]=""; done
+                case $SELECTED_INDEX in
+                    0) for i in 0 1 2 4 5 6 7 8 12 14 16 17 18 21; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
+                    1) for i in 2 7 17; do choices[$i]="✓"; done; stat="◆ Loaded: Quick Surf" ;;
+                    2) for i in 0 2 4 6 8 10 11 16; do choices[$i]="✓"; done; stat="◆ Loaded: Pentest Mode" ;;
+                    3) for i in 2 13 15; do choices[$i]="✓"; done; stat="◆ Loaded: Darknet Explorer" ;;
+                    4) for i in 0 1 9 12 14 20; do choices[$i]="✓"; done; stat="◆ Loaded: Physical Lockdown" ;;
+                    5) for i in 0 1 2 4 5 6 7 8 9 10 11 12 14 15 16 17 18 20 21; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
+                    6) stat="" ;;
+                esac
                 ;;
-            2)
-                clear
-                banner
-                info "Requesting new Tor circuit..."
-                if command -v tor &>/dev/null; then
-                    killall -HUP tor 2>/dev/null
-                    sleep 2
-                    local new_ip
-                    new_ip=$(curl -s --max-time 8 --socks5-hostname 127.0.0.1:9050 https://api.ipify.org 2>/dev/null || echo "Unknown")
-                    msg "New Tor circuit established!"
-                    info "New Exit IP: ${YELLOW}${new_ip}${RESET}"
-                else
-                    warn "Tor is not running."
-                fi
-                echo -e "\n  ${DIM}Press any key to return...${RESET}"
-                read -rsn1
-                ;;
+            1) interactive_toggles ;;
+            2) dashboard ;;
             3)
                 clear
                 banner
-                info "Running IP Leak Test..."
-                local leak_result
-                leak_result=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
-                if echo "$leak_result" | grep -q '"IsTor":true'; then
-                    local exit_ip
-                    exit_ip=$(echo "$leak_result" | grep -o '"IP":"[^"]*"' | cut -d'"' -f4)
-                    msg "No leaks detected! Routing through Tor."
-                    info "Exit Node IP: ${YELLOW}${exit_ip}${RESET}"
-                else
-                    warn "Possible leak or Tor not active!"
-                fi
-                info "Checking DNS via Mullvad..."
-                local dns_check
-                dns_check=$(curl -s --max-time 8 --socks5-hostname 127.0.0.1:9050 https://am.i.mullvad.net/json 2>/dev/null)
-                if [[ -n "$dns_check" ]]; then
-                    local m_ip m_country
-                    m_ip=$(echo "$dns_check" | grep -o '"ip":"[^"]*"' | cut -d'"' -f4)
-                    m_country=$(echo "$dns_check" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
-                    info "Mullvad: IP=${YELLOW}${m_ip}${RESET} Country=${CYAN}${m_country}${RESET}"
-                fi
-                echo -e "\n  ${DIM}Press any key to return...${RESET}"
+                reload_state
+                status
+                echo -e "  ${DIM}Press any key to return...${RESET}"
                 read -rsn1
                 ;;
-            4)
-                clear
-                banner
-                if [[ -f "${BASE_DIR}/assets/scripts/disposable_browser" ]]; then
-                    source "${BASE_DIR}/assets/scripts/disposable_browser"
-                    start_disposable_browser
-                else
-                    warn "Disposable browser module not found."
-                fi
-                echo -e "\n  ${DIM}Press any key to return...${RESET}"
-                read -rsn1
-                ;;
+            4) update; exit 0 ;;
             5)
-                clear
-                banner
-                info "Metadata Sanitizer (MAT2 / ExifTool)"
-                echo -ne "  ${YELLOW}Enter file or directory path to sanitize:${RESET} "
-                read -r target_path
-                if [[ -n "$target_path" ]]; then
-                    "${BASE_DIR}/assets/scripts/metadata_cleaner" "$target_path"
-                else
-                    warn "No target path entered."
+                execute_modules
+                if ! operations_loop; then
+                    continue
                 fi
-                echo -e "\n  ${DIM}Press any key to return...${RESET}"
-                read -rsn1
                 ;;
-            6)
-                panic
-                ;;
-            7)
-                clear
-                banner
-                source $SRCDIR/sources/config
-                stop
-                echo -e "\n  ${DIM}Press any key to return...${RESET}"
-                read -rsn1
-                ;;
-            8) return 1 ;;
-            9) clear; exit 0 ;;
+            6) clear; exit 0 ;;
         esac
     done
 }
 
-# ══════════════════════════════════════════════════════════════════
-#  MAIN UI LOOP
-# ══════════════════════════════════════════════════════════════════
-
-stat=""
-while true; do
-    main_opts=("Load Security Profile" "Custom Module Configuration" "Live Dashboard" "System Status" "System Update" "APPLY & START" "Exit")
-    interactive_menu "MAIN MENU:" "${main_opts[@]}"
-    stat=""
-    case $SELECTED_INDEX in
-        0) 
-            prof_opts=("Paranoia Mode  ─  Max Security" "Quick Surf  ─  Fast Anonymity" "Pentest Mode  ─  Offensive" "Darknet Explorer  ─  Tor + I2P" "Physical Lockdown  ─  Anti-Forensics" "The Ghost  ─  Ultimate (All Features)" "◀ Back")
-            interactive_menu "SELECT SECURITY PROFILE:" "${prof_opts[@]}"
-            for i in "${!choices[@]}"; do choices[i]=""; done
-            case $SELECTED_INDEX in
-                0) for i in 0 1 2 4 5 6 7 8 12 13 14 16 17 18 21; do choices[$i]="✓"; done; stat="◆ Loaded: Paranoia Mode" ;;
-                1) for i in 2 7 17; do choices[$i]="✓"; done; stat="◆ Loaded: Quick Surf" ;;
-                2) for i in 0 2 4 6 8 10 11 16; do choices[$i]="✓"; done; stat="◆ Loaded: Pentest Mode" ;;
-                3) for i in 2 13 15; do choices[$i]="✓"; done; stat="◆ Loaded: Darknet Explorer" ;;
-                4) for i in 0 1 9 12 14 20; do choices[$i]="✓"; done; stat="◆ Loaded: Physical Lockdown" ;;
-                5) for i in 0 1 2 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 20 21; do choices[$i]="✓"; done; stat="◆ Loaded: The Ghost (Ultimate)" ;;
-                6) stat="" ;;
-            esac
-            ;;
-        1) interactive_toggles ;;
-        2) dashboard ;;
-        3)
-            clear
-            banner
-            source $SRCDIR/sources/config
-            status
-            echo -e "  ${DIM}Press any key to return...${RESET}"
-            read -rsn1
-            ;;
-        4) update; exit 0 ;;
-        5)
-            execute_modules
-            operations_loop
-            if [[ $? -eq 1 ]]; then
-                continue
-            fi
-            ;;
-        6) clear; exit 0 ;;
-    esac
-done
-
-}
-
 stop(){
+    local non_fatal="${1:-}"
+    reload_state
+    local active_cnt
+    active_cnt="$(count_active_modules)"
 
-source "$SRCDIR/sources/config"
-#detect enable features and stop
-if grep -q 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null; then
-
-	options=("leak_auditor" "sandbox_isolation" "kill_switch" "traffic_obfuscation" "anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "doh_shield" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "tor_bridges" "dpi_spoofing" "anti_cold_boot" "i2p_integration" "execution_stealth")
-
-	stop_leak_auditor(){
-	       [[ -n "$leak_auditor_pid" && "$leak_auditor_pid" != "0" ]] && kill "$leak_auditor_pid" 2>/dev/null
-	       sed -i 's/leak_auditor_pid="'$leak_auditor_pid'"/leak_auditor_pid="0"/g;s/leak_auditor_status="Enable"/leak_auditor_status="Disable"/g' "$SRCDIR/sources/config"
-	       info "Background leak auditor successfully disabled"
-	}
-
-	stop_anti_mitm(){
-
-	       [[ -n "$anti_mitm_pid" && "$anti_mitm_pid" != "0" ]] && kill "$anti_mitm_pid" 2>/dev/null
-	       sed -i 's/anti_mitm_pid="'$anti_mitm_pid'"/anti_mitm_pid="0"/g;s/anti_mitm_status="Enable"/anti_mitm_status="Disable"/g' "$SRCDIR/sources/config"
-	       info "Anti mitm successfully disabled"
-	}
-
-	stop_traffic_obfuscation(){
-	       "${BASE_DIR}/assets/scripts/traffic_obfuscation" stop
-	}
-
-	stop_sandbox_isolation(){
-	       "${BASE_DIR}/assets/scripts/sandbox_isolation" stop
-	}
-
-	for st in "${!options[@]}"; do
-	  source "$SRCDIR/sources/config"
-	  local mod_var="${options[st]}_status"
-	  if [[ "${!mod_var}" == "Enable" ]]; then
-		"stop_${options[st]}"
-	  fi
-	done
-
-else
-	err "No features are active. (Run to activate '${GREEN}sudo anon --start${RESET}')"
-fi
-}
-
-status(){
-
-source "$SRCDIR/sources/config"
-echo -e " ${BOLD}${MAGENTA}ANON SYSTEM STATUS${RESET}"
-echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
-
-print_status() {
-    local mod_name="$1"
-    local mod_status="$2"
-    if [ "$mod_status" == "Enable" ]; then
-        echo -e " ${CYAN}●${RESET} ${mod_name,-25} : ${GREEN}${BOLD}ACTIVE${RESET}"
+    if [[ "$active_cnt" -gt 0 ]]; then
+        local idx mod_name mod_var
+        for idx in "${STOP_ORDER[@]}"; do
+            reload_state
+            mod_name="${MOD_NAMES[$idx]}"
+            mod_var="${mod_name}_status"
+            if [[ "${!mod_var:-Disable}" == "Enable" ]]; then
+                _stop_module "$mod_name"
+            fi
+        done
     else
-        echo -e " ${DIM}○ ${mod_name,-25} : INACTIVE${RESET}"
+        if [[ "$non_fatal" == "non_fatal" ]]; then
+            warn "No features are currently active."
+        else
+            err "No features are active. (Run to activate '${GREEN}sudo anon --start${RESET}')"
+        fi
     fi
 }
 
-print_status "Anti Mitm" "$anti_mitm_status"
-print_status "Volatile Logging" "$volatile_logging_status"
-print_status "Ip changer" "$ip_changer_status"
-print_status "Dns changer" "$dns_changer_status"
-print_status "Mac changer" "$mac_changer_status"
-print_status "Timezone changer" "$timezone_changer_status"
-print_status "Hostname changer" "$hostname_changer_status"
-print_status "Browser anonymization" "$browser_anonymization_status"
-print_status "OS Obfuscation" "$os_obfuscation_status"
-print_status "Bluetooth disabler" "$bluetooth_disabler_status"
-print_status "Process obfuscation" "$process_obfuscation_status"
-print_status "Proxychains integration" "$proxychains_integration_status"
-print_status "Anti Cold Boot" "$anti_cold_boot_status"
-print_status "Tor bridges" "$tor_bridges_status"
-print_status "Network Kill Switch" "$kill_switch_status"
-print_status "I2P Integration" "$i2p_integration_status"
-print_status "Traffic Obfuscation" "$traffic_obfuscation_status"
-print_status "DPI Spoofing" "$dpi_spoofing_status"
-print_status "DNS-over-HTTPS" "$doh_shield_status"
-print_status "OS Sandbox Isolation" "$sandbox_isolation_status"
-print_status "Execution Stealth" "$execution_stealth_status"
-print_status "Leak Auditor" "$leak_auditor_status"
+status(){
+    reload_state
+    echo -e " ${BOLD}${MAGENTA}ANON SYSTEM STATUS${RESET}"
+    echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}"
 
-echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}\n"
+    print_status() {
+        local mod_name="$1"
+        local mod_status="$2"
+        if [[ "$mod_status" == "Enable" ]]; then
+            printf " ${CYAN}●${RESET} %-25s : ${GREEN}${BOLD}ACTIVE${RESET}\n" "$mod_name"
+        else
+            printf " ${DIM}○ %-25s : INACTIVE${RESET}\n" "$mod_name"
+        fi
+    }
 
+    print_status "Anti Mitm" "$anti_mitm_status"
+    print_status "Volatile Logging" "$volatile_logging_status"
+    print_status "Ip changer" "$ip_changer_status"
+    print_status "Dns changer" "$dns_changer_status"
+    print_status "Mac changer" "$mac_changer_status"
+    print_status "Timezone changer" "$timezone_changer_status"
+    print_status "Hostname changer" "$hostname_changer_status"
+    print_status "Browser anonymization" "$browser_anonymization_status"
+    print_status "OS Obfuscation" "$os_obfuscation_status"
+    print_status "Bluetooth disabler" "$bluetooth_disabler_status"
+    print_status "Process obfuscation" "$process_obfuscation_status"
+    print_status "Proxychains integration" "$proxychains_integration_status"
+    print_status "Anti Cold Boot" "$anti_cold_boot_status"
+    print_status "Tor bridges" "$tor_bridges_status"
+    print_status "Network Kill Switch" "$kill_switch_status"
+    print_status "I2P Integration" "$i2p_integration_status"
+    print_status "Traffic Obfuscation" "$traffic_obfuscation_status"
+    print_status "DPI Spoofing" "$dpi_spoofing_status"
+    print_status "DNS-over-HTTPS" "$doh_shield_status"
+    print_status "OS Sandbox Isolation" "$sandbox_isolation_status"
+    print_status "Execution Stealth" "$execution_stealth_status"
+    print_status "Leak Auditor" "$leak_auditor_status"
+
+    echo -e " ${DIM}─────────────────────────────────────────────────────────${RESET}\n"
 }
-
 
 dashboard() {
     (
@@ -720,8 +811,8 @@ dashboard() {
 
         (
             while true; do
-                source "$SRCDIR/sources/config"
-                if [[ "$ip_changer_status" == "Enable" ]]; then
+                reload_state
+                if [[ "${ip_changer_status:-Disable}" == "Enable" ]]; then
                     local tor_check
                     tor_check=$(curl -s --max-time 10 --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip 2>/dev/null)
                     if echo "$tor_check" | grep -q '"IsTor":true'; then
@@ -731,7 +822,7 @@ dashboard() {
                     else
                         echo "SECURE_SLOW|Hidden" > "$status_file"
                     fi
-                elif [[ "$i2p_integration_status" == "Enable" ]]; then
+                elif [[ "${i2p_integration_status:-Disable}" == "Enable" ]]; then
                     echo "SECURE_I2P|Hidden" > "$status_file"
                 else
                     echo "UNSECURE|Direct (Unprotected)" > "$status_file"
@@ -758,9 +849,8 @@ dashboard() {
             emptybox
             draw_sep
 
-            source "$SRCDIR/sources/config"
+            reload_state
 
-            # Read async network status
             local net_status
             net_status=$(cat "$status_file" 2>/dev/null || echo "WAITING")
             local net_state="${net_status%%|*}"
@@ -783,9 +873,8 @@ dashboard() {
                 boxline "${CYAN}  ● IP         ${YELLOW}${net_ip}${RESET}"
             fi
 
-            # Traffic stats
             local iface
-            iface=$(ip route 2>/dev/null | grep default | awk '{print $5}' | head -n 1)
+            iface="$(get_default_iface)"
             if [[ -n "$iface" ]] && [[ -f "/sys/class/net/$iface/statistics/rx_bytes" ]]; then
                 local rx tx rx_mb tx_mb
                 rx=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
@@ -799,13 +888,11 @@ dashboard() {
             boxline "${BOLD}${WHITE}  ACTIVE MODULES:${RESET}"
             emptybox
 
-            local mod_line=""
-            local count=0
-            local line_items=0
-
-            print_mod() {
-                if [[ "$2" == "Enable" ]]; then
-                    mod_line+="${GREEN}■${RESET}$1  "
+            local mod_line="" count=0 line_items=0 idx mod_var
+            for idx in "${!MOD_NAMES[@]}"; do
+                mod_var="${MOD_NAMES[$idx]}_status"
+                if [[ "${!mod_var:-Disable}" == "Enable" ]]; then
+                    mod_line+="${GREEN}■${RESET}${MOD_TAGS[$idx]}  "
                     ((count++))
                     ((line_items++))
                     if [[ $line_items -ge 7 ]]; then
@@ -814,30 +901,7 @@ dashboard() {
                         line_items=0
                     fi
                 fi
-            }
-
-            print_mod "MITM " "$anti_mitm_status"
-            print_mod "VLOG " "$volatile_logging_status"
-            print_mod "IP   " "$ip_changer_status"
-            print_mod "DNS  " "$dns_changer_status"
-            print_mod "MAC  " "$mac_changer_status"
-            print_mod "TZ   " "$timezone_changer_status"
-            print_mod "HOST " "$hostname_changer_status"
-            print_mod "BRWS " "$browser_anonymization_status"
-            print_mod "OS   " "$os_obfuscation_status"
-            print_mod "BT   " "$bluetooth_disabler_status"
-            print_mod "PROC " "$process_obfuscation_status"
-            print_mod "PRXY " "$proxychains_integration_status"
-            print_mod "COLD " "$anti_cold_boot_status"
-            print_mod "TOR  " "$tor_bridges_status"
-            print_mod "KILL " "$kill_switch_status"
-            print_mod "I2P  " "$i2p_integration_status"
-            print_mod "TRAFF" "$traffic_obfuscation_status"
-            print_mod "DPI  " "$dpi_spoofing_status"
-            print_mod "DOH  " "$doh_shield_status"
-            print_mod "JAIL " "$sandbox_isolation_status"
-            print_mod "STLTH" "$execution_stealth_status"
-            print_mod "AUDIT" "$leak_auditor_status"
+            done
 
             if [[ $count -eq 0 ]]; then
                 boxline "${DIM}  No modules active${RESET}"
@@ -861,73 +925,50 @@ dashboard() {
     )
 }
 
-
 browser(){
     source "${BASE_DIR}/assets/scripts/disposable_browser"
     start_disposable_browser
 }
 
 fix(){
-
-#repair system with backups received for a possible bug 
-if [ -f $BACKUPDIR/anon_fix_backups.tar.gz ]; then
-	restore_system
-	msg "System successfully repaired"
-else
-	err "Anon backup file not found"
-fi
+    if [[ -f "$BACKUPDIR/anon_fix_backups.tar.gz" ]]; then
+        restore_system
+        msg "System successfully repaired"
+    else
+        err "Anon backup file not found"
+    fi
 }
 
 cli_start() {
     dep_check tar tor curl sdmem obfs4proxy macchanger proxychains4 rfkill i2pd
-    if [[ ! -f $BACKUPDIR/anon_fix_backups.tar.gz ]]; then
+    if [[ ! -f "$BACKUPDIR/anon_fix_backups.tar.gz" ]]; then
         get_backups
     fi
 
-    source "$SRCDIR/sources/config"
+    reload_state
     local enabled_count
-    enabled_count=$(grep -o 'status="Enable"' "$SRCDIR/sources/config" 2>/dev/null | wc -l | tr -d '[:space:]')
-    enabled_count="${enabled_count:-0}"
+    enabled_count="$(count_active_modules)"
 
     if [[ "$enabled_count" -gt 0 ]]; then
         info "Starting Anon with saved module configuration..."
-        local exec_order=(4 6 5 8 9 12 1 10 20 13 18 17 2 3 19 15 11 16 0 14 7 21)
-        local raw_names=("anti_mitm" "volatile_logging" "ip_changer" "dns_changer" "mac_changer" "timezone_changer" "hostname_changer" "browser_anonymization" "os_obfuscation" "bluetooth_disabler" "process_obfuscation" "proxychains_integration" "anti_cold_boot" "tor_bridges" "kill_switch" "i2p_integration" "traffic_obfuscation" "sandbox_isolation" "dpi_spoofing" "doh_shield" "execution_stealth" "leak_auditor")
-
-        start_anti_mitm(){
-            "${BASE_DIR}/assets/scripts/anti_mitm" &
-            local antimitmpid="$!"
-            sed -i 's/anti_mitm_pid="0"/anti_mitm_pid="'$antimitmpid'"/g;s/anti_mitm_status="Disable"/anti_mitm_status="Enable"/g' "$SRCDIR/sources/config"
-            info "Anti mitm successfully enabled"
-        }
-        start_traffic_obfuscation(){
-            "${BASE_DIR}/assets/scripts/traffic_obfuscation" start
-        }
-        start_sandbox_isolation(){
-            "${BASE_DIR}/assets/scripts/sandbox_isolation" start
-        }
-        start_leak_auditor(){
-            "${BASE_DIR}/assets/scripts/leak_auditor" &
-            local leakauditpid="$!"
-            sed -i 's/leak_auditor_pid="0"/leak_auditor_pid="'$leakauditpid'"/g;s/leak_auditor_status="Disable"/leak_auditor_status="Enable"/g' "$SRCDIR/sources/config"
-            info "Background leak auditor successfully enabled"
-        }
-
-        for idx in "${exec_order[@]}"; do
-            source "$SRCDIR/sources/config"
-            local mod_name="${raw_names[$idx]}"
-            local mod_stat="${mod_name}_status"
-            if [[ "${!mod_stat}" == "Enable" ]]; then
-                sed -i "s/${mod_name}_status=\"Enable\"/${mod_name}_status=\"Disable\"/g" "$SRCDIR/sources/config"
-                if declare -F "start_${mod_name}" >/dev/null 2>&1; then
-                    "start_${mod_name}"
+        local idx mod_name mod_stat
+        for idx in "${EXEC_ORDER[@]}"; do
+            reload_state
+            mod_name="${MOD_NAMES[$idx]}"
+            mod_stat="${mod_name}_status"
+            if [[ "${!mod_stat:-Disable}" == "Enable" ]]; then
+                if _is_module_live "$mod_name"; then
+                    info "$mod_name is already active; skipping duplicate start."
+                    continue
                 fi
+                printf -v "$mod_stat" '%s' "Disable"
+                _start_module "$mod_name"
             fi
         done
     else
         info "No active modules found in saved config. Activating default security profile (Tor + Kill Switch)..."
-        start_ip_changer
-        start_kill_switch
+        _start_module "ip_changer"
+        _start_module "kill_switch"
     fi
 
     msg "Anon started successfully in non-interactive mode."
@@ -940,10 +981,10 @@ update() {
     if ! command -v unzip &> /dev/null; then
         warn "unzip is not installed. Installing..."
         if command -v apt-get &>/dev/null; then
-            apt-get update && apt-get install -y unzip
+            apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y unzip
         fi
     fi
-    
+
     (
         local tmp_dir
         tmp_dir=$(mktemp -d)
@@ -994,8 +1035,7 @@ clean_meta() {
 }
 
 help() {
-
-msg "Usage : sudo anon ${GREEN}[option]${RESET}
+    msg "Usage : sudo anon ${GREEN}[option]${RESET}
 
  ${GREEN}--start      :${RESET}   It will make backups and start the program.
  ${GREEN}--stop       :${RESET}   Closes the program using a backup.
@@ -1011,58 +1051,30 @@ msg "Usage : sudo anon ${GREEN}[option]${RESET}
 }
 
 main() {
-
-if [[ "$#" -eq 0 ]]; then
-    start
-    exit 0
-fi
+    if [[ "$#" -eq 0 ]]; then
+        start
+        exit 0
+    fi
 
     case "$1" in
-    --[sS][tT][aA][rR][tT]|-[sS][tT])
-        cli_start   
-        ;;
-    --[sS][tT][oO][pP]|-[sS][pP])
-        stop    
-        ;;
-    --[sS][tT][aA][tT][uU][sS]|-[sS][sS])
-        status  
-        ;;
-    --[dD][aA][sS][hH][bB][oO][aA][rR][dD]|-[dD])
-        dashboard
-        ;;
-    --[bB][rR][oO][wW][sS][eE][rR]|-[bB])
-        browser
-        ;;
-    --[aA][uU][dD][iI][tT]|-[aA])
-        audit
-        ;;
-    --[cC][lL][eE][aA][nN]-[mM][eE][tT][aA]|-[cC][mM])
-        shift
-        clean_meta "${1:-}"
-        ;;
-    --[pP][aA][nN][iI][cC]|-[pP])
-        panic
-        ;;
-    --[fF][iI][xX]|-[fF])
-        fix  
-        ;;
-    --[uU][pP][dD][aA][tT][eE]|-[uU])
-        update
-        ;;
-    --[hH][eE][lL][pP]|-[hH])
-        help
-        exit 0
-        ;;
-    *)
-          warn "Anon: Invalid option ${RED}'$1'${RESET}"
-          info "Run ${GREEN}'anon --help'${RESET} parameter for more information."
-          exit 1
-        ;;
+        --[sS][tT][aA][rR][tT]|-[sS][tT]) cli_start ;;
+        --[sS][tT][oO][pP]|-[sS][pP]) stop ;;
+        --[sS][tT][aA][tT][uU][sS]|-[sS][sS]) status ;;
+        --[dD][aA][sS][hH][bB][oO][aA][rR][dD]|-[dD]) dashboard ;;
+        --[bB][rR][oO][wW][sS][eE][rR]|-[bB]) browser ;;
+        --[aA][uU][dD][iI][tT]|-[aA]) audit ;;
+        --[cC][lL][eE][aA][nN]-[mM][eE][tT][aA]|-[cC][mM]) shift; clean_meta "${1:-}" ;;
+        --[pP][aA][nN][iI][cC]|-[pP]) panic ;;
+        --[fF][iI][xX]|-[fF]) fix ;;
+        --[uU][pP][dD][aA][tT][eE]|-[uU]) update ;;
+        --[hH][eE][lL][pP]|-[hH]) help; exit 0 ;;
+        *)
+            warn "Anon: Invalid option ${RED}'$1'${RESET}"
+            info "Run ${GREEN}'anon --help'${RESET} parameter for more information."
+            exit 1
+            ;;
     esac
 }
 
-
-# call main
 main "${@}"
-
 # EOF

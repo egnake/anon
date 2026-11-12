@@ -13,23 +13,30 @@ CYAN="\e[36m"
 WHITE="\e[37m"
 BG_BLUE="\e[44m"
 
-# backup dir
+# backup and source directories
 if [[ -z "${BASE_DIR:-}" ]]; then
-    if [[ -f "/usr/share/anon/assets/sources/config" ]]; then
-        export BASE_DIR="/usr/share/anon"
+    _cfg_root="$(dirname "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")")"
+    if [[ -f "${_cfg_root}/assets/sources/config" ]]; then
+        BASE_DIR="$_cfg_root"
+    elif [[ -f "/usr/share/anon/assets/sources/config" ]]; then
+        BASE_DIR="/usr/share/anon"
     else
-        export BASE_DIR="$(dirname "$(dirname "$(dirname "$(realpath "${BASH_SOURCE[0]}")")")")"
+        BASE_DIR="$_cfg_root"
     fi
+    unset _cfg_root
+    export BASE_DIR
 fi
-BACKUPDIR="${ANON_PERSIST_DIR:-${BASE_DIR}}/backups"
-mkdir -p "$BACKUPDIR" 2>/dev/null
+BACKUPDIR="${BACKUPDIR:-${ANON_PERSIST_DIR:-${BASE_DIR}}/backups}"
+mkdir -p "$BACKUPDIR" 2>/dev/null || true
 SRCDIR="${BASE_DIR}/assets"
+ANON_STATE_FILE="${ANON_STATE_FILE:-${BACKUPDIR}/anon.state}"
+export BACKUPDIR SRCDIR ANON_STATE_FILE
 
 # tor config file
 TORRC="${TORRC:-/etc/tor/torrc}"
 tor_uid="$(id -u debian-tor 2>/dev/null || id -u tor 2>/dev/null || id -u _tor 2>/dev/null || echo "109")"
 
-#Defaults
+# Default module states (overridden by $ANON_STATE_FILE)
 anti_mitm_status="Disable"
 ip_changer_status="Disable"
 dns_changer_status="Disable"
@@ -56,22 +63,32 @@ anti_mitm_pid="0"
 traffic_obfuscation_pid="0"
 leak_auditor_pid="0"
 
+# Load shared helper functions and runtime state overrides
+if [[ -f "${SRCDIR}/sources/helpers" ]]; then
+    # shellcheck disable=SC1091
+    source "${SRCDIR}/sources/helpers"
+fi
+if [[ -f "${ANON_STATE_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${ANON_STATE_FILE}" 2>/dev/null || true
+fi
+
 # UI Functions
 err() {
-    echo -e "\n ${BG_BLUE}${WHITE}${BOLD} ANON ${RESET} ${RED}✖ ERROR:${RESET} ${@}\n"
+    echo -e "\n ${BG_BLUE}${WHITE}${BOLD} ANON ${RESET} ${RED}✖ ERROR:${RESET} $*\n"
     exit 1
 }
 
 warn() {
-    echo -e " ${YELLOW}⚠ WARNING:${RESET} ${@}"
+    echo -e " ${YELLOW}⚠ WARNING:${RESET} $*"
 }
 
 msg() {
-    echo -e " ${GREEN}✔ SUCCESS:${RESET} ${@}"
+    echo -e " ${GREEN}✔ SUCCESS:${RESET} $*"
 }
 
 info() {
-    echo -e " ${CYAN}ℹ INFO:${RESET} ${@}"
+    echo -e " ${CYAN}ℹ INFO:${RESET} $*"
 }
 
 notify() {
@@ -82,11 +99,11 @@ notify() {
     if command -v notify-send &>/dev/null; then
         local user_disp="${DISPLAY:-:0}"
         local active_user="${SUDO_USER:-root}"
-        local user_xauth="${XAUTHORITY:-/home/$active_user/.Xauthority}"
-        if [[ "$active_user" == "root" ]]; then
-            user_xauth="/root/.Xauthority"
-        fi
-        
+        local active_home
+        active_home=$(getent passwd "$active_user" 2>/dev/null | cut -d: -f6 || true)
+        [[ -z "$active_home" ]] && active_home=$([[ "$active_user" == "root" ]] && echo "/root" || echo "/home/$active_user")
+        local user_xauth="${XAUTHORITY:-${active_home}/.Xauthority}"
+
         if [[ -n "$user_disp" ]]; then
             if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
                 sudo -u "$SUDO_USER" DISPLAY="$user_disp" XAUTHORITY="$user_xauth" \
@@ -99,17 +116,8 @@ notify() {
     fi
 }
 
-input() {
-  echo -ne "
-   ${YELLOW}➤ Select a module number to toggle its status.${RESET}
-   ${DIM}Press [0] to Apply & Start, or [q] to Quit.${RESET}
-   
-   ${BOLD}${RED}anon${RESET} > "
-}
-
 # Initialize random banner once per session so it doesn't change on every menu redraw
 if [[ -z "${ANON_CURRENT_BANNER:-}" && -d "$SRCDIR/banners" ]]; then
-    # Pick a random .txt file from assets/banners/
     banners=("$SRCDIR/banners/"*.txt)
     if [[ ${#banners[@]} -gt 0 && -f "${banners[0]}" ]]; then
         rand_index=$(( RANDOM % ${#banners[@]} ))
@@ -122,19 +130,19 @@ banner() {
     local width
     width=$(tput cols 2>/dev/null || echo 80)
     local bar_len=56
+    (( bar_len > width - 2 )) && bar_len=$(( width - 2 ))
+    (( bar_len < 10 )) && bar_len=10
     local bar_pad=$(( (width - bar_len) / 2 ))
     (( bar_pad < 0 )) && bar_pad=0
-    
+
     echo ""
     echo -e "${BOLD}${CYAN}"
-    
-    # Read the chosen banner file and center it line by line
+
     if [[ -n "${ANON_CURRENT_BANNER:-}" && -f "$ANON_CURRENT_BANNER" ]]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
             line="${line%$'\r'}"
-            # Replace common bash escapes if they exist in text
             local stripped_line
-            stripped_line=$(echo -e "$line" | sed 's/\x1b\[[0-9;]*m//g')
+            stripped_line=$(printf '%s' "$line" | sed 's/\x1b\[[0-9;]*m//g')
             local line_len=${#stripped_line}
             local line_pad=$(( (width - line_len) / 2 ))
             (( line_pad < 0 )) && line_pad=0
@@ -142,11 +150,11 @@ banner() {
         done < "$ANON_CURRENT_BANNER"
     fi
     echo -e "${RESET}"
-    
+
     printf "${DIM}%${bar_pad}s" ""
-    printf '═%.0s' $(seq 1 $bar_len)
+    printf '═%.0s' $(seq 1 "$bar_len")
     printf "${RESET}\n"
-    
+
     local sub="Advanced OPSEC & Anonymity Framework"
     local ver="v3.0"
     local sub_stripped="${sub}  ${ver}"
@@ -154,15 +162,14 @@ banner() {
     (( sub_pad < 0 )) && sub_pad=0
     printf "%${sub_pad}s" ""
     echo -e "${BOLD}${CYAN}${sub}  ${DIM}${ver}${RESET}"
-    
+
     local contact="github.com/egnake | egcaem000@gmail.com | Report Issue"
     local contact_pad=$(( (width - ${#contact}) / 2 ))
     (( contact_pad < 0 )) && contact_pad=0
     printf "%${contact_pad}s" ""
     echo -e "${DIM}${contact}${RESET}"
-    
+
     printf "${DIM}%${bar_pad}s" ""
-    printf '═%.0s' $(seq 1 $bar_len)
+    printf '═%.0s' $(seq 1 "$bar_len")
     printf "${RESET}\n\n"
 }
-
